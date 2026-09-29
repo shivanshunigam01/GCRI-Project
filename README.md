@@ -1,36 +1,36 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# GRAICE Assessment Platform
+
+Built with **Next.js 15 (App Router)**, **TypeScript**, and **MongoDB**.
+
+## Overview
+The GRAICE Assessment Platform digitizes the GCRAI/GRAICE Responsible AI governance assessment methodology, replacing manual Excel workbook and Word-based questionnaire processes with a secure, persistent, database-backed application.
+
+## Key Features
+- **7 GRAICE Pillars**: Full evaluation engine across Governance, Risk, Accountability, Integrity, Compliance, Ethics & Safety.
+- **Light & Full Assessments**: Flexible evaluation paths for rapid triage or comprehensive audits.
+- **Automated Maturity Scoring**: Deterministic scoring and level classification (Initial, Emerging, Established, Advanced).
+- **Role-Based Access Control (RBAC)**: Enforced boundaries across Admin, Assessor, and upcoming Membership Approver roles.
+- **Multi-Factor Authentication (MFA)**: TOTP-based verification with recovery keys.
+- **Verification Engine**: Automated domain and company data validation.
 
 ## Getting Started
 
-First, run the development server:
-
+### 1. Environment Setup
+Copy the example environment file and populate your connection credentials:
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+cp .env.example .env.local
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### 2. Development Server
+Run the local Next.js dev server:
+```bash
+npm run dev
+```
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Open [http://localhost:3000](http://localhost:3000) to view the application.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### 3. API Health Check
+Test the API endpoint:
+```bash
+curl http://localhost:3000/api/v1/health
+```
