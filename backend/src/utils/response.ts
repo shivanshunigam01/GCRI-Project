@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { Response } from "express";
 
 export interface ApiResponse<T = unknown> {
   success: boolean;
@@ -17,23 +17,29 @@ export interface ApiResponse<T = unknown> {
   timestamp: string;
 }
 
-export function apiSuccess<T>(data: T, status = 200, pagination?: ApiResponse<T>["pagination"]) {
-  const body: ApiResponse<T> = {
+export function sendSuccess<T>(
+  res: Response,
+  data: T,
+  statusCode = 200,
+  pagination?: ApiResponse<T>["pagination"]
+) {
+  const response: ApiResponse<T> = {
     success: true,
     data,
     ...(pagination && { pagination }),
     timestamp: new Date().toISOString(),
   };
-  return NextResponse.json(body, { status });
+  return res.status(statusCode).json(response);
 }
 
-export function apiError(
+export function sendError(
+  res: Response,
   message: string,
   statusCode = 400,
   code = "BAD_REQUEST",
   details?: unknown
 ) {
-  const body: ApiResponse = {
+  const response: ApiResponse = {
     success: false,
     error: {
       code,
@@ -42,5 +48,5 @@ export function apiError(
     },
     timestamp: new Date().toISOString(),
   };
-  return NextResponse.json(body, { status: statusCode });
+  return res.status(statusCode).json(response);
 }
