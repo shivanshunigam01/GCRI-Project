@@ -1,7 +1,26 @@
 import { Router } from "express";
-import { register, login } from "../controllers/auth.controller.js";
+import {
+  register,
+  login,
+  setupMfa,
+  verifyMfa,
+  disableMfa,
+  forgotPassword,
+  resetPassword,
+  changePassword,
+} from "../controllers/auth.controller.js";
+import { authenticate } from "../middlewares/auth.js";
+import { authLimiter } from "../middlewares/rateLimiter.js";
 import { validateRequest } from "../middlewares/validate.js";
-import { RegisterSchema, LoginSchema } from "../schemas/auth.schema.js";
+import {
+  RegisterSchema,
+  LoginSchema,
+  MfaVerifySchema,
+  MfaDisableSchema,
+  ForgotPasswordSchema,
+  ResetPasswordSchema,
+  ChangePasswordSchema,
+} from "../schemas/auth.schema.js";
 
 const router = Router();
 
@@ -10,6 +29,7 @@ const router = Router();
  * /api/v1/auth/register:
  *   post:
  *     summary: Register a new Assessor or User
+ *     description: Creates an Assessor user account with bcrypt 12-round password hashing and audit logging.
  *     tags:
  *       - Authentication
  *     requestBody:
@@ -24,19 +44,34 @@ const router = Router();
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/ApiResponse'
+ *               $ref: '#/components/schemas/RegisterResponse'
  *       409:
  *         description: Email already registered
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
  *       422:
- *         description: Validation error
+ *         description: Request payload validation error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       429:
+ *         description: IP rate limit exceeded (max 10 requests per 15 minutes)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
  */
-router.post("/register", validateRequest(RegisterSchema), register);
+router.post("/register", authLimiter, validateRequest(RegisterSchema), register);
 
 /**
  * @openapi
  * /api/v1/auth/login:
  *   post:
- *     summary: User login with credentials and optional MFA token
+ *     summary: User login with credentials, account lockout, and MFA verification
+ *     description: Authenticates user credentials. If MFA is active, validates the 6-digit TOTP code or emergency recovery code. Enforces 15-minute account lockout after 5 failed attempts and requires MFA enrollment for Admin accounts.
  *     tags:
  *       - Authentication
  *     requestBody:
@@ -47,16 +82,242 @@ router.post("/register", validateRequest(RegisterSchema), register);
  *             $ref: '#/components/schemas/LoginRequest'
  *     responses:
  *       200:
- *         description: Login successful, returns JWT bearer token
+ *         description: Login successful, returns signed JWT bearer token
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/ApiResponse'
+ *               $ref: '#/components/schemas/LoginResponse'
  *       401:
- *         description: Invalid credentials
+ *         description: Invalid credentials or MFA token missing/invalid
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       403:
+ *         description: Account deactivated or Admin MFA enrollment required
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
  *       423:
  *         description: Account temporarily locked due to excessive failed attempts
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       429:
+ *         description: IP rate limit exceeded
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
  */
-router.post("/login", validateRequest(LoginSchema), login);
+router.post("/login", authLimiter, validateRequest(LoginSchema), login);
+
+/**
+ * @openapi
+ * /api/v1/auth/mfa/generate:
+ *   post:
+ *     summary: Initiate MFA TOTP enrollment (generates Base32 secret & QR code)
+ *     description: Generates a cryptographically random Base32 TOTP secret and QR code Data URL for scanning into Google Authenticator or Microsoft Authenticator.
+ *     tags:
+ *       - Multi-Factor Authentication
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: MFA enrollment initiated, returns secret and QR code image URL
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/MfaSetupResponse'
+ *       401:
+ *         description: Unauthorized - missing or expired JWT token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
+router.post("/mfa/generate", authenticate, setupMfa);
+
+/**
+ * @openapi
+ * /api/v1/auth/mfa/verify:
+ *   post:
+ *     summary: Confirm MFA setup with first 6-digit TOTP code and obtain emergency recovery codes
+ *     description: Verifies the user's first 6-digit TOTP code generated by their authenticator app, activates MFA on their profile, and returns 8 single-use emergency backup recovery codes.
+ *     tags:
+ *       - Multi-Factor Authentication
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/MfaVerifyRequest'
+ *     responses:
+ *       200:
+ *         description: MFA enabled successfully, returns 8 single-use recovery codes
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/MfaVerifyResponse'
+ *       400:
+ *         description: Invalid 6-digit code or MFA setup not initiated
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       401:
+ *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
+router.post("/mfa/verify", authenticate, validateRequest(MfaVerifySchema), verifyMfa);
+
+/**
+ * @openapi
+ * /api/v1/auth/mfa/disable:
+ *   post:
+ *     summary: Disable MFA on user account (prohibited for Admin accounts)
+ *     description: Deactivates MFA after verifying user's account password and current 6-digit TOTP code. Admin accounts are prohibited from disabling MFA.
+ *     tags:
+ *       - Multi-Factor Authentication
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/MfaDisableRequest'
+ *     responses:
+ *       200:
+ *         description: MFA disabled successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/MessageResponse'
+ *       400:
+ *         description: Invalid code or MFA not currently enabled
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       401:
+ *         description: Unauthorized or incorrect password
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       403:
+ *         description: MFA is mandatory for Admin accounts and cannot be disabled
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
+router.post("/mfa/disable", authenticate, validateRequest(MfaDisableSchema), disableMfa);
+
+/**
+ * @openapi
+ * /api/v1/auth/forgot-password:
+ *   post:
+ *     summary: Request a time-limited password reset token
+ *     description: Generates a secure, 1-hour cryptographic password reset token and stores its SHA-256 hash. Returns a uniform anti-enumeration message to protect account privacy.
+ *     tags:
+ *       - Password Management
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/ForgotPasswordRequest'
+ *     responses:
+ *       200:
+ *         description: Password reset request accepted
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/MessageResponse'
+ *       429:
+ *         description: IP rate limit exceeded
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
+router.post("/forgot-password", authLimiter, validateRequest(ForgotPasswordSchema), forgotPassword);
+
+/**
+ * @openapi
+ * /api/v1/auth/reset-password:
+ *   post:
+ *     summary: Reset account password with valid cryptographic token
+ *     description: Validates the SHA-256 token against unexpired reset requests, updates password with 12 bcrypt rounds, and clears account lockouts.
+ *     tags:
+ *       - Password Management
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/ResetPasswordRequest'
+ *     responses:
+ *       200:
+ *         description: Password successfully updated
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/MessageResponse'
+ *       400:
+ *         description: Invalid or expired reset token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       429:
+ *         description: IP rate limit exceeded
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
+router.post("/reset-password", authLimiter, validateRequest(ResetPasswordSchema), resetPassword);
+
+/**
+ * @openapi
+ * /api/v1/auth/change-password:
+ *   post:
+ *     summary: Change password for currently authenticated user
+ *     description: Verifies user's current password and securely saves the updated password hash.
+ *     tags:
+ *       - Password Management
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/ChangePasswordRequest'
+ *     responses:
+ *       200:
+ *         description: Password changed successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/MessageResponse'
+ *       401:
+ *         description: Current password incorrect or unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
+router.post("/change-password", authenticate, validateRequest(ChangePasswordSchema), changePassword);
 
 export default router;

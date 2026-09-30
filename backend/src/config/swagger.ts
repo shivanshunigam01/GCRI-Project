@@ -8,7 +8,7 @@ const options: swaggerJsdoc.Options = {
       title: "GRAICE Assessment Platform API",
       version: "1.0.0",
       description:
-        "Comprehensive REST API documentation for the GRAICE Responsible AI Governance Assessment Platform (GCRAI / grAIce Inc.).",
+        "Comprehensive REST API documentation for the GRAICE Responsible AI Governance Assessment Platform (GCRAI / grAIce Inc.). Digitizes AI governance workflows, maturity classifications, company onboarding, and assessment scoring across the 7 GRAICE Pillars.",
       contact: {
         name: "GCRAI Platform Engineering",
       },
@@ -17,6 +17,24 @@ const options: swaggerJsdoc.Options = {
       {
         url: "http://localhost:5000",
         description: "Local Development Server",
+      },
+    ],
+    tags: [
+      {
+        name: "Authentication",
+        description: "User self-registration, credential login, account lockout, and JWT token issuance",
+      },
+      {
+        name: "Multi-Factor Authentication",
+        description: "Time-based One-Time Password (TOTP) 2FA enrollment, QR code generation, verification, and single-use recovery backup codes",
+      },
+      {
+        name: "Password Management",
+        description: "Cryptographic password reset tokens, password updates, and credential rotation",
+      },
+      {
+        name: "System",
+        description: "Health checks, database connectivity, and readiness monitoring probes",
       },
     ],
     components: {
@@ -29,40 +47,215 @@ const options: swaggerJsdoc.Options = {
         },
       },
       schemas: {
-        ApiResponse: {
+        // Universal Error Response
+        ErrorResponse: {
           type: "object",
           properties: {
-            success: { type: "boolean" },
-            data: { type: "object" },
+            success: { type: "boolean", example: false },
             error: {
               type: "object",
               properties: {
-                code: { type: "string" },
-                message: { type: "string" },
-                details: { type: "object" },
+                code: { type: "string", example: "INVALID_CREDENTIALS" },
+                message: { type: "string", example: "Invalid email or password." },
+                details: { type: "object", nullable: true },
+              },
+            },
+            timestamp: { type: "string", format: "date-time", example: "2026-09-30T13:50:00.000Z" },
+          },
+        },
+        // Universal Message Response
+        MessageResponse: {
+          type: "object",
+          properties: {
+            success: { type: "boolean", example: true },
+            data: {
+              type: "object",
+              properties: {
+                message: { type: "string", example: "Operation completed successfully." },
               },
             },
             timestamp: { type: "string", format: "date-time" },
           },
         },
+        // Registration
         RegisterRequest: {
           type: "object",
           required: ["email", "password", "name"],
           properties: {
-            email: { type: "string", format: "email", example: "user@example.com" },
-            password: { type: "string", minLength: 8, example: "Password123!" },
+            email: { type: "string", format: "email", example: "assessor@company.com" },
+            password: { type: "string", minLength: 8, example: "SecurePass123!" },
             name: { type: "string", example: "Jane Doe" },
-            companyName: { type: "string", example: "Acme Corp" },
-            domain: { type: "string", example: "acme.com" },
+            companyName: { type: "string", example: "Acme AI Corp" },
+            domain: { type: "string", example: "acme.ai" },
           },
         },
+        RegisterResponse: {
+          type: "object",
+          properties: {
+            success: { type: "boolean", example: true },
+            data: {
+              type: "object",
+              properties: {
+                userId: { type: "string", example: "66fc1234567890abcdef1234" },
+                email: { type: "string", example: "assessor@company.com" },
+                name: { type: "string", example: "Jane Doe" },
+                role: { type: "string", enum: ["Admin", "Assessor", "MembershipApprover"], example: "Assessor" },
+              },
+            },
+            timestamp: { type: "string", format: "date-time" },
+          },
+        },
+        // Login
         LoginRequest: {
           type: "object",
           required: ["email", "password"],
           properties: {
             email: { type: "string", format: "email", example: "user@example.com" },
-            password: { type: "string", example: "Password123!" },
-            mfaToken: { type: "string", example: "123456" },
+            password: { type: "string", example: "SecurePass123!" },
+            mfaToken: {
+              type: "string",
+              example: "123456",
+              description: "6-digit TOTP code (or 8-character recovery code) if MFA is enabled",
+            },
+          },
+        },
+        LoginResponse: {
+          type: "object",
+          properties: {
+            success: { type: "boolean", example: true },
+            data: {
+              type: "object",
+              properties: {
+                token: {
+                  type: "string",
+                  example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+                  description: "Signed JWT Bearer token valid for API requests",
+                },
+                user: {
+                  type: "object",
+                  properties: {
+                    userId: { type: "string", example: "66fc1234567890abcdef1234" },
+                    email: { type: "string", example: "user@example.com" },
+                    name: { type: "string", example: "Jane Doe" },
+                    role: { type: "string", example: "Assessor" },
+                    mfaEnabled: { type: "boolean", example: false },
+                    companyId: { type: "string", nullable: true, example: "66fc9876543210abcdef4321" },
+                  },
+                },
+              },
+            },
+            timestamp: { type: "string", format: "date-time" },
+          },
+        },
+        // MFA Setup (Step 1)
+        MfaSetupResponse: {
+          type: "object",
+          properties: {
+            success: { type: "boolean", example: true },
+            data: {
+              type: "object",
+              properties: {
+                secret: {
+                  type: "string",
+                  example: "JBSWY3DPEHPK3PXP",
+                  description: "Base32 encoded secret key for manual authenticator app entry",
+                },
+                qrCodeUrl: {
+                  type: "string",
+                  example: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA...",
+                  description: "Base64 Data URL containing the QR code image to scan in Google Authenticator",
+                },
+                issuer: { type: "string", example: "GRAICE" },
+                account: { type: "string", example: "user@example.com" },
+              },
+            },
+            timestamp: { type: "string", format: "date-time" },
+          },
+        },
+        // MFA Verification (Step 2)
+        MfaVerifyRequest: {
+          type: "object",
+          required: ["token"],
+          properties: {
+            token: {
+              type: "string",
+              example: "123456",
+              description: "6-digit TOTP code currently shown in user's authenticator app",
+            },
+          },
+        },
+        MfaVerifyResponse: {
+          type: "object",
+          properties: {
+            success: { type: "boolean", example: true },
+            data: {
+              type: "object",
+              properties: {
+                message: { type: "string", example: "Multi-Factor Authentication enabled successfully" },
+                recoveryCodes: {
+                  type: "array",
+                  items: { type: "string" },
+                  example: ["a1b2c3d4", "e5f6g7h8", "i9j0k1l2", "m3n4o5p6", "q7r8s9t0", "u1v2w3x4", "y5z6a7b8", "c9d0e1f2"],
+                  description: "8 single-use emergency backup recovery codes. Save these in a secure place.",
+                },
+              },
+            },
+            timestamp: { type: "string", format: "date-time" },
+          },
+        },
+        // MFA Disable
+        MfaDisableRequest: {
+          type: "object",
+          required: ["password", "token"],
+          properties: {
+            password: { type: "string", example: "CurrentPassword123!" },
+            token: { type: "string", example: "123456", description: "Current 6-digit TOTP code" },
+          },
+        },
+        // Password Management
+        ForgotPasswordRequest: {
+          type: "object",
+          required: ["email"],
+          properties: {
+            email: { type: "string", format: "email", example: "user@example.com" },
+          },
+        },
+        ResetPasswordRequest: {
+          type: "object",
+          required: ["token", "newPassword"],
+          properties: {
+            token: {
+              type: "string",
+              example: "4a7f9c2e0b1d382947...",
+              description: "Cryptographic reset token received via email/admin dispatch",
+            },
+            newPassword: { type: "string", minLength: 8, example: "NewSecurePassword456!" },
+          },
+        },
+        ChangePasswordRequest: {
+          type: "object",
+          required: ["currentPassword", "newPassword"],
+          properties: {
+            currentPassword: { type: "string", example: "OldPassword123!" },
+            newPassword: { type: "string", minLength: 8, example: "BrandNewSecurePassword456!" },
+          },
+        },
+        // Health Probe
+        HealthResponse: {
+          type: "object",
+          properties: {
+            success: { type: "boolean", example: true },
+            data: {
+              type: "object",
+              properties: {
+                status: { type: "string", example: "healthy" },
+                service: { type: "string", example: "GRAICE Assessment Platform Backend API" },
+                version: { type: "string", example: "1.0.0" },
+                database: { type: "string", example: "connected" },
+                timestamp: { type: "string", format: "date-time" },
+              },
+            },
+            timestamp: { type: "string", format: "date-time" },
           },
         },
       },

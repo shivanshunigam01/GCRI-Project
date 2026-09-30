@@ -9,6 +9,7 @@ const router = Router();
  * /api/v1/health:
  *   get:
  *     summary: System and database health status
+ *     description: Returns operational status of the Express REST API and active MongoDB Atlas connection state.
  *     tags:
  *       - System
  *     responses:
@@ -17,7 +18,7 @@ const router = Router();
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/ApiResponse'
+ *               $ref: '#/components/schemas/HealthResponse'
  */
 router.get("/health", (req: Request, res: Response) => {
   const dbState = mongoose.connection.readyState;

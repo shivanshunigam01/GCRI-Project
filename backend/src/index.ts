@@ -6,6 +6,7 @@ import dotenv from "dotenv";
 import { connectDB } from "./config/db.js";
 import v1Routes from "./routes/index.js";
 import { errorHandler } from "./middlewares/errorHandler.js";
+import { apiLimiter } from "./middlewares/rateLimiter.js";
 
 dotenv.config();
 
@@ -40,7 +41,7 @@ app.get("/api-docs.json", (req, res) => {
 });
 
 // API Routes
-app.use("/api/v1", v1Routes);
+app.use("/api/v1", apiLimiter, v1Routes);
 
 // Global Error Handler
 app.use(errorHandler);

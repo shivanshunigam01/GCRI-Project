@@ -13,8 +13,11 @@ export interface IUser extends Document {
   mfa: {
     enabled: boolean;
     secret?: string;
+    tempSecret?: string;
     recoveryCodes?: string[];
   };
+  resetPasswordToken?: string;
+  resetPasswordExpires?: Date;
   loginAttempts: number;
   lockUntil?: Date;
   lastLogin?: Date;
@@ -43,8 +46,11 @@ const UserSchema = new Schema<IUser>(
     mfa: {
       enabled: { type: Boolean, default: false },
       secret: { type: String },
+      tempSecret: { type: String },
       recoveryCodes: [{ type: String }],
     },
+    resetPasswordToken: { type: String, index: true },
+    resetPasswordExpires: { type: Date },
     loginAttempts: { type: Number, default: 0 },
     lockUntil: { type: Date },
     lastLogin: { type: Date },
