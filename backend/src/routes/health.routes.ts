@@ -4,6 +4,21 @@ import { sendSuccess } from "../utils/response.js";
 
 const router = Router();
 
+/**
+ * @openapi
+ * /api/v1/health:
+ *   get:
+ *     summary: System and database health status
+ *     tags:
+ *       - System
+ *     responses:
+ *       200:
+ *         description: Server and database connectivity status
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiResponse'
+ */
 router.get("/health", (req: Request, res: Response) => {
   const dbState = mongoose.connection.readyState;
   const dbStatusMap: Record<number, string> = {
