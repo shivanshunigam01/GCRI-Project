@@ -33,6 +33,14 @@ const options: swaggerJsdoc.Options = {
         description: "Cryptographic password reset tokens, password updates, and credential rotation",
       },
       {
+        name: "Company Management",
+        description: "Organization onboarding, automated DNS legitimacy checks, profile management, and administrative status controls",
+      },
+      {
+        name: "User Management",
+        description: "Assessor and administrator profile management, user invitations, role assignment, and account status controls",
+      },
+      {
         name: "System",
         description: "Health checks, database connectivity, and readiness monitoring probes",
       },

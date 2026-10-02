@@ -1,14 +1,15 @@
 import { Request, Response, NextFunction } from "express";
 import { sendError } from "../utils/response.js";
+import { User } from "../models/User.js";
 
 /**
  * Ensures non-Admin users can only access resources belonging to their assigned company.
  * Defends against Insecure Direct Object References (IDOR).
  *
- * @param paramName The route parameter name holding the company ID (defaults to 'companyId')
+ * @param paramName The route parameter name holding the company ID (defaults to 'id')
  */
-export function requireCompanyScope(paramName = "companyId") {
-  return (req: Request, res: Response, next: NextFunction) => {
+export function requireCompanyScope(paramName = "id") {
+  return async (req: Request, res: Response, next: NextFunction) => {
     if (!req.user) {
       return sendError(res, "Authentication required", 401, "UNAUTHORIZED");
     }
@@ -18,7 +19,19 @@ export function requireCompanyScope(paramName = "companyId") {
       return next();
     }
 
-    const targetCompanyId = req.params[paramName] || req.body?.companyId;
+    // If companyId is not in the JWT token (e.g. user just onboarded), resolve from DB
+    if (!req.user.companyId && req.user.userId) {
+      const user = await User.findById(req.user.userId);
+      if (user?.companyId) {
+        req.user.companyId = user.companyId.toString();
+      }
+    }
+
+    const targetCompanyId =
+      req.params[paramName] ||
+      req.params.id ||
+      req.params.companyId ||
+      req.body?.companyId;
 
     if (!req.user.companyId) {
       return sendError(
@@ -47,11 +60,13 @@ export function requireCompanyScope(paramName = "companyId") {
  *
  * @param req Express Request containing decoded user
  * @param baseFilter Existing query filter
+ * @param companyField The field name in the collection representing the company (defaults to 'companyId', or '_id' for Company model)
  * @returns Modified query filter scoped by companyId
  */
 export function scopeQueryByCompany<T extends Record<string, unknown>>(
   req: Request,
-  baseFilter: T = {} as T
+  baseFilter: T = {} as T,
+  companyField = "companyId"
 ): T {
   // Admins can query globally
   if (req.user?.role === "Admin") {
@@ -62,13 +77,13 @@ export function scopeQueryByCompany<T extends Record<string, unknown>>(
   if (req.user?.companyId) {
     return {
       ...baseFilter,
-      companyId: req.user.companyId,
+      [companyField]: req.user.companyId,
     };
   }
 
   // If user has no company assigned, prevent leaking any records
   return {
     ...baseFilter,
-    companyId: null,
+    [companyField]: null,
   };
 }
