@@ -5,8 +5,9 @@ export type UserStatus = "Active" | "Deactivated";
 
 export interface IUser extends Document {
   email: string;
-  passwordHash: string;
+  passwordHash?: string;
   name: string;
+  phone?: string;
   role: UserRole;
   status: UserStatus;
   companyId?: Types.ObjectId;
@@ -16,6 +17,9 @@ export interface IUser extends Document {
     tempSecret?: string;
     recoveryCodes?: string[];
   };
+  invitationToken?: string;
+  invitationExpires?: Date;
+  invitedBy?: Types.ObjectId;
   resetPasswordToken?: string;
   resetPasswordExpires?: Date;
   loginAttempts: number;
@@ -28,8 +32,9 @@ export interface IUser extends Document {
 const UserSchema = new Schema<IUser>(
   {
     email: { type: String, required: true, unique: true, lowercase: true, trim: true, index: true },
-    passwordHash: { type: String, required: true },
+    passwordHash: { type: String, required: false },
     name: { type: String, required: true, trim: true },
+    phone: { type: String, trim: true },
     role: {
       type: String,
       enum: ["Admin", "Assessor", "MembershipApprover"],
@@ -49,6 +54,9 @@ const UserSchema = new Schema<IUser>(
       tempSecret: { type: String },
       recoveryCodes: [{ type: String }],
     },
+    invitationToken: { type: String, index: true },
+    invitationExpires: { type: Date },
+    invitedBy: { type: Schema.Types.ObjectId, ref: "User" },
     resetPasswordToken: { type: String, index: true },
     resetPasswordExpires: { type: Date },
     loginAttempts: { type: Number, default: 0 },

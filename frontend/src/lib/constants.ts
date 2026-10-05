@@ -1,0 +1,51 @@
+export const GRAICE_PILLARS = [
+  {
+    id: "governance",
+    code: "G",
+    name: "Governance",
+    description: "Executive oversight, AI ethics steering committees, and accountability frameworks.",
+    color: "#4F46E5",
+  },
+  {
+    id: "risk",
+    code: "R",
+    name: "Risk Management",
+    description: "Systemic risk categorization, impact assessments, and vulnerability monitoring.",
+    color: "#0284C7",
+  },
+  {
+    id: "accountability",
+    code: "A",
+    name: "Accountability",
+    description: "Clear ownership, algorithmic documentation, traceability, and audit trails.",
+    color: "#0D9488",
+  },
+  {
+    id: "integrity",
+    code: "I",
+    name: "Integrity",
+    description: "Data quality, bias detection, data provenance, and model validation.",
+    color: "#16A34A",
+  },
+  {
+    id: "compliance",
+    code: "C",
+    name: "Compliance",
+    description: "Alignment with EU AI Act, NIST AI RMF, ISO 42001, and statutory mandates.",
+    color: "#D97706",
+  },
+  {
+    id: "ethics",
+    code: "E",
+    name: "Ethics",
+    description: "Fairness, non-discrimination, human oversight, and societal considerations.",
+    color: "#9333EA",
+  },
+  {
+    id: "safety",
+    code: "S",
+    name: "Safety & Security",
+    description: "Adversarial robustness, fail-safe mechanisms, privacy, and incident management.",
+    color: "#E11D48",
+  },
+] as const;

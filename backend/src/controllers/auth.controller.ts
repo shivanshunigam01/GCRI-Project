@@ -80,6 +80,15 @@ export async function login(req: Request, res: Response, next: NextFunction) {
       );
     }
 
+    if (!user.passwordHash) {
+      return sendError(
+        res,
+        "Account password has not been set. Please complete your invitation setup first.",
+        401,
+        "PASSWORD_NOT_SET"
+      );
+    }
+
     const match = await bcrypt.compare(password, user.passwordHash);
     if (!match) {
       user.loginAttempts += 1;
@@ -326,6 +335,10 @@ export async function disableMfa(req: Request, res: Response, next: NextFunction
       );
     }
 
+    if (!user.passwordHash) {
+      return sendError(res, "Account password has not been initialized", 401, "INVALID_CREDENTIALS");
+    }
+
     const matchPassword = await bcrypt.compare(password, user.passwordHash);
     if (!matchPassword) {
       return sendError(res, "Invalid password", 401, "INVALID_CREDENTIALS");
@@ -469,6 +482,10 @@ export async function changePassword(req: Request, res: Response, next: NextFunc
     const user = await User.findById(userId);
     if (!user) {
       return sendError(res, "User not found", 404, "USER_NOT_FOUND");
+    }
+
+    if (!user.passwordHash) {
+      return sendError(res, "Account password has not been initialized", 400, "PASSWORD_NOT_SET");
     }
 
     const match = await bcrypt.compare(currentPassword, user.passwordHash);

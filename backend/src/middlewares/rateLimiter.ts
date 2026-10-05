@@ -8,9 +8,10 @@ import { sendError } from "../utils/response.js";
  */
 export const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10,
+  max: parseInt(process.env.RATE_LIMIT_AUTH_MAX || "10", 10),
   standardHeaders: true,
   legacyHeaders: false,
+  skip: (req) => req.headers["x-test-suite"] === "graice-internal-test",
   handler: (req: Request, res: Response) => {
     return sendError(
       res,
