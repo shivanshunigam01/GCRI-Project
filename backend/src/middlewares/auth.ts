@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
-import { UserRole } from "../models/User.js";
+import { User, UserRole } from "../models/User.js";
 import { sendError } from "../utils/response.js";
 
 export interface TokenPayload {
@@ -19,7 +19,7 @@ declare global {
   }
 }
 
-export function authenticate(req: Request, res: Response, next: NextFunction) {
+export async function authenticate(req: Request, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
     return sendError(res, "Authorization token missing or malformed", 401, "UNAUTHORIZED");
@@ -31,6 +31,14 @@ export function authenticate(req: Request, res: Response, next: NextFunction) {
   try {
     const decoded = jwt.verify(token, secret) as TokenPayload;
     req.user = decoded;
+
+    if (!req.user.companyId && req.user.userId) {
+      const u = await User.findById(req.user.userId).select("companyId");
+      if (u?.companyId) {
+        req.user.companyId = u.companyId.toString();
+      }
+    }
+
     next();
   } catch {
     return sendError(res, "Invalid or expired token", 401, "INVALID_TOKEN");

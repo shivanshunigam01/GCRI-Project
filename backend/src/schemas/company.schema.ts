@@ -12,7 +12,7 @@ export const CreateCompanySchema = z.object({
       .min(3, "Domain must be at least 3 characters")
       .regex(
         /^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/,
-        "Please provide a valid domain name (e.g. acme-ai.com)"
+        "Please provide a valid domain name"
       ),
     registrationNumber: z.string().trim().max(60).optional(),
     country: z.string().trim().min(2).max(100).optional(),

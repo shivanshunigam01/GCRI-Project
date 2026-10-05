@@ -9,10 +9,26 @@ export interface IResponseOption {
   order: number;
 }
 
+export interface IRegulatoryAlignments {
+  euAiAct?: string;
+  nistAiRmf?: string;
+  iso42001?: string;
+  oecdAi?: string;
+}
+
 export interface IQuestionControl {
   questionId: string;
   pillarId: string;
+  pillarNumber: number;
+  pillarName: string;
+  section?: string;
   text: string;
+  controlDescription?: string;
+  testProcedure?: string;
+  organizationScope?: string;
+  linkedDocumentRequests?: string[];
+  assuranceTier?: string;
+  regulatoryAlignments?: IRegulatoryAlignments;
   helpText?: string;
   mandatory: boolean;
   order: number;
@@ -21,6 +37,7 @@ export interface IQuestionControl {
 
 export interface IPillar {
   pillarId: string;
+  pillarNumber?: number;
   name: string;
   description: string;
   weight: number;
@@ -31,6 +48,9 @@ export interface IAssessmentFramework extends Document {
   version: string;
   status: "Draft" | "Published" | "Archived";
   assessmentType: AssessmentType;
+  title?: string;
+  description?: string;
+  totalQuestions: number;
   pillars: IPillar[];
   questions: IQuestionControl[];
   maturityThresholds: {
@@ -53,11 +73,30 @@ const ResponseOptionSchema = new Schema<IResponseOption>(
   { _id: false }
 );
 
+const RegulatoryAlignmentsSchema = new Schema<IRegulatoryAlignments>(
+  {
+    euAiAct: { type: String },
+    nistAiRmf: { type: String },
+    iso42001: { type: String },
+    oecdAi: { type: String },
+  },
+  { _id: false }
+);
+
 const QuestionControlSchema = new Schema<IQuestionControl>(
   {
     questionId: { type: String, required: true },
     pillarId: { type: String, required: true, index: true },
+    pillarNumber: { type: Number, required: true },
+    pillarName: { type: String, required: true },
+    section: { type: String },
     text: { type: String, required: true },
+    controlDescription: { type: String },
+    testProcedure: { type: String },
+    organizationScope: { type: String },
+    linkedDocumentRequests: [{ type: String }],
+    assuranceTier: { type: String },
+    regulatoryAlignments: RegulatoryAlignmentsSchema,
     helpText: { type: String },
     mandatory: { type: Boolean, default: true },
     order: { type: Number, required: true },
@@ -69,6 +108,7 @@ const QuestionControlSchema = new Schema<IQuestionControl>(
 const PillarSchema = new Schema<IPillar>(
   {
     pillarId: { type: String, required: true },
+    pillarNumber: { type: Number },
     name: { type: String, required: true },
     description: { type: String, required: true },
     weight: { type: Number, default: 1 },
@@ -92,6 +132,9 @@ const AssessmentFrameworkSchema = new Schema<IAssessmentFramework>(
       required: true,
       index: true,
     },
+    title: { type: String },
+    description: { type: String },
+    totalQuestions: { type: Number, default: 0 },
     pillars: [PillarSchema],
     questions: [QuestionControlSchema],
     maturityThresholds: {

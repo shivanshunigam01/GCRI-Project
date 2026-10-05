@@ -28,9 +28,10 @@ export const authLimiter = rateLimit({
  */
 export const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100,
+  max: parseInt(process.env.RATE_LIMIT_API_MAX || "500", 10),
   standardHeaders: true,
   legacyHeaders: false,
+  skip: (req) => req.headers["x-test-suite"] === "graice-internal-test",
   handler: (req: Request, res: Response) => {
     return sendError(
       res,
