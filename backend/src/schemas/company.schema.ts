@@ -17,6 +17,13 @@ export const CreateCompanySchema = z.object({
     registrationNumber: z.string().trim().max(60).optional(),
     country: z.string().trim().min(2).max(100).optional(),
     industry: z.string().trim().min(2).max(100).optional(),
+    user: z
+      .object({
+        name: z.string().trim().min(2, "Contact name must be at least 2 characters"),
+        email: z.string().trim().toLowerCase().email("Please provide a valid email address"),
+        password: z.string().min(8, "Password must be at least 8 characters").optional(),
+      })
+      .optional(),
   }),
 });
 

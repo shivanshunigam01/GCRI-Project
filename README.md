@@ -13,24 +13,27 @@ The GRAICE Assessment Platform digitizes the GCRAI/GRAICE Responsible AI governa
 - **Multi-Factor Authentication (MFA)**: TOTP-based verification with recovery keys.
 - **Verification Engine**: Automated domain and company data validation.
 
+## Project Structure
+- `backend/`: Standalone Express + TypeScript + MongoDB API service (Port 5000)
+- `frontend/`: Next.js (App Router) + TypeScript user interface (Port 3000)
+
 ## Getting Started
 
-### 1. Environment Setup
-Copy the example environment file and populate your connection credentials:
+### 1. Backend Service
 ```bash
-cp .env.example .env.local
-```
-
-### 2. Development Server
-Run the local Next.js dev server:
-```bash
+cd backend
+npm install
+cp .env.example .env
 npm run dev
 ```
+Backend API will run at `http://localhost:5000`. Health check: `http://localhost:5000/api/v1/health`
 
-Open [http://localhost:3000](http://localhost:3000) to view the application.
-
-### 3. API Health Check
-Test the API endpoint:
+### 2. Frontend Application
 ```bash
-curl http://localhost:3000/api/v1/health
+cd frontend
+npm install
+cp .env.example .env.local
+npm run dev
 ```
+Frontend will run at `http://localhost:3000`.
+

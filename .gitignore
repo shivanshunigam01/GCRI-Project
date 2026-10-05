@@ -1,7 +1,8 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
 # dependencies
-/node_modules
+node_modules/
+**/node_modules/
 /.pnp
 .pnp.*
 .yarn/*
@@ -14,8 +15,11 @@
 /coverage
 
 # next.js
-/.next/
+.next/
+**/.next/
+**/.next
 /out/
+**/out/
 
 # production
 /build
@@ -44,3 +48,4 @@ GRAICE_Project_Delivery_Plan (1).pdf
 scratch
 1784783614262-GRAICE_Framework_Assessment_Workbook_2026.xlsx
 Light Assessment-GRAICE Framework Online Questionnaire (1).docx.pdf
+GRAICE_FRONTEND_COLLABORATION_DISCOVERY_REPORT.md

@@ -76,7 +76,7 @@ export async function updateMe(req: Request, res: Response, next: NextFunction) 
 export async function getUsers(req: Request, res: Response, next: NextFunction) {
   try {
     const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
-    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string, 10) || 20));
+    const limit = Math.min(200, Math.max(1, parseInt(req.query.limit as string, 10) || 20));
     const skip = (page - 1) * limit;
 
     const filter: Record<string, unknown> = {};

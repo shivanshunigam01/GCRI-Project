@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from "express";
+import bcrypt from "bcryptjs";
 import { Company } from "../models/Company.js";
 import { User } from "../models/User.js";
 import { AuditLog } from "../models/AuditLog.js";
@@ -8,11 +9,11 @@ import { NotificationService } from "../services/notification.service.js";
 import { scopeQueryByCompany } from "../middlewares/companyScope.js";
 
 /**
- * Onboard a new organization with automated DNS domain verification
+ * Onboard a new organization with automated DNS domain verification and optional client account creation
  */
 export async function createCompany(req: Request, res: Response, next: NextFunction) {
   try {
-    const { name, domain, registrationNumber, country, industry } = req.body;
+    const { name, domain, registrationNumber, country, industry, user: userData } = req.body;
     const actorId = req.user?.userId;
     const actorEmail = req.user?.email || "unknown";
 
@@ -28,6 +29,20 @@ export async function createCompany(req: Request, res: Response, next: NextFunct
         409,
         "DOMAIN_EXISTS"
       );
+    }
+
+    // Check client user email uniqueness if provided
+    if (userData?.email) {
+      const cleanEmail = userData.email.toLowerCase().trim();
+      const existingUser = await User.findOne({ email: cleanEmail });
+      if (existingUser) {
+        return sendError(
+          res,
+          `An account with email '${cleanEmail}' already exists.`,
+          409,
+          "USER_EXISTS"
+        );
+      }
     }
 
     // Run automated DNS legitimacy check
@@ -49,12 +64,45 @@ export async function createCompany(req: Request, res: Response, next: NextFunct
       },
     });
 
-    // Auto-associate assessor with company if assessor is unassigned
-    if (req.user?.role === "Assessor" && actorId) {
+    // Create client user account (Role: Assessor) linked to this company
+    let createdUser = null;
+    if (userData?.email) {
+      const saltRounds = parseInt(process.env.BCRYPT_SALT_ROUNDS || "12", 10);
+      const passwordHash = userData.password
+        ? await bcrypt.hash(userData.password, saltRounds)
+        : undefined;
+
+      createdUser = await User.create({
+        name: userData.name || name,
+        email: userData.email.toLowerCase().trim(),
+        passwordHash,
+        role: "Assessor",
+        status: "Active",
+        companyId: company._id,
+      });
+
+      await AuditLog.create({
+        actorId,
+        actorEmail,
+        action: "USER_INVITED",
+        entity: "User",
+        entityId: createdUser._id.toString(),
+        after: {
+          name: createdUser.name,
+          email: createdUser.email,
+          role: createdUser.role,
+          companyId: company._id.toString(),
+        },
+        ipAddress: req.ip,
+        userAgent: req.headers["user-agent"],
+      });
+    } else if (req.user?.role === "Assessor" && actorId) {
+      // Auto-associate assessor with company if assessor is unassigned
       const user = await User.findById(actorId);
       if (user && !user.companyId) {
         user.companyId = company._id;
         await user.save();
+        createdUser = user;
       }
     }
 
@@ -84,6 +132,15 @@ export async function createCompany(req: Request, res: Response, next: NextFunct
       res,
       {
         company,
+        user: createdUser
+          ? {
+              _id: createdUser._id,
+              name: createdUser.name,
+              email: createdUser.email,
+              role: createdUser.role,
+              status: createdUser.status,
+            }
+          : null,
         verification: {
           dnsResolved: verificationResult.dnsResolved,
           recordsFound: verificationResult.recordsFound,
@@ -103,7 +160,7 @@ export async function createCompany(req: Request, res: Response, next: NextFunct
 export async function getCompanies(req: Request, res: Response, next: NextFunction) {
   try {
     const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
-    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string, 10) || 20));
+    const limit = Math.min(200, Math.max(1, parseInt(req.query.limit as string, 10) || 20));
     const skip = (page - 1) * limit;
 
     const baseFilter: Record<string, unknown> = {};
@@ -137,9 +194,26 @@ export async function getCompanies(req: Request, res: Response, next: NextFuncti
       Company.countDocuments(scopedFilter),
     ]);
 
+    // Attach client user for each company
+    const companyIds = companies.map((c) => c._id);
+    const users = await User.find({ companyId: { $in: companyIds } })
+      .select("name email role status companyId");
+    const userMap = new Map();
+    users.forEach((u) => {
+      if (u.companyId) userMap.set(u.companyId.toString(), u);
+    });
+
+    const enriched = companies.map((c) => {
+      const obj = c.toObject();
+      return {
+        ...obj,
+        clientUser: userMap.get(c._id.toString()) || null,
+      };
+    });
+
     const totalPages = Math.ceil(total / limit);
 
-    return sendSuccess(res, companies, 200, {
+    return sendSuccess(res, enriched, 200, {
       page,
       limit,
       total,
@@ -162,7 +236,13 @@ export async function getCompanyById(req: Request, res: Response, next: NextFunc
       return sendError(res, "Company not found", 404, "COMPANY_NOT_FOUND");
     }
 
-    return sendSuccess(res, company);
+    const clientUser = await User.findOne({ companyId: id })
+      .select("-passwordHash -mfa.secret -mfa.tempSecret -mfa.recoveryCodes");
+
+    return sendSuccess(res, {
+      ...company.toObject(),
+      clientUser: clientUser || null,
+    });
   } catch (err) {
     next(err);
   }
@@ -288,6 +368,13 @@ export async function updateCompanyStatus(req: Request, res: Response, next: Nex
     const previousStatus = company.status;
     company.status = status;
     await company.save();
+
+    // Synchronize client user account status with company status (only affects client Assessors, never staff/Admin)
+    const userNewStatus = status === "Active" ? "Active" : "Deactivated";
+    await User.updateMany(
+      { companyId: id, role: "Assessor" },
+      { status: userNewStatus }
+    );
 
     await AuditLog.create({
       actorId,
