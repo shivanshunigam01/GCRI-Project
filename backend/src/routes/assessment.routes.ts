@@ -11,6 +11,13 @@ import {
   getEvidencePresignedUrl,
   uploadEvidenceDirect,
   getAssessmentGaps,
+  getAssessmentSummary,
+  getAssessmentPillars,
+  getAssessmentRecommendations,
+  getAssessmentFindings,
+  generateAssessmentReport,
+  downloadAssessmentReport,
+  exportAssessmentExcel,
 } from "../controllers/assessment.controller.js";
 import { authenticate, authorize } from "../middlewares/auth.js";
 import { validateRequest } from "../middlewares/validate.js";
@@ -359,4 +366,173 @@ router.get(
   getCompanyAssessments
 );
 
+/**
+ * @openapi
+ * /api/v1/assessments/{id}/summary:
+ *   get:
+ *     summary: Retrieve executive maturity summary for an assessment
+ *     description: Returns overall compliance %, score, maturity level, and control counts for an authorized assessment session. Admin role is strictly denied.
+ *     tags:
+ *       - Assessment Analytics
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Assessment summary retrieved successfully
+ *       403:
+ *         description: Forbidden (Admin content access restricted or cross-company denied)
+ */
+router.get("/:id/summary", authenticate, validateRequest(AssessmentParamSchema), getAssessmentSummary);
+
+/**
+ * @openapi
+ * /api/v1/assessments/{id}/pillars:
+ *   get:
+ *     summary: Retrieve 7-pillar breakdown formatted for radar/spider charts
+ *     description: Returns pillar-level scores, compliance percentages, and exception counts for authorized assessors. Admin role is strictly denied.
+ *     tags:
+ *       - Assessment Analytics
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Pillar breakdown retrieved successfully
+ *       403:
+ *         description: Forbidden
+ */
+router.get("/:id/pillars", authenticate, validateRequest(AssessmentParamSchema), getAssessmentPillars);
+
+/**
+ * @openapi
+ * /api/v1/assessments/{id}/recommendations:
+ *   get:
+ *     summary: Retrieve tailored recommendations mapped to identified exceptions & gaps
+ *     description: Returns remediation guidance, regulatory alignments, and priority levels for all controls with noted exceptions. Admin role is strictly denied.
+ *     tags:
+ *       - Assessment Analytics
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Recommendations retrieved successfully
+ *       403:
+ *         description: Forbidden
+ */
+router.get("/:id/recommendations", authenticate, validateRequest(AssessmentParamSchema), getAssessmentRecommendations);
+
+/**
+ * @openapi
+ * /api/v1/assessments/{id}/findings:
+ *   get:
+ *     summary: Retrieve structured findings matching Screen 5 (Findings & Exceptions)
+ *     description: Returns findings table with severity (High/Medium/Low), status (Open/In Progress/Resolved), control info, and remediation actions. Admin role is strictly denied.
+ *     tags:
+ *       - Assessment Analytics
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Findings retrieved successfully
+ *       403:
+ *         description: Forbidden
+ */
+router.get("/:id/findings", authenticate, validateRequest(AssessmentParamSchema), getAssessmentFindings);
+
+/**
+ * @openapi
+ * /api/v1/assessments/{id}/report:
+ *   post:
+ *     summary: Generate PDF audit report using PDFKit
+ *     description: Generates a multi-page executive governance report, saves to disk/S3, and persists report metadata. Admin role is strictly denied.
+ *     tags:
+ *       - Reports & Exports
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Report generated successfully
+ *       403:
+ *         description: Forbidden
+ */
+router.post("/:id/report", authenticate, validateRequest(AssessmentParamSchema), generateAssessmentReport);
+
+/**
+ * @openapi
+ * /api/v1/assessments/{id}/report:
+ *   get:
+ *     summary: Download generated PDF audit report
+ *     description: Streams the executive PDF report for download. Admin role is strictly denied.
+ *     tags:
+ *       - Reports & Exports
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: PDF file stream
+ *       403:
+ *         description: Forbidden
+ */
+router.get("/:id/report", authenticate, validateRequest(AssessmentParamSchema), downloadAssessmentReport);
+
+/**
+ * @openapi
+ * /api/v1/assessments/{id}/export:
+ *   get:
+ *     summary: Export assessment findings to Excel (.xlsx) workbook
+ *     description: Generates and streams structured 3-sheet XLSX workbook containing executive summary, pillar breakdown, and control evaluations. Admin role is strictly denied.
+ *     tags:
+ *       - Reports & Exports
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Excel spreadsheet stream
+ *       403:
+ *         description: Forbidden
+ */
+router.get("/:id/export", authenticate, validateRequest(AssessmentParamSchema), exportAssessmentExcel);
+
 export default router;
+

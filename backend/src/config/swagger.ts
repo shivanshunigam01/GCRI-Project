@@ -41,6 +41,22 @@ const options: swaggerJsdoc.Options = {
         description: "Assessor and administrator profile management, user invitations, role assignment, and account status controls",
       },
       {
+        name: "Dashboard - Admin",
+        description: "Administrative operational statistics, subscription distributions, and non-confidential assessment metadata table (Screen 7 Alignment)",
+      },
+      {
+        name: "Dashboard - Auditor",
+        description: "Auditor workload metrics, 7-pillar progress bars, active assessment resumption, and assigned organizations directory (Screen 1 & 2 Alignment)",
+      },
+      {
+        name: "Assessment Analytics",
+        description: "Executive maturity summaries, pillar radar breakdown, tailored remediation recommendations, and historical trend progression",
+      },
+      {
+        name: "Reports & Exports",
+        description: "Branded PDF audit report generation, download streaming, and multi-sheet Excel (.xlsx) findings export",
+      },
+      {
         name: "System",
         description: "Health checks, database connectivity, and readiness monitoring probes",
       },

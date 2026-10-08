@@ -6,6 +6,7 @@ import {
   updateCompany,
   verifyCompany,
   updateCompanyStatus,
+  getCompanyTrends,
 } from "../controllers/company.controller.js";
 import { authenticate, authorize } from "../middlewares/auth.js";
 import { requireCompanyScope } from "../middlewares/companyScope.js";
@@ -285,4 +286,36 @@ router.patch(
   updateCompanyStatus
 );
 
+/**
+ * @openapi
+ * /api/v1/companies/{id}/trends:
+ *   get:
+ *     summary: Retrieve historical assessment trends and score progression for an organization
+ *     description: Returns sequential assessment scores, maturity level progression, and delta improvement percentage across finalized assessments.
+ *     tags:
+ *       - Assessment Analytics
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Historical trend progression retrieved successfully
+ *       403:
+ *         description: Access denied
+ *       404:
+ *         description: Company not found
+ */
+router.get(
+  "/:id/trends",
+  authenticate,
+  validateRequest(CompanyParamSchema),
+  getCompanyTrends
+);
+
 export default router;
+

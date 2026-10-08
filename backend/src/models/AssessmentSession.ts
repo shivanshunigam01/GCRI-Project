@@ -56,6 +56,17 @@ export interface IClientContact {
   title?: string;
 }
 
+export interface IReportMetadata {
+  fileName: string;
+  filePath?: string;
+  fileUrl: string;
+  fileSizeBytes: number;
+  generatedAt: Date;
+  generatedByUserId: Types.ObjectId;
+  checksum: string;
+  storageType: "s3" | "local";
+}
+
 export interface IAssessmentSession extends Document {
   companyId: Types.ObjectId;
   conductedByUserId: Types.ObjectId;
@@ -65,6 +76,7 @@ export interface IAssessmentSession extends Document {
   clientContact?: IClientContact;
   answers: IAnswer[];
   scoreSnapshot?: IScoreSnapshot;
+  reportMetadata?: IReportMetadata;
   submittedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
@@ -155,6 +167,16 @@ const AssessmentSessionSchema = new Schema<IAssessmentSession>(
     },
     answers: [AnswerSchema],
     scoreSnapshot: ScoreSnapshotSchema,
+    reportMetadata: {
+      fileName: { type: String },
+      filePath: { type: String },
+      fileUrl: { type: String },
+      fileSizeBytes: { type: Number },
+      generatedAt: { type: Date },
+      generatedByUserId: { type: Schema.Types.ObjectId, ref: "User" },
+      checksum: { type: String },
+      storageType: { type: String, enum: ["s3", "local"], default: "local" },
+    },
     submittedAt: { type: Date },
   },
   { timestamps: true }

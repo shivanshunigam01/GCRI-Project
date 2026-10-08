@@ -1,19 +1,23 @@
 import { Request, Response, NextFunction } from "express";
 import { Types } from "mongoose";
+import fs from "fs";
 import { AssessmentSession, IAnswer } from "../models/AssessmentSession.js";
 import { AssessmentFramework } from "../models/AssessmentFramework.js";
 import { Company } from "../models/Company.js";
+import { User } from "../models/User.js";
 import { AuditLog } from "../models/AuditLog.js";
 import { sendSuccess, sendError } from "../utils/response.js";
 import { ScoringService } from "../services/scoring.service.js";
 import { s3Service } from "../services/s3.service.js";
+import { ReportService } from "../services/report.service.js";
+import { ExportService } from "../services/export.service.js";
 import { scopeQueryByCompany, scopeQueryByCompanyAsync, isAuditorAssignedToOrg } from "../middlewares/companyScope.js";
 import { NotificationService } from "../services/notification.service.js";
 
 /**
  * Helper to record authorization-denied events in the audit log
  */
-async function logAuthorizationDenied(req: Request, entityId: string, reason: string) {
+export async function logAuthorizationDenied(req: Request, entityId: string, reason: string) {
   try {
     if (req.user?.userId) {
       await AuditLog.create({
@@ -736,3 +740,476 @@ export async function getAssessmentGaps(req: Request, res: Response, next: NextF
     next(err);
   }
 }
+
+/**
+ * Retrieve executive maturity summary for an assessment
+ */
+export async function getAssessmentSummary(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { id } = req.params;
+    if (!req.user?.userId) {
+      return sendError(res, "Authentication required", 401, "UNAUTHORIZED");
+    }
+
+    if (req.user.role === "Admin") {
+      await logAuthorizationDenied(req, id, "Admin access to assessment summary is restricted.");
+      return sendError(
+        res,
+        "Administrative access to confidential assessment summary is restricted.",
+        403,
+        "ADMIN_CONTENT_ACCESS_RESTRICTED"
+      );
+    }
+
+    const session = await AssessmentSession.findById(id).populate("companyId", "name domain");
+    if (!session) {
+      return sendError(res, "Assessment session not found", 404, "SESSION_NOT_FOUND");
+    }
+
+    const orgId = session.companyId._id ? session.companyId._id.toString() : session.companyId.toString();
+    const isAssigned = await isAuditorAssignedToOrg(req.user.userId, orgId);
+    const isCreator = session.conductedByUserId?.toString() === req.user.userId;
+
+    if (!isAssigned && !isCreator) {
+      return sendError(res, "Access denied. You are not assigned to this organization.", 403, "CROSS_COMPANY_ACCESS_DENIED");
+    }
+
+    const framework = await AssessmentFramework.findOne({
+      version: session.frameworkVersion,
+      assessmentType: session.assessmentType,
+    });
+    if (!framework) {
+      return sendError(res, "Framework not found", 404, "FRAMEWORK_NOT_FOUND");
+    }
+
+    const snapshot = session.scoreSnapshot || ScoringService.calculateScores(session, framework);
+
+    return sendSuccess(res, {
+      assessmentId: session._id,
+      organization: session.companyId,
+      assessmentType: session.assessmentType,
+      status: session.status,
+      frameworkVersion: session.frameworkVersion,
+      clientContact: session.clientContact,
+      overallScore: snapshot.overallScore,
+      maxPossibleScore: snapshot.maxPossibleScore,
+      overallPercentage: snapshot.overallPercentage,
+      compliancePercentage: snapshot.compliancePercentage,
+      maturityLevel: snapshot.maturityLevel,
+      totalExceptionsNoted: snapshot.totalExceptionsNoted || 0,
+      totalNoExceptionsNoted: snapshot.totalNoExceptionsNoted || 0,
+      totalNotAssessed: snapshot.totalNotAssessed || 0,
+      totalControlsAssessed: snapshot.totalControlsAssessed || snapshot.overallScore,
+      submittedAt: session.submittedAt,
+      calculatedAt: snapshot.calculatedAt,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * Retrieve 7-pillar breakdown formatted for radar/spider charts (Screen 1 & 3 Alignment)
+ */
+export async function getAssessmentPillars(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { id } = req.params;
+    if (!req.user?.userId) {
+      return sendError(res, "Authentication required", 401, "UNAUTHORIZED");
+    }
+
+    if (req.user.role === "Admin") {
+      await logAuthorizationDenied(req, id, "Admin access to assessment pillar radar breakdown is restricted.");
+      return sendError(
+        res,
+        "Administrative access to confidential assessment pillar data is restricted.",
+        403,
+        "ADMIN_CONTENT_ACCESS_RESTRICTED"
+      );
+    }
+
+    const session = await AssessmentSession.findById(id);
+    if (!session) {
+      return sendError(res, "Assessment session not found", 404, "SESSION_NOT_FOUND");
+    }
+
+    const orgId = session.companyId.toString();
+    const isAssigned = await isAuditorAssignedToOrg(req.user.userId, orgId);
+    const isCreator = session.conductedByUserId?.toString() === req.user.userId;
+
+    if (!isAssigned && !isCreator) {
+      return sendError(res, "Access denied. You are not assigned to this organization.", 403, "CROSS_COMPANY_ACCESS_DENIED");
+    }
+
+    const framework = await AssessmentFramework.findOne({
+      version: session.frameworkVersion,
+      assessmentType: session.assessmentType,
+    });
+    if (!framework) {
+      return sendError(res, "Framework not found", 404, "FRAMEWORK_NOT_FOUND");
+    }
+
+    const snapshot = session.scoreSnapshot || ScoringService.calculateScores(session, framework);
+
+    return sendSuccess(res, {
+      assessmentId: session._id,
+      assessmentType: session.assessmentType,
+      maturityLevel: snapshot.maturityLevel,
+      pillars: snapshot.pillarScores.map((p) => ({
+        pillarId: p.pillarId,
+        pillarNumber: p.pillarNumber,
+        pillarName: p.pillarName,
+        scoreEarned: p.scoreEarned,
+        scoreMax: p.scoreMax,
+        percentage: p.percentage,
+        compliancePercentage: p.compliancePercentage,
+        exceptionsNoted: p.exceptionsNoted || 0,
+        noExceptionsNoted: p.noExceptionsNoted || 0,
+        notAssessed: p.notAssessed || 0,
+        totalControls: p.totalControls || p.scoreMax,
+      })),
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * Retrieve tailored recommendations mapped to identified exceptions & gaps
+ */
+export async function getAssessmentRecommendations(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { id } = req.params;
+    if (!req.user?.userId) {
+      return sendError(res, "Authentication required", 401, "UNAUTHORIZED");
+    }
+
+    if (req.user.role === "Admin") {
+      await logAuthorizationDenied(req, id, "Admin access to assessment recommendations is restricted.");
+      return sendError(
+        res,
+        "Administrative access to confidential assessment recommendations is restricted.",
+        403,
+        "ADMIN_CONTENT_ACCESS_RESTRICTED"
+      );
+    }
+
+    const session = await AssessmentSession.findById(id);
+    if (!session) {
+      return sendError(res, "Assessment session not found", 404, "SESSION_NOT_FOUND");
+    }
+
+    const orgId = session.companyId.toString();
+    const isAssigned = await isAuditorAssignedToOrg(req.user.userId, orgId);
+    const isCreator = session.conductedByUserId?.toString() === req.user.userId;
+
+    if (!isAssigned && !isCreator) {
+      return sendError(res, "Access denied. You are not assigned to this organization.", 403, "CROSS_COMPANY_ACCESS_DENIED");
+    }
+
+    const framework = await AssessmentFramework.findOne({
+      version: session.frameworkVersion,
+      assessmentType: session.assessmentType,
+    });
+    if (!framework) {
+      return sendError(res, "Framework not found", 404, "FRAMEWORK_NOT_FOUND");
+    }
+
+    const gaps = ScoringService.extractGaps(session, framework);
+
+    const recommendations = gaps.map((g, idx) => ({
+      recommendationId: `REC-${session._id.toString().slice(-4).toUpperCase()}-${idx + 1}`,
+      questionId: g.questionId,
+      pillarId: g.pillarId,
+      pillarName: g.pillarName,
+      controlText: g.questionText,
+      priority: g.scoreValue === 0 ? "High" : "Medium",
+      regulatoryAlignments: g.regulatoryAlignments,
+      evidenceNotes: g.evidenceNotes,
+      recommendedAction: `Formalize policy documentation and implement continuous operational controls for ${g.questionId} (${g.pillarName}) to remediate noted audit exception.`,
+    }));
+
+    return sendSuccess(res, {
+      assessmentId: session._id,
+      totalRecommendations: recommendations.length,
+      recommendations,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * Retrieve detailed findings matching Screen 5 (Findings & Exceptions)
+ */
+export async function getAssessmentFindings(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { id } = req.params;
+    if (!req.user?.userId) {
+      return sendError(res, "Authentication required", 401, "UNAUTHORIZED");
+    }
+
+    if (req.user.role === "Admin") {
+      await logAuthorizationDenied(req, id, "Admin access to assessment findings is restricted.");
+      return sendError(
+        res,
+        "Administrative access to confidential assessment findings is restricted.",
+        403,
+        "ADMIN_CONTENT_ACCESS_RESTRICTED"
+      );
+    }
+
+    const session = await AssessmentSession.findById(id).populate("companyId", "name");
+    if (!session) {
+      return sendError(res, "Assessment session not found", 404, "SESSION_NOT_FOUND");
+    }
+
+    const orgId = session.companyId._id ? session.companyId._id.toString() : session.companyId.toString();
+    const isAssigned = await isAuditorAssignedToOrg(req.user.userId, orgId);
+    const isCreator = session.conductedByUserId?.toString() === req.user.userId;
+
+    if (!isAssigned && !isCreator) {
+      return sendError(res, "Access denied. You are not assigned to this organization.", 403, "CROSS_COMPANY_ACCESS_DENIED");
+    }
+
+    const framework = await AssessmentFramework.findOne({
+      version: session.frameworkVersion,
+      assessmentType: session.assessmentType,
+    });
+    if (!framework) {
+      return sendError(res, "Framework not found", 404, "FRAMEWORK_NOT_FOUND");
+    }
+
+    const gaps = ScoringService.extractGaps(session, framework);
+    const companyName = (session.companyId as any)?.name || "Organization";
+
+    const findings = gaps.map((g, idx) => ({
+      findingId: `FND-${new Date().getFullYear()}-${String(idx + 1).padStart(3, "0")}`,
+      title: g.controlDescription || g.questionText.slice(0, 60),
+      pillarId: g.pillarId,
+      pillarName: g.pillarName,
+      controlId: g.questionId,
+      questionText: g.questionText,
+      severity: g.scoreValue === 0 ? "High" : "Medium",
+      status: "Open",
+      organizationName: companyName,
+      evidenceAttachmentUrl: session.answers.find((a) => a.questionId === g.questionId)?.evidenceAttachmentUrl,
+      evidenceNotes: g.evidenceNotes,
+      regulatoryAlignments: g.regulatoryAlignments,
+      recommendedAction: `Establish formal governance documentation and review mechanisms for ${g.questionId}.`,
+    }));
+
+    return sendSuccess(res, {
+      assessmentId: session._id,
+      totalFindings: findings.length,
+      summary: {
+        total: findings.length,
+        open: findings.filter((f) => f.status === "Open").length,
+        inProgress: findings.filter((f) => f.status === "In Progress").length,
+        resolved: findings.filter((f) => f.status === "Resolved").length,
+      },
+      findings,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * Generate PDF audit report using PDFKit and attach metadata to session
+ */
+export async function generateAssessmentReport(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { id } = req.params;
+    if (!req.user?.userId) {
+      return sendError(res, "Authentication required", 401, "UNAUTHORIZED");
+    }
+
+    if (req.user.role === "Admin") {
+      await logAuthorizationDenied(req, id, "Admin access to generate assessment reports is restricted.");
+      return sendError(
+        res,
+        "Administrative access to generate or download confidential assessment reports is restricted.",
+        403,
+        "ADMIN_CONTENT_ACCESS_RESTRICTED"
+      );
+    }
+
+    const session = await AssessmentSession.findById(id);
+    if (!session) {
+      return sendError(res, "Assessment session not found", 404, "SESSION_NOT_FOUND");
+    }
+
+    const orgId = session.companyId.toString();
+    const isAssigned = await isAuditorAssignedToOrg(req.user.userId, orgId);
+    const isCreator = session.conductedByUserId?.toString() === req.user.userId;
+
+    if (!isAssigned && !isCreator) {
+      return sendError(res, "Access denied. You are not assigned to this organization.", 403, "CROSS_COMPANY_ACCESS_DENIED");
+    }
+
+    const [company, framework, auditor] = await Promise.all([
+      Company.findById(session.companyId),
+      AssessmentFramework.findOne({
+        version: session.frameworkVersion,
+        assessmentType: session.assessmentType,
+      }),
+      User.findById(req.user.userId),
+    ]);
+
+    if (!company || !framework || !auditor) {
+      return sendError(res, "Required assessment context not found", 404, "CONTEXT_NOT_FOUND");
+    }
+
+    const reportResult = await ReportService.generateAssessmentReport(session, company, framework, auditor);
+
+    session.reportMetadata = reportResult.metadata;
+    await session.save();
+
+    await AuditLog.create({
+      actorId: req.user.userId,
+      actorEmail: req.user.email || "unknown",
+      action: "REPORT_GENERATED",
+      entity: "AssessmentSession",
+      entityId: session._id.toString(),
+      after: {
+        fileName: reportResult.metadata.fileName,
+        checksum: reportResult.metadata.checksum,
+        fileSizeBytes: reportResult.metadata.fileSizeBytes,
+      },
+      ipAddress: req.ip,
+      userAgent: req.headers["user-agent"],
+    });
+
+    return sendSuccess(res, {
+      message: "PDF audit report generated successfully.",
+      report: reportResult.metadata,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * Download generated PDF audit report
+ */
+export async function downloadAssessmentReport(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { id } = req.params;
+    if (!req.user?.userId) {
+      return sendError(res, "Authentication required", 401, "UNAUTHORIZED");
+    }
+
+    if (req.user.role === "Admin") {
+      await logAuthorizationDenied(req, id, "Admin access to download assessment reports is restricted.");
+      return sendError(
+        res,
+        "Administrative access to download confidential assessment reports is restricted.",
+        403,
+        "ADMIN_CONTENT_ACCESS_RESTRICTED"
+      );
+    }
+
+    const session = await AssessmentSession.findById(id);
+    if (!session) {
+      return sendError(res, "Assessment session not found", 404, "SESSION_NOT_FOUND");
+    }
+
+    const orgId = session.companyId.toString();
+    const isAssigned = await isAuditorAssignedToOrg(req.user.userId, orgId);
+    const isCreator = session.conductedByUserId?.toString() === req.user.userId;
+
+    if (!isAssigned && !isCreator) {
+      return sendError(res, "Access denied. You are not assigned to this organization.", 403, "CROSS_COMPANY_ACCESS_DENIED");
+    }
+
+    // If report already generated and exists on disk
+    if (session.reportMetadata?.filePath && fs.existsSync(session.reportMetadata.filePath)) {
+      return res.download(session.reportMetadata.filePath, session.reportMetadata.fileName);
+    }
+
+    // If not generated yet, generate on-demand
+    const [company, framework, auditor] = await Promise.all([
+      Company.findById(session.companyId),
+      AssessmentFramework.findOne({
+        version: session.frameworkVersion,
+        assessmentType: session.assessmentType,
+      }),
+      User.findById(req.user.userId),
+    ]);
+
+    if (!company || !framework || !auditor) {
+      return sendError(res, "Required assessment context not found", 404, "CONTEXT_NOT_FOUND");
+    }
+
+    const reportResult = await ReportService.generateAssessmentReport(session, company, framework, auditor);
+    session.reportMetadata = reportResult.metadata;
+    await session.save();
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${reportResult.metadata.fileName}"`);
+    return res.send(reportResult.buffer);
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * Export assessment findings to Excel (.xlsx) workbook
+ */
+export async function exportAssessmentExcel(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { id } = req.params;
+    if (!req.user?.userId) {
+      return sendError(res, "Authentication required", 401, "UNAUTHORIZED");
+    }
+
+    if (req.user.role === "Admin") {
+      await logAuthorizationDenied(req, id, "Admin access to export assessment data is restricted.");
+      return sendError(
+        res,
+        "Administrative access to export confidential assessment data is restricted.",
+        403,
+        "ADMIN_CONTENT_ACCESS_RESTRICTED"
+      );
+    }
+
+    const session = await AssessmentSession.findById(id);
+    if (!session) {
+      return sendError(res, "Assessment session not found", 404, "SESSION_NOT_FOUND");
+    }
+
+    const orgId = session.companyId.toString();
+    const isAssigned = await isAuditorAssignedToOrg(req.user.userId, orgId);
+    const isCreator = session.conductedByUserId?.toString() === req.user.userId;
+
+    if (!isAssigned && !isCreator) {
+      return sendError(res, "Access denied. You are not assigned to this organization.", 403, "CROSS_COMPANY_ACCESS_DENIED");
+    }
+
+    const [company, framework] = await Promise.all([
+      Company.findById(session.companyId),
+      AssessmentFramework.findOne({
+        version: session.frameworkVersion,
+        assessmentType: session.assessmentType,
+      }),
+    ]);
+
+    if (!company || !framework) {
+      return sendError(res, "Required assessment context not found", 404, "CONTEXT_NOT_FOUND");
+    }
+
+    const excelBuffer = ExportService.generateAssessmentExcel(session, company, framework);
+    const fileName = `GRAICE_Audit_Findings_${company.name.replace(/[^a-zA-Z0-9_-]/g, "_")}_${session._id}.xlsx`;
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+    res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+    return res.send(excelBuffer);
+  } catch (err) {
+    next(err);
+  }
+}
+

@@ -3,10 +3,11 @@ import bcrypt from "bcryptjs";
 import { Company } from "../models/Company.js";
 import { User } from "../models/User.js";
 import { AuditLog } from "../models/AuditLog.js";
+import { AssessmentSession } from "../models/AssessmentSession.js";
 import { sendSuccess, sendError } from "../utils/response.js";
 import { verifyDomainLegitimacy } from "../services/verification.service.js";
 import { NotificationService } from "../services/notification.service.js";
-import { scopeQueryByCompany } from "../middlewares/companyScope.js";
+import { scopeQueryByCompany, isAuditorAssignedToOrg } from "../middlewares/companyScope.js";
 
 /**
  * Onboard a new organization with automated DNS domain verification and optional client account creation
@@ -396,3 +397,72 @@ export async function updateCompanyStatus(req: Request, res: Response, next: Nex
     next(err);
   }
 }
+
+/**
+ * Retrieve historical assessment trends and score progression for an organization
+ */
+export async function getCompanyTrends(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { id } = req.params;
+    if (!req.user?.userId) {
+      return sendError(res, "Authentication required", 401, "UNAUTHORIZED");
+    }
+
+    if (req.user.role !== "Admin") {
+      const isAssigned = await isAuditorAssignedToOrg(req.user.userId, id);
+      if (!isAssigned) {
+        return sendError(res, "Access denied. You are not assigned to this organization.", 403, "CROSS_COMPANY_ACCESS_DENIED");
+      }
+    }
+
+    const company = await Company.findById(id);
+    if (!company) {
+      return sendError(res, "Company not found", 404, "COMPANY_NOT_FOUND");
+    }
+
+    const sessions = await AssessmentSession.find({
+      companyId: id,
+      status: "Submitted",
+      scoreSnapshot: { $exists: true },
+    }).sort({ submittedAt: 1 });
+
+    const trends = sessions.map((s) => ({
+      assessmentId: s._id,
+      assessmentType: s.assessmentType,
+      frameworkVersion: s.frameworkVersion,
+      submittedAt: s.submittedAt,
+      overallPercentage: s.scoreSnapshot?.overallPercentage || 0,
+      maturityLevel: s.scoreSnapshot?.maturityLevel || "Initial",
+      controlsAssessed: s.scoreSnapshot?.totalControlsAssessed || 0,
+      exceptionsNoted: s.scoreSnapshot?.totalExceptionsNoted || 0,
+      pillarScores: s.scoreSnapshot?.pillarScores.map((p) => ({
+        pillarId: p.pillarId,
+        pillarName: p.pillarName,
+        percentage: p.percentage,
+      })) || [],
+    }));
+
+    // Calculate progression delta if multiple sessions exist
+    let progressionDelta = 0;
+    if (trends.length >= 2) {
+      const latest = trends[trends.length - 1].overallPercentage;
+      const baseline = trends[0].overallPercentage;
+      progressionDelta = Math.round((latest - baseline) * 10) / 10;
+    }
+
+    return sendSuccess(res, {
+      company: {
+        _id: company._id,
+        name: company.name,
+        domain: company.domain,
+        activePlan: company.activePlan || "Bronze",
+      },
+      totalCompletedAssessments: trends.length,
+      progressionDeltaPercentage: progressionDelta,
+      history: trends,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
