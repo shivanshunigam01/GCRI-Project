@@ -2,6 +2,13 @@ import { z } from "zod";
 
 const objectIdRegex = /^[0-9a-fA-F]{24}$/;
 
+export const ClientContactSchema = z.object({
+  name: z.string().trim().min(1, "Contact name is required"),
+  email: z.string().trim().email("Valid contact email is required"),
+  phone: z.string().trim().optional(),
+  title: z.string().trim().optional(),
+});
+
 export const CreateAssessmentSchema = z.object({
   body: z.object({
     companyId: z.string().regex(objectIdRegex, "Invalid Company ID format"),
@@ -9,6 +16,7 @@ export const CreateAssessmentSchema = z.object({
       message: "Assessment type must be either 'Light' or 'Full'",
     }),
     frameworkVersion: z.string().trim().optional(),
+    clientContact: ClientContactSchema.optional(),
   }),
 });
 

@@ -49,12 +49,20 @@ export interface IScoreSnapshot {
   calculatedAt: Date;
 }
 
+export interface IClientContact {
+  name: string;
+  email: string;
+  phone?: string;
+  title?: string;
+}
+
 export interface IAssessmentSession extends Document {
   companyId: Types.ObjectId;
   conductedByUserId: Types.ObjectId;
   frameworkVersion: string;
   assessmentType: "Light" | "Full";
   status: SessionStatus;
+  clientContact?: IClientContact;
   answers: IAnswer[];
   scoreSnapshot?: IScoreSnapshot;
   submittedAt?: Date;
@@ -138,6 +146,12 @@ const AssessmentSessionSchema = new Schema<IAssessmentSession>(
       enum: ["InProgress", "Submitted", "Archived"],
       default: "InProgress",
       index: true,
+    },
+    clientContact: {
+      name: { type: String, trim: true },
+      email: { type: String, trim: true, lowercase: true },
+      phone: { type: String, trim: true },
+      title: { type: String, trim: true },
     },
     answers: [AnswerSchema],
     scoreSnapshot: ScoreSnapshotSchema,
