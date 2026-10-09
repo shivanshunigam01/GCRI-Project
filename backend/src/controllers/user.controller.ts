@@ -401,3 +401,145 @@ export async function updateUserRole(req: Request, res: Response, next: NextFunc
     next(err);
   }
 }
+
+/**
+ * Admin-initiated password reset token generation
+ * Generates cryptographic reset token and logs audit event.
+ */
+export async function adminResetPassword(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const { id } = req.params;
+    const actorId = req.user?.userId;
+    const actorEmail = req.user?.email || "admin";
+
+    const user = await User.findById(id);
+    if (!user) {
+      return sendError(res, "User not found", 404, "USER_NOT_FOUND");
+    }
+
+    const rawToken = crypto.randomBytes(32).toString("hex");
+    const hashedToken = crypto.createHash("sha256").update(rawToken).digest("hex");
+    const expires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+
+    user.resetPasswordToken = hashedToken;
+    user.resetPasswordExpires = expires;
+    await user.save();
+
+    await AuditLog.create({
+      actorId,
+      actorEmail,
+      action: "ADMIN_PASSWORD_RESET_INITIATED",
+      entity: "User",
+      entityId: user._id.toString(),
+      after: {
+        targetUserEmail: user.email,
+        expiresAt: expires,
+      },
+      ipAddress: req.ip,
+      userAgent: req.headers["user-agent"],
+    });
+
+    const resetUrl = `${process.env.APP_URL || "http://localhost:3000"}/reset-password?token=${rawToken}`;
+
+    return sendSuccess(res, {
+      message: `Password reset token generated for user '${user.email}'.`,
+      resetToken: rawToken,
+      resetUrl,
+      expiresAt: expires,
+      user: {
+        id: user._id,
+        email: user.email,
+        name: user.name,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * Admin update of user profile details (name, phone, companyId, role, status)
+ */
+export async function adminUpdateUser(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const { id } = req.params;
+    const actorId = req.user?.userId;
+    const actorEmail = req.user?.email || "admin";
+    const { name, phone, companyId, role, status } = req.body;
+
+    const user = await User.findById(id);
+    if (!user) {
+      return sendError(res, "User not found", 404, "USER_NOT_FOUND");
+    }
+
+    // Protection: Prevent last admin from demoting or deactivating themselves
+    if (actorId === id && ((role && role !== "Admin") || (status && status !== "Active"))) {
+      const adminCount = await User.countDocuments({ role: "Admin", status: "Active" });
+      if (adminCount <= 1) {
+        return sendError(
+          res,
+          "Cannot demote or deactivate the sole active administrator of the platform.",
+          400,
+          "SOLE_ADMIN_ACTION_PROHIBITED"
+        );
+      }
+    }
+
+    const before = {
+      name: user.name,
+      phone: user.phone,
+      companyId: user.companyId,
+      role: user.role,
+      status: user.status,
+    };
+
+    if (name !== undefined) user.name = name;
+    if (phone !== undefined) user.phone = phone;
+    if (companyId !== undefined) user.companyId = companyId;
+    if (role !== undefined) user.role = role;
+    if (status !== undefined) user.status = status;
+
+    await user.save();
+
+    await AuditLog.create({
+      actorId,
+      actorEmail,
+      action: "USER_UPDATED_BY_ADMIN",
+      entity: "User",
+      entityId: user._id.toString(),
+      before,
+      after: {
+        name: user.name,
+        phone: user.phone,
+        companyId: user.companyId,
+        role: user.role,
+        status: user.status,
+      },
+      ipAddress: req.ip,
+      userAgent: req.headers["user-agent"],
+    });
+
+    return sendSuccess(res, {
+      message: `User '${user.email}' updated successfully.`,
+      user: {
+        id: user._id,
+        email: user.email,
+        name: user.name,
+        phone: user.phone,
+        role: user.role,
+        status: user.status,
+        companyId: user.companyId,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+}

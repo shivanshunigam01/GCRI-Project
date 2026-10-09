@@ -57,6 +57,18 @@ const options: swaggerJsdoc.Options = {
         description: "Branded PDF audit report generation, download streaming, and multi-sheet Excel (.xlsx) findings export",
       },
       {
+        name: "Framework Administration & Versioning",
+        description: "Admin framework configuration, question/control authoring, pillar weights, maturity thresholds, and version publishing with immutability guardrails",
+      },
+      {
+        name: "Admin User Management",
+        description: "Admin password reset initiation, profile management, and account governance",
+      },
+      {
+        name: "Audit Log Explorer",
+        description: "Filterable audit trail query endpoint with searches across actors, actions, entities, and date ranges",
+      },
+      {
         name: "System",
         description: "Health checks, database connectivity, and readiness monitoring probes",
       },

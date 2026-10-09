@@ -30,7 +30,9 @@ export interface IQuestionControl {
   assuranceTier?: string;
   regulatoryAlignments?: IRegulatoryAlignments;
   helpText?: string;
+  remediationGuidance?: string;
   mandatory: boolean;
+  isActive?: boolean;
   order: number;
   responseOptions: IResponseOption[];
 }
@@ -93,12 +95,14 @@ const QuestionControlSchema = new Schema<IQuestionControl>(
     text: { type: String, required: true },
     controlDescription: { type: String },
     testProcedure: { type: String },
+    remediationGuidance: { type: String },
     organizationScope: { type: String },
     linkedDocumentRequests: [{ type: String }],
     assuranceTier: { type: String },
     regulatoryAlignments: RegulatoryAlignmentsSchema,
     helpText: { type: String },
     mandatory: { type: Boolean, default: true },
+    isActive: { type: Boolean, default: true },
     order: { type: Number, required: true },
     responseOptions: [ResponseOptionSchema],
   },

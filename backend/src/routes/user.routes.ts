@@ -8,6 +8,8 @@ import {
   acceptInvite,
   updateUserStatus,
   updateUserRole,
+  adminResetPassword,
+  adminUpdateUser,
 } from "../controllers/user.controller.js";
 import { authenticate, authorize } from "../middlewares/auth.js";
 import { validateRequest } from "../middlewares/validate.js";
@@ -19,6 +21,10 @@ import {
   UpdateUserRoleSchema,
   UserParamSchema,
 } from "../schemas/user.schema.js";
+import {
+  AdminUserIdParamSchema,
+  AdminUpdateUserSchema,
+} from "../schemas/adminUser.schema.js";
 
 const router = Router();
 
@@ -314,6 +320,89 @@ router.patch(
   authorize("Admin"),
   validateRequest(UpdateUserRoleSchema),
   updateUserRole
+);
+
+/**
+ * @openapi
+ * /api/v1/users/{id}/reset-password:
+ *   post:
+ *     summary: Admin initiate user password reset
+ *     description: Generates a cryptographic password-reset link and token for the specified user account. Admin role only.
+ *     tags:
+ *       - Admin User Management
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Password reset initiated and token generated
+ *       403:
+ *         description: Forbidden (Admin role required)
+ *       404:
+ *         description: User not found
+ */
+router.post(
+  "/:id/reset-password",
+  authenticate,
+  authorize("Admin"),
+  validateRequest(AdminUserIdParamSchema),
+  adminResetPassword
+);
+
+/**
+ * @openapi
+ * /api/v1/users/{id}:
+ *   patch:
+ *     summary: Admin update user account details
+ *     description: Allows administrators to update user name, phone, company association, role, or active status. Admin role only.
+ *     tags:
+ *       - Admin User Management
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name:
+ *                 type: string
+ *               phone:
+ *                 type: string
+ *               companyId:
+ *                 type: string
+ *               role:
+ *                 type: string
+ *                 enum: [Admin, Assessor, MembershipApprover]
+ *               status:
+ *                 type: string
+ *                 enum: [Active, Deactivated]
+ *     responses:
+ *       200:
+ *         description: User updated successfully
+ *       400:
+ *         description: Sole admin modification prohibited
+ *       403:
+ *         description: Forbidden (Admin role required)
+ */
+router.patch(
+  "/:id",
+  authenticate,
+  authorize("Admin"),
+  validateRequest(AdminUpdateUserSchema),
+  adminUpdateUser
 );
 
 export default router;

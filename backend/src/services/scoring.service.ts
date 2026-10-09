@@ -179,15 +179,22 @@ export class ScoringService {
       totalScore += ans.scoreValue || 0;
     }
 
-    const maxPossibleScore = 120;
+    const thresholds = framework.maturityThresholds || {
+      initialMax: 30,
+      emergingMax: 60,
+      establishedMax: 90,
+      advancedMax: 120,
+    };
+
+    const maxPossibleScore = thresholds.advancedMax || 120;
     const overallPercentage = Math.round((totalScore / maxPossibleScore) * 100 * 10) / 10;
 
     let maturityLevel: MaturityLevel = "Initial";
-    if (totalScore >= 91) {
+    if (totalScore > thresholds.establishedMax) {
       maturityLevel = "Advanced";
-    } else if (totalScore >= 61) {
+    } else if (totalScore > thresholds.emergingMax) {
       maturityLevel = "Established";
-    } else if (totalScore >= 31) {
+    } else if (totalScore > thresholds.initialMax) {
       maturityLevel = "Emerging";
     } else {
       maturityLevel = "Initial";
