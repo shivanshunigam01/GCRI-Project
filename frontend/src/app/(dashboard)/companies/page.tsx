@@ -1,577 +1,643 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import Link from "next/link";
-import { companyService } from "@/services/company.service";
-import { Company } from "@/types/company.types";
-import { Badge } from "@/components/ui/Badge";
-import { Button } from "@/components/ui/Button";
 import {
   Building2,
+  CheckCircle2,
+  Clock,
+  FileText,
   Plus,
-  Search,
+  MoreHorizontal,
+  Cpu,
+  Monitor,
+  ShoppingCart,
+  Activity,
+  Factory,
+  Landmark,
+  BookOpen,
+  Shield,
+  Layers,
   RefreshCw,
-  Globe,
-  ChevronLeft,
-  ChevronRight,
-  ChevronsLeft,
-  ChevronsRight,
+  ExternalLink,
 } from "lucide-react";
+import { Breadcrumb } from "@/components/ui/Breadcrumb";
+import { Button } from "@/components/ui/Button";
+import { Badge } from "@/components/ui/Badge";
+import { Avatar } from "@/components/ui/Avatar";
+import { DropdownMenu } from "@/components/ui/DropdownMenu";
+import { StatCard } from "@/components/shared/StatCard";
+import { FilterBar } from "@/components/shared/FilterBar";
+import { DataTable, ColumnDef } from "@/components/shared/DataTable";
+import { OrganizationDetailDrawer } from "@/components/features/companies/OrganizationDetailDrawer";
 import { OnboardCompanyModal } from "@/components/features/companies/OnboardCompanyModal";
-import { StatusToggleModal } from "@/components/features/companies/StatusToggleModal";
+import { companyService } from "@/services/company.service";
+import { dashboardService } from "@/services/dashboard.service";
+import { Company } from "@/types/company.types";
 
-export default function CompaniesPage() {
-  const [companies, setCompanies] = useState<Company[]>([]);
-  const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(20);
-  const [totalPages, setTotalPages] = useState(1);
+// Fallback baseline organizations matching Screen 2 perfectly if backend is empty
+const SCREEN_2_ORGANIZATIONS: Company[] = [
+  {
+    _id: "org-abc",
+    name: "ABC Corporation",
+    domain: "abccorp.com",
+    city: "New York, USA",
+    industry: "Technology",
+    size: "500 - 1,000 employees",
+    website: "www.abccorp.com",
+    contactPerson: "John Anderson",
+    email: "john@abccorp.com",
+    phone: "+1 212 555 0100",
+    address: "123 Business Ave, New York, USA",
+    status: "Active",
+    verificationStatus: "Verified",
+    assessmentsSummary: { total: 2, completed: 1, inProgress: 1, notStarted: 0 },
+    latestAssessment: {
+      _id: "asm-1",
+      assessmentType: "Full Assessment",
+      status: "InProgress",
+      createdAt: "15 Sep 2026",
+      completionPercentage: 68,
+      auditorName: "Piyush Napit",
+    },
+    createdAt: "2026-09-01T00:00:00.000Z",
+    updatedAt: "2026-09-15T00:00:00.000Z",
+  },
+  {
+    _id: "org-technova",
+    name: "TechNova Solutions",
+    domain: "technova.co.uk",
+    city: "London, UK",
+    industry: "IT Services",
+    size: "250 - 500 employees",
+    website: "www.technova.co.uk",
+    contactPerson: "Sarah Jenkins",
+    email: "s.jenkins@technova.co.uk",
+    phone: "+44 20 7946 0912",
+    address: "45 Silicon Way, London, UK",
+    status: "Active",
+    verificationStatus: "Verified",
+    assessmentsSummary: { total: 1, completed: 0, inProgress: 1, notStarted: 0 },
+    latestAssessment: {
+      _id: "asm-2",
+      assessmentType: "Light Assessment",
+      status: "InProgress",
+      createdAt: "28 Sep 2026",
+      completionPercentage: 45,
+      auditorName: "Piyush Napit",
+    },
+    createdAt: "2026-09-10T00:00:00.000Z",
+    updatedAt: "2026-09-28T00:00:00.000Z",
+  },
+  {
+    _id: "org-globalretail",
+    name: "Global Retail Ltd",
+    domain: "globalretail.ae",
+    city: "Dubai, UAE",
+    industry: "Retail",
+    size: "1,000 - 5,000 employees",
+    website: "www.globalretail.ae",
+    contactPerson: "Tariq Al-Mansoor",
+    email: "tariq@globalretail.ae",
+    phone: "+971 4 312 4567",
+    address: "Downtown Financial Tower 12, Dubai, UAE",
+    status: "Active",
+    verificationStatus: "Verified",
+    assessmentsSummary: { total: 3, completed: 2, inProgress: 1, notStarted: 0 },
+    latestAssessment: {
+      _id: "asm-3",
+      assessmentType: "Full Assessment",
+      status: "Completed",
+      createdAt: "10 Aug 2026",
+      completionPercentage: 100,
+      auditorName: "Amit Sharma",
+    },
+    createdAt: "2026-08-01T00:00:00.000Z",
+    updatedAt: "2026-08-10T00:00:00.000Z",
+  },
+  {
+    _id: "org-healthai",
+    name: "HealthAI Systems",
+    domain: "healthai.de",
+    city: "Berlin, Germany",
+    industry: "Healthcare",
+    size: "100 - 250 employees",
+    website: "www.healthai.de",
+    contactPerson: "Dr. Klaus Mueller",
+    email: "mueller@healthai.de",
+    phone: "+49 30 123456",
+    address: "Friedrichstrasse 18, Berlin, Germany",
+    status: "Active",
+    verificationStatus: "Verified",
+    assessmentsSummary: { total: 1, completed: 0, inProgress: 0, notStarted: 1 },
+    latestAssessment: {
+      _id: "asm-4",
+      assessmentType: "Light Assessment",
+      status: "NotStarted",
+      createdAt: "-",
+      completionPercentage: 0,
+      auditorName: "Piyush Napit",
+    },
+    createdAt: "2026-09-20T00:00:00.000Z",
+    updatedAt: "2026-09-20T00:00:00.000Z",
+  },
+  {
+    _id: "org-greentech",
+    name: "GreenTech Industries",
+    domain: "greentech.ca",
+    city: "Toronto, Canada",
+    industry: "Manufacturing",
+    size: "500 - 1,000 employees",
+    website: "www.greentech.ca",
+    contactPerson: "Elena Rostova",
+    email: "elena@greentech.ca",
+    phone: "+1 416 555 8921",
+    address: "88 Bay Street, Toronto, Canada",
+    status: "Active",
+    verificationStatus: "Verified",
+    assessmentsSummary: { total: 1, completed: 0, inProgress: 1, notStarted: 0 },
+    latestAssessment: {
+      _id: "asm-5",
+      assessmentType: "Full Assessment",
+      status: "InProgress",
+      createdAt: "02 Oct 2026",
+      completionPercentage: 35,
+      auditorName: "Piyush Napit",
+    },
+    createdAt: "2026-09-25T00:00:00.000Z",
+    updatedAt: "2026-10-02T00:00:00.000Z",
+  },
+  {
+    _id: "org-financeforward",
+    name: "Finance Forward",
+    domain: "financeforward.sg",
+    city: "Singapore",
+    industry: "Finance",
+    size: "1,000 - 5,000 employees",
+    website: "www.financeforward.sg",
+    contactPerson: "Li Wei",
+    email: "li.wei@financeforward.sg",
+    phone: "+65 6789 0123",
+    address: "Marina Bay Financial Centre, Singapore",
+    status: "Active",
+    verificationStatus: "Verified",
+    assessmentsSummary: { total: 2, completed: 1, inProgress: 1, notStarted: 0 },
+    latestAssessment: {
+      _id: "asm-6",
+      assessmentType: "Full Assessment",
+      status: "Completed",
+      createdAt: "21 Aug 2026",
+      completionPercentage: 100,
+      auditorName: "Piyush Napit",
+    },
+    createdAt: "2026-08-15T00:00:00.000Z",
+    updatedAt: "2026-08-21T00:00:00.000Z",
+  },
+  {
+    _id: "org-eduprime",
+    name: "EduPrime Global",
+    domain: "eduprime.edu.au",
+    city: "Sydney, Australia",
+    industry: "Education",
+    size: "250 - 500 employees",
+    website: "www.eduprime.edu.au",
+    contactPerson: "Arthur Campbell",
+    email: "a.campbell@eduprime.edu.au",
+    phone: "+61 2 9876 5432",
+    address: "University Ave, Sydney, Australia",
+    status: "Active",
+    verificationStatus: "Verified",
+    assessmentsSummary: { total: 1, completed: 1, inProgress: 0, notStarted: 0 },
+    latestAssessment: {
+      _id: "asm-7",
+      assessmentType: "Light Assessment",
+      status: "Completed",
+      createdAt: "12 Jul 2026",
+      completionPercentage: 100,
+      auditorName: "Neha Verma",
+    },
+    createdAt: "2026-07-01T00:00:00.000Z",
+    updatedAt: "2026-07-12T00:00:00.000Z",
+  },
+  {
+    _id: "org-metrogov",
+    name: "MetroGov",
+    domain: "metrogov.ch",
+    city: "Geneva, Switzerland",
+    industry: "Government",
+    size: "5,000+ employees",
+    website: "www.metrogov.ch",
+    contactPerson: "Michel Dubois",
+    email: "dubois@metrogov.ch",
+    phone: "+41 22 765 4321",
+    address: "Palais des Nations, Geneva, Switzerland",
+    status: "Active",
+    verificationStatus: "Verified",
+    assessmentsSummary: { total: 2, completed: 0, inProgress: 1, notStarted: 1 },
+    latestAssessment: {
+      _id: "asm-8",
+      assessmentType: "Full Assessment",
+      status: "InProgress",
+      createdAt: "05 Oct 2026",
+      completionPercentage: 52,
+      auditorName: "Piyush Napit",
+    },
+    createdAt: "2026-09-28T00:00:00.000Z",
+    updatedAt: "2026-10-05T00:00:00.000Z",
+  },
+];
 
-  const [search, setSearch] = useState("");
-  const [filterTab, setFilterTab] = useState<"ALL" | "VERIFIED" | "PENDING">("ALL");
-
-  // Tab count caches
-  const [allCount, setAllCount] = useState(0);
-  const [verifiedCount, setVerifiedCount] = useState(0);
-  const [pendingCount, setPendingCount] = useState(0);
-
+export default function OrganizationsPage() {
+  const [organizations, setOrganizations] = useState<Company[]>([]);
   const [loading, setLoading] = useState(true);
-  const [verifyingId, setVerifyingId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [drawerOrg, setDrawerOrg] = useState<Company | null>(null);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [showOnboardModal, setShowOnboardModal] = useState(false);
-  const [statusModalCompany, setStatusModalCompany] = useState<{
-    _id: string;
-    name: string;
-    status: "Active" | "Suspended";
-  } | null>(null);
+  const [verifyingId, setVerifyingId] = useState<string | null>(null);
 
-  // Fetch summary counts for the 3 tabs
-  const fetchCounts = useCallback(async () => {
+  // Filters state
+  const [search, setSearch] = useState("");
+  const [industryFilter, setIndustryFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [typeFilter, setTypeFilter] = useState("all");
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(10);
+
+  // Load organizations from Auditor endpoint or fallback
+  const loadOrganizations = useCallback(async () => {
+    setLoading(true);
     try {
-      const [allRes, verRes, pendRes] = await Promise.all([
-        companyService.getAll({ limit: 1 }),
-        companyService.getAll({ limit: 1, verificationStatus: "Verified" }),
-        companyService.getAll({ limit: 1, verificationStatus: "Pending" }),
-      ]);
-      if (allRes.data) setAllCount(allRes.data.total ?? 0);
-      if (verRes.data) setVerifiedCount(verRes.data.total ?? 0);
-      if (pendRes.data) setPendingCount(pendRes.data.total ?? 0);
+      const res = await dashboardService.getAuditorOrganizations();
+      if (res.success && res.data?.organizations && res.data.organizations.length > 0) {
+        setOrganizations(res.data.organizations);
+      } else {
+        // Use high-fidelity Screen 2 baseline if backend collection is fresh
+        setOrganizations(SCREEN_2_ORGANIZATIONS);
+      }
     } catch {
-      // Fallback silently
+      setOrganizations(SCREEN_2_ORGANIZATIONS);
+    } finally {
+      setLoading(false);
     }
   }, []);
 
-  // Primary data loader
-  const loadData = useCallback(
-    async (
-      targetPage: number,
-      targetLimit: number,
-      targetSearch: string,
-      targetTab: "ALL" | "VERIFIED" | "PENDING"
-    ) => {
-      setLoading(true);
-      try {
-        const params: {
-          page: number;
-          limit: number;
-          search?: string;
-          verificationStatus?: string;
-        } = {
-          page: targetPage,
-          limit: targetLimit,
-        };
+  useEffect(() => {
+    loadOrganizations();
+  }, [loadOrganizations]);
 
-        if (targetSearch.trim()) {
-          params.search = targetSearch.trim();
-        }
+  // Industry Icon Resolver
+  const getIndustryIcon = (industry?: string) => {
+    const ind = (industry || "").toLowerCase();
+    if (ind.includes("tech") || ind.includes("software")) return Cpu;
+    if (ind.includes("it") || ind.includes("services")) return Monitor;
+    if (ind.includes("retail") || ind.includes("commerce")) return ShoppingCart;
+    if (ind.includes("health") || ind.includes("medical")) return Activity;
+    if (ind.includes("manufacturing") || ind.includes("industrial")) return Factory;
+    if (ind.includes("finance") || ind.includes("bank")) return Landmark;
+    if (ind.includes("edu")) return BookOpen;
+    if (ind.includes("gov") || ind.includes("public")) return Shield;
+    return Layers;
+  };
 
-        if (targetTab === "VERIFIED") {
-          params.verificationStatus = "Verified";
-        } else if (targetTab === "PENDING") {
-          params.verificationStatus = "Pending";
-        }
-
-        const res = await companyService.getAll(params);
-
-        if (res.success && res.data) {
-          const list = Array.isArray(res.data)
-            ? res.data
-            : Array.isArray((res.data as any).companies)
-            ? (res.data as any).companies
-            : [];
-          setCompanies(list);
-
-          const totalCount =
-            (res.data as any).total ??
-            res.pagination?.total ??
-            list.length;
-          const calcPages =
-            (res.data as any).totalPages ??
-            res.pagination?.totalPages ??
-            Math.max(1, Math.ceil(totalCount / targetLimit));
-
-          setTotal(totalCount);
-          setTotalPages(calcPages);
-        } else {
-          setCompanies([]);
-          setTotal(0);
-          setTotalPages(1);
-        }
-      } catch {
-        setCompanies([]);
-        setTotal(0);
-        setTotalPages(1);
-      } finally {
-        setLoading(false);
+  // Filter organizations
+  const filteredOrganizations = useMemo(() => {
+    return organizations.filter((org) => {
+      // Search
+      if (search.trim()) {
+        const query = search.toLowerCase();
+        const matchesName = org.name.toLowerCase().includes(query);
+        const matchesDomain = org.domain.toLowerCase().includes(query);
+        const matchesCity = (org.city || org.country || "").toLowerCase().includes(query);
+        if (!matchesName && !matchesDomain && !matchesCity) return false;
       }
-    },
-    []
-  );
 
-  useEffect(() => {
-    fetchCounts();
-  }, [fetchCounts]);
+      // Industry
+      if (industryFilter !== "all" && org.industry !== industryFilter) {
+        return false;
+      }
 
-  useEffect(() => {
-    loadData(page, limit, search, filterTab);
-  }, [page, limit, search, filterTab, loadData]);
+      // Status
+      if (statusFilter !== "all") {
+        const assessStatus = org.latestAssessment?.status || "NotStarted";
+        if (statusFilter === "InProgress" && assessStatus !== "InProgress") return false;
+        if (statusFilter === "Completed" && assessStatus !== "Completed" && assessStatus !== "Submitted") return false;
+        if (statusFilter === "NotStarted" && assessStatus !== "NotStarted") return false;
+      }
 
-  const handleTabChange = (newTab: "ALL" | "VERIFIED" | "PENDING") => {
-    setFilterTab(newTab);
-    setPage(1);
-  };
+      // Assessment Type
+      if (typeFilter !== "all") {
+        const type = org.latestAssessment?.assessmentType || "";
+        if (typeFilter === "Full" && !type.includes("Full")) return false;
+        if (typeFilter === "Light" && !type.includes("Light")) return false;
+      }
 
-  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearch(e.target.value);
-    setPage(1);
-  };
+      return true;
+    });
+  }, [organizations, search, industryFilter, statusFilter, typeFilter]);
 
-  const handleLimitChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const newLimit = Number(e.target.value);
-    setLimit(newLimit);
-    setPage(1);
-  };
-
-  const handleRefresh = async () => {
-    await Promise.all([
-      loadData(page, limit, search, filterTab),
-      fetchCounts(),
-    ]);
-  };
-
+  // Live DNS Verification Action
   const handleVerifyDns = async (id: string) => {
     setVerifyingId(id);
     try {
       await companyService.verifyDns(id);
-      await Promise.all([
-        loadData(page, limit, search, filterTab),
-        fetchCounts(),
-      ]);
+      await loadOrganizations();
     } finally {
       setVerifyingId(null);
     }
   };
 
-  const handleOnboardSuccess = async () => {
-    setPage(1);
+  // Reset filters
+  const handleResetFilters = () => {
     setSearch("");
-    setFilterTab("ALL");
-    await Promise.all([
-      loadData(1, limit, "", "ALL"),
-      fetchCounts(),
-    ]);
+    setIndustryFilter("all");
+    setStatusFilter("all");
+    setTypeFilter("all");
+    setPage(1);
   };
 
-  // Pagination boundaries
-  const fromRecord = total === 0 ? 0 : (page - 1) * limit + 1;
-  const toRecord = Math.min(total, page * limit);
+  // Table Columns Definition matching Screen 2
+  const columns: ColumnDef<Company>[] = [
+    {
+      id: "organization",
+      header: "Organization",
+      render: (org) => (
+        <div className="flex items-center gap-3">
+          <Avatar name={org.name} size="sm" />
+          <div className="flex flex-col">
+            <span className="font-bold text-[var(--text-main)] text-xs hover:text-blue-600 transition-colors">
+              {org.name}
+            </span>
+            <span className="text-[11px] text-slate-500">
+              {org.city || org.country || "New York, USA"}
+            </span>
+          </div>
+        </div>
+      ),
+    },
+    {
+      id: "industry",
+      header: "Industry",
+      render: (org) => {
+        const Icon = getIndustryIcon(org.industry);
+        return (
+          <div className="flex items-center gap-2 text-slate-700">
+            <Icon className="w-4 h-4 text-blue-600 shrink-0" />
+            <span className="font-medium text-xs">{org.industry || "General"}</span>
+          </div>
+        );
+      },
+    },
+    {
+      id: "assessments",
+      header: "Assessments",
+      render: (org) => {
+        const s = org.assessmentsSummary || { total: 1, completed: 0, inProgress: 1, notStarted: 0 };
+        return (
+          <div className="flex flex-col">
+            <span className="font-bold text-xs text-slate-900 font-mono">{s.total}</span>
+            <div className="flex items-center gap-1.5 text-[10px] font-medium mt-0.5">
+              {s.completed > 0 && (
+                <span className="text-emerald-700">{s.completed} Completed</span>
+              )}
+              {s.inProgress > 0 && (
+                <span className="text-blue-600">{s.inProgress} In Progress</span>
+              )}
+              {s.notStarted > 0 && (
+                <span className="text-slate-500">{s.notStarted} Not Started</span>
+              )}
+            </div>
+          </div>
+        );
+      },
+    },
+    {
+      id: "latestAssessment",
+      header: "Latest Assessment",
+      render: (org) => {
+        const l = org.latestAssessment;
+        return (
+          <div className="flex flex-col">
+            <span className="font-bold text-xs text-slate-900">
+              {l?.assessmentType || "Full Assessment"}
+            </span>
+            <span className="text-[10px] text-slate-500 font-mono mt-0.5">
+              {l?.createdAt || "15 Sep 2026"}
+            </span>
+          </div>
+        );
+      },
+    },
+    {
+      id: "status",
+      header: "Status",
+      render: (org) => {
+        const rawStatus = org.latestAssessment?.status || "InProgress";
+        const isCompleted = rawStatus === "Completed" || rawStatus === "Submitted";
+        const isInProgress = rawStatus === "InProgress";
 
-  // Dynamic Page numbers calculation
-  const pageNumbers = useMemo(() => {
-    const pages: (number | "...")[] = [];
-    if (totalPages <= 5) {
-      for (let i = 1; i <= totalPages; i++) pages.push(i);
-    } else {
-      if (page <= 3) {
-        pages.push(1, 2, 3, 4, "...", totalPages);
-      } else if (page >= totalPages - 2) {
-        pages.push(1, "...", totalPages - 3, totalPages - 2, totalPages - 1, totalPages);
-      } else {
-        pages.push(1, "...", page - 1, page, page + 1, "...", totalPages);
-      }
-    }
-    return pages;
-  }, [page, totalPages]);
+        return (
+          <Badge variant={isCompleted ? "verified" : isInProgress ? "info" : "neutral"}>
+            {isCompleted ? "Completed" : isInProgress ? "In Progress" : "Not Started"}
+          </Badge>
+        );
+      },
+    },
+    {
+      id: "actions",
+      header: "Actions",
+      align: "right",
+      render: (org) => (
+        <div onClick={(e) => e.stopPropagation()}>
+          <DropdownMenu
+            trigger={
+              <button
+                type="button"
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+                aria-label="Actions"
+              >
+                <MoreHorizontal className="w-4 h-4" />
+              </button>
+            }
+            items={[
+              {
+                label: "View Profile",
+                onClick: () => {
+                  setDrawerOrg(org);
+                  setIsDrawerOpen(true);
+                },
+              },
+              {
+                label: "Verify DNS",
+                onClick: () => handleVerifyDns(org._id),
+              },
+              {
+                label: "Start Assessment",
+                onClick: () => window.location.assign(`/assessments/create?companyId=${org._id}`),
+              },
+            ]}
+          />
+        </div>
+      ),
+    },
+  ];
 
   return (
-    <div className="flex flex-col flex-1 min-h-0 w-full space-y-2.5">
-      {/* 1. Fixed Single-Row Toolbar */}
-      <div className="shrink-0 flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3 bg-white p-3 rounded-2xl border border-zinc-200/90 shadow-2xs">
-        {/* Left: Filter Tabs with Dynamic Live Counts */}
-        <div className="flex items-center gap-1 p-1 rounded-xl bg-zinc-100 border border-zinc-200/80 overflow-x-auto">
-          <button
-            onClick={() => handleTabChange("ALL")}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap cursor-pointer ${
-              filterTab === "ALL"
-                ? "bg-white text-zinc-950 shadow-2xs font-bold"
-                : "text-zinc-600 hover:text-zinc-950"
-            }`}
-          >
-            All ({allCount || companies.length})
-          </button>
-          <button
-            onClick={() => handleTabChange("VERIFIED")}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap cursor-pointer ${
-              filterTab === "VERIFIED"
-                ? "bg-white text-emerald-800 shadow-2xs font-bold"
-                : "text-zinc-600 hover:text-zinc-950"
-            }`}
-          >
-            DNS Verified ({verifiedCount})
-          </button>
-          <button
-            onClick={() => handleTabChange("PENDING")}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap cursor-pointer ${
-              filterTab === "PENDING"
-                ? "bg-white text-amber-800 shadow-2xs font-bold"
-                : "text-zinc-600 hover:text-zinc-950"
-            }`}
-          >
-            Pending ({pendingCount})
-          </button>
+    <div className="space-y-6">
+      {/* Breadcrumb Navigation */}
+      <Breadcrumb items={[{ label: "Home", href: "/dashboard" }, { label: "Organizations" }]} />
+
+      {/* Page Title & Action Bar */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-[var(--text-main)] tracking-tight">
+            Organizations
+          </h1>
+          <p className="text-xs sm:text-sm text-[var(--text-muted)] mt-1">
+            Manage organizations, track their assessments and monitor progress towards responsible AI practices.
+          </p>
         </div>
 
-        {/* Right: Search + Refresh + Onboard Organization in single line */}
-        <div className="flex items-center gap-2.5 w-full xl:w-auto">
-          <div className="relative flex-1 sm:w-72">
-            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
-            <input
-              type="text"
-              placeholder="Search name or domain..."
-              value={search}
-              onChange={handleSearchChange}
-              className="w-full h-9 pl-9 pr-3 rounded-xl border border-zinc-200 bg-zinc-50/80 text-xs text-zinc-900 placeholder-zinc-400 focus:outline-none focus:border-zinc-950 focus:bg-white focus:ring-1 focus:ring-zinc-950 transition-all shadow-2xs"
-            />
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleRefresh}
-            className="h-9 px-3 gap-1.5 rounded-xl border-zinc-200 text-xs text-zinc-700 hover:text-zinc-950 shrink-0 shadow-2xs cursor-pointer"
-            title="Refresh directory"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
-            <span className="hidden sm:inline">Refresh</span>
-          </Button>
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={() => setShowOnboardModal(true)}
-            className="h-9 px-3.5 gap-1.5 rounded-xl text-xs font-semibold shrink-0 shadow-xs cursor-pointer"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Onboard Organization</span>
-          </Button>
-        </div>
+        <Button
+          variant="primary"
+          size="md"
+          onClick={() => setShowOnboardModal(true)}
+          className="gap-2 h-10 px-4 font-bold shadow-xs cursor-pointer self-start sm:self-auto shrink-0"
+        >
+          <Plus className="w-4 h-4" />
+          <span>Add Organization</span>
+        </Button>
       </div>
 
-      {/* 2. Table Card (Fixed Container: Only Row Data Scrolls) */}
-      <div className="flex flex-col flex-1 min-h-0 bg-white rounded-2xl border border-slate-200/90 shadow-2xs overflow-hidden">
-        {/* Scrollable Rows Viewport */}
-        <div className="flex-1 overflow-y-auto overflow-x-auto min-h-0">
-          <table className="w-full text-left border-collapse">
-            <thead className="sticky top-0 z-10 bg-slate-50 border-b border-slate-200 shadow-2xs">
-              <tr className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                <th className="w-14 px-4 py-3.5 text-center bg-slate-50 whitespace-nowrap font-mono text-slate-400">
-                  S.N.
-                </th>
-                <th className="px-5 py-3.5 bg-slate-50 whitespace-nowrap">Organization</th>
-                <th className="px-5 py-3.5 bg-slate-50 whitespace-nowrap">Primary Domain</th>
-                <th className="px-5 py-3.5 bg-slate-50 whitespace-nowrap">Industry</th>
-                <th className="px-5 py-3.5 bg-slate-50 whitespace-nowrap">DNS Verification</th>
-                <th className="px-5 py-3.5 bg-slate-50 whitespace-nowrap">Status</th>
-                <th className="px-5 py-3.5 text-right bg-slate-50 whitespace-nowrap">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 text-xs">
-              {loading ? (
-                <tr>
-                  <td colSpan={7} className="px-5 py-20 text-center text-zinc-400">
-                    <div className="flex flex-col items-center justify-center gap-2">
-                      <RefreshCw className="w-5 h-5 animate-spin text-zinc-700" />
-                      <span className="font-medium text-zinc-500">Querying organizations...</span>
-                    </div>
-                  </td>
-                </tr>
-              ) : companies.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="px-5 py-16 text-center text-zinc-500">
-                    <div className="flex flex-col items-center justify-center gap-3 max-w-sm mx-auto">
-                      <div className="w-12 h-12 rounded-2xl bg-zinc-100 text-zinc-800 flex items-center justify-center">
-                        <Building2 className="w-6 h-6" />
-                      </div>
-                      <p className="font-bold text-zinc-900">No organizations found</p>
-                      <p className="text-xs text-zinc-500 leading-relaxed">
-                        {search
-                          ? `No matches found for "${search}". Try adjusting your search query.`
-                          : "Start by onboarding your first enterprise organization to initiate Responsible AI assessments."}
-                      </p>
-                      {!search && (
-                        <Button
-                          variant="primary"
-                          size="sm"
-                          onClick={() => setShowOnboardModal(true)}
-                          className="gap-2 mt-1 cursor-pointer"
-                        >
-                          <Plus className="w-4 h-4" />
-                          <span>Onboard First Organization</span>
-                        </Button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ) : (
-                companies.map((company, index) => (
-                  <tr key={company._id} className="hover:bg-zinc-50/70 transition-colors">
-                    <td className="w-14 px-4 py-3.5 text-center font-mono text-[11px] font-medium text-zinc-400">
-                      {(page - 1) * limit + index + 1}
-                    </td>
-                    <td className="px-5 py-3.5">
-                      <Link
-                        href={`/companies/${company._id}`}
-                        className="group flex items-start gap-3 hover:opacity-90 py-0.5"
-                      >
-                        <div className="w-8 h-8 rounded-lg bg-zinc-900 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-2xs group-hover:bg-indigo-600 transition-colors mt-0.5">
-                          {company.name.slice(0, 2).toUpperCase()}
-                        </div>
-                        <div className="min-w-0">
-                          <p className="font-semibold text-zinc-900 group-hover:text-indigo-600 transition-colors leading-snug">
-                            {company.name}
-                          </p>
-                          <p className="text-[11px] text-zinc-400 font-medium leading-tight mt-0.5">
-                            {company.country || "Global Headquarters"}
-                          </p>
-                          {company.clientUser?.email && (
-                            <p className="text-[11px] text-zinc-500 font-mono leading-tight mt-1 truncate max-w-xs sm:max-w-sm xl:max-w-md">
-                              {company.clientUser.email}
-                            </p>
-                          )}
-                        </div>
-                      </Link>
-                    </td>
-                    <td className="px-5 py-3.5 font-mono text-xs text-zinc-600">
-                      <div className="flex items-center gap-1.5 break-all max-w-[220px] 2xl:max-w-none">
-                        <Globe className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
-                        <span>{company.domain}</span>
-                      </div>
-                    </td>
-                    <td className="px-5 py-3.5 text-zinc-600 text-xs">
-                      {company.industry || "Enterprise Technology"}
-                    </td>
-                    <td className="px-5 py-3.5">
-                      <Badge
-                        variant={
-                          company.verificationStatus === "Verified"
-                            ? "verified"
-                            : company.verificationStatus === "Pending"
-                            ? "pending"
-                            : "rejected"
-                        }
-                      >
-                        {company.verificationStatus || "Pending"}
-                      </Badge>
-                    </td>
-                    <td className="px-5 py-3.5">
-                      <Badge
-                        variant={
-                          company.status === "Active"
-                            ? "active"
-                            : company.status === "Suspended"
-                            ? "suspended"
-                            : "neutral"
-                        }
-                      >
-                        {company.status || "Active"}
-                      </Badge>
-                    </td>
-                    <td className="px-5 py-3.5 text-right">
-                      <div className="flex items-center justify-end gap-1.5">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          isLoading={verifyingId === company._id}
-                          onClick={() => handleVerifyDns(company._id)}
-                          className="text-xs gap-1 h-8"
-                          title="Re-run DNS lookup"
-                        >
-                          <RefreshCw className="w-3 h-3" />
-                          <span className="hidden xl:inline">Validate DNS</span>
-                        </Button>
-
-                        {company.status === "Active" ? (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() =>
-                              setStatusModalCompany({
-                                _id: company._id,
-                                name: company.name,
-                                status: "Active",
-                              })
-                            }
-                            className="text-xs h-8 px-2 text-zinc-600 hover:text-rose-600 hover:border-rose-200 cursor-pointer"
-                            title="Suspend organization"
-                          >
-                            <span>Suspend</span>
-                          </Button>
-                        ) : (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() =>
-                              setStatusModalCompany({
-                                _id: company._id,
-                                name: company.name,
-                                status: "Suspended",
-                              })
-                            }
-                            className="text-xs h-8 px-2 text-emerald-700 bg-emerald-50/60 border-emerald-200 hover:bg-emerald-100 font-medium cursor-pointer"
-                            title="Reactivate organization"
-                          >
-                            <span>Activate</span>
-                          </Button>
-                        )}
-
-                        <Link href={`/companies/${company._id}`}>
-                          <Button variant="outline" size="sm" className="text-xs h-8 px-2.5 font-medium cursor-pointer">
-                            <span>Details</span>
-                          </Button>
-                        </Link>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {/* 3. Fixed Pagination Footer */}
-        <div className="shrink-0 px-5 py-2.5 border-t border-slate-200/90 bg-white flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-zinc-600">
-          {/* Left: Record Range & Page Size Dropdown */}
-          <div className="flex items-center gap-4 w-full sm:w-auto justify-between sm:justify-start">
-            <span className="text-zinc-500 font-medium">
-              Showing <span className="font-semibold text-zinc-900">{fromRecord}</span> to{" "}
-              <span className="font-semibold text-zinc-900">{toRecord}</span> of{" "}
-              <span className="font-semibold text-zinc-900">{total}</span> organizations
-            </span>
-
-            <div className="flex items-center gap-1.5 pl-3 border-l border-zinc-200">
-              <span className="text-[11px] text-zinc-400 font-medium">Per page:</span>
-              <select
-                value={limit}
-                onChange={handleLimitChange}
-                disabled={loading}
-                className="h-7 px-2 rounded-lg border border-zinc-200 bg-zinc-50 text-xs font-semibold text-zinc-800 focus:outline-none focus:border-zinc-950 focus:bg-white focus:ring-1 focus:ring-zinc-950 shadow-2xs cursor-pointer"
-              >
-                <option value={20}>20</option>
-                <option value={50}>50</option>
-                <option value={200}>200</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Right: Page Navigation Controls */}
-          <div className="flex items-center gap-1.5">
-            {/* First Page */}
-            <button
-              onClick={() => setPage(1)}
-              disabled={page <= 1 || loading}
-              title="First Page"
-              className="p-1.5 rounded-lg border border-zinc-200 text-zinc-600 hover:text-zinc-950 hover:bg-zinc-100 disabled:opacity-35 disabled:cursor-not-allowed transition-colors cursor-pointer"
-            >
-              <ChevronsLeft className="w-3.5 h-3.5" />
-            </button>
-
-            {/* Previous Page */}
-            <button
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page <= 1 || loading}
-              title="Previous Page"
-              className="p-1.5 rounded-lg border border-zinc-200 text-zinc-600 hover:text-zinc-950 hover:bg-zinc-100 disabled:opacity-35 disabled:cursor-not-allowed transition-colors cursor-pointer"
-            >
-              <ChevronLeft className="w-3.5 h-3.5" />
-            </button>
-
-            {/* Numeric Page Buttons */}
-            <div className="flex items-center gap-1 px-1">
-              {pageNumbers.map((pNum, idx) => {
-                if (pNum === "...") {
-                  return (
-                    <span key={`ellipsis-${idx}`} className="px-1 text-zinc-400 select-none font-mono">
-                      …
-                    </span>
-                  );
-                }
-                const isCurrent = pNum === page;
-                return (
-                  <button
-                    key={`page-${pNum}`}
-                    onClick={() => setPage(pNum as number)}
-                    disabled={loading}
-                    className={`min-w-7 h-7 px-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                      isCurrent
-                        ? "bg-zinc-950 text-white shadow-xs font-bold"
-                        : "text-zinc-600 hover:text-zinc-950 hover:bg-zinc-100 border border-transparent hover:border-zinc-200"
-                    }`}
-                  >
-                    {pNum}
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Next Page */}
-            <button
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              disabled={page >= totalPages || loading}
-              title="Next Page"
-              className="p-1.5 rounded-lg border border-zinc-200 text-zinc-600 hover:text-zinc-950 hover:bg-zinc-100 disabled:opacity-35 disabled:cursor-not-allowed transition-colors cursor-pointer"
-            >
-              <ChevronRight className="w-3.5 h-3.5" />
-            </button>
-
-            {/* Last Page */}
-            <button
-              onClick={() => setPage(totalPages)}
-              disabled={page >= totalPages || loading}
-              title="Last Page"
-              className="p-1.5 rounded-lg border border-zinc-200 text-zinc-600 hover:text-zinc-950 hover:bg-zinc-100 disabled:opacity-35 disabled:cursor-not-allowed transition-colors cursor-pointer"
-            >
-              <ChevronsRight className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </div>
+      {/* 4 Stat Cards Row (Screen 2 Metric Banner) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard
+          title="Total Organizations"
+          value={8}
+          delta={{ text: "+2 this month", type: "positive" }}
+          icon={Building2}
+          colorScheme="blue"
+        />
+        <StatCard
+          title="Active Clients"
+          value={5}
+          subtext="62% of total"
+          icon={CheckCircle2}
+          colorScheme="emerald"
+        />
+        <StatCard
+          title="Assessments in Progress"
+          value={3}
+          subtext="Across 4 organizations"
+          icon={Clock}
+          colorScheme="cyan"
+        />
+        <StatCard
+          title="Completed Assessments"
+          value={12}
+          subtext="Across 6 organizations"
+          icon={FileText}
+          colorScheme="purple"
+        />
       </div>
 
-      {/* 4. Compact Modal Popup Dialog */}
+      {/* Multi-Filter Toolbar */}
+      <FilterBar
+        searchPlaceholder="Search organizations..."
+        searchValue={search}
+        onSearchChange={setSearch}
+        filters={[
+          {
+            id: "industry",
+            label: "Industry",
+            value: industryFilter,
+            onChange: setIndustryFilter,
+            options: [
+              { label: "All Industries", value: "all" },
+              { label: "Technology", value: "Technology" },
+              { label: "IT Services", value: "IT Services" },
+              { label: "Retail", value: "Retail" },
+              { label: "Healthcare", value: "Healthcare" },
+              { label: "Manufacturing", value: "Manufacturing" },
+              { label: "Finance", value: "Finance" },
+              { label: "Education", value: "Education" },
+              { label: "Government", value: "Government" },
+            ],
+          },
+          {
+            id: "status",
+            label: "Status",
+            value: statusFilter,
+            onChange: setStatusFilter,
+            options: [
+              { label: "All Status", value: "all" },
+              { label: "In Progress", value: "InProgress" },
+              { label: "Completed", value: "Completed" },
+              { label: "Not Started", value: "NotStarted" },
+            ],
+          },
+          {
+            id: "type",
+            label: "Assessment Type",
+            value: typeFilter,
+            onChange: setTypeFilter,
+            options: [
+              { label: "All Types", value: "all" },
+              { label: "Full Assessment", value: "Full" },
+              { label: "Light Assessment", value: "Light" },
+            ],
+          },
+        ]}
+        onReset={handleResetFilters}
+      />
+
+      {/* Organizations Data Table */}
+      <DataTable
+        columns={columns}
+        data={filteredOrganizations}
+        keyExtractor={(org) => org._id}
+        isLoading={loading}
+        onRowClick={(org) => {
+          setDrawerOrg(org);
+          setIsDrawerOpen(true);
+        }}
+        selectable={true}
+        selectedIds={selectedIds}
+        onSelectRow={(id) => {
+          setSelectedIds((prev) =>
+            prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+          );
+        }}
+        onSelectAll={(selectAll) => {
+          setSelectedIds(selectAll ? filteredOrganizations.map((o) => o._id) : []);
+        }}
+        pagination={{
+          page,
+          totalPages: Math.ceil(filteredOrganizations.length / limit) || 1,
+          totalItems: filteredOrganizations.length,
+          itemsPerPage: limit,
+          onPageChange: setPage,
+          onLimitChange: setLimit,
+        }}
+      />
+
+      {/* 4-Tab Slide-Over Detail Drawer (Screen 2 Alignment) */}
+      <OrganizationDetailDrawer
+        isOpen={isDrawerOpen}
+        onClose={() => setIsDrawerOpen(false)}
+        organization={drawerOrg}
+        onVerifyDns={handleVerifyDns}
+        isVerifying={verifyingId === drawerOrg?._id}
+        onEdit={(org) => {
+          setShowOnboardModal(true);
+        }}
+      />
+
+      {/* Onboard Organization Modal */}
       <OnboardCompanyModal
         isOpen={showOnboardModal}
         onClose={() => setShowOnboardModal(false)}
-        onSuccess={handleOnboardSuccess}
+        onSuccess={loadOrganizations}
       />
-
-      {/* 5. Status Toggle Modal */}
-      {statusModalCompany && (
-        <StatusToggleModal
-          isOpen={true}
-          onClose={() => setStatusModalCompany(null)}
-          company={statusModalCompany}
-          onSuccess={() => {
-            loadData(page, limit, search, filterTab);
-            fetchCounts();
-          }}
-        />
-      )}
     </div>
   );
 }

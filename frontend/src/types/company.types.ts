@@ -1,5 +1,6 @@
 export type CompanyStatus = "Active" | "Suspended";
 export type VerificationStatus = "Verified" | "Pending" | "Rejected";
+export type AssessmentStatusType = "InProgress" | "Completed" | "NotStarted" | "Submitted";
 
 export interface CompanyClientUser {
   _id: string;
@@ -9,16 +10,42 @@ export interface CompanyClientUser {
   status: string;
 }
 
+export interface OrganizationAssessmentSummary {
+  total: number;
+  inProgress: number;
+  completed: number;
+  notStarted: number;
+}
+
+export interface OrganizationLatestAssessment {
+  _id: string;
+  assessmentType: "Full" | "Light" | "Full Assessment" | "Light Assessment";
+  status: "InProgress" | "Submitted" | "Archived" | "NotStarted" | "Completed";
+  createdAt: string;
+  completionPercentage?: number;
+  auditorName?: string;
+}
+
 export interface Company {
   _id: string;
   name: string;
   domain: string;
   registrationNumber?: string;
   country?: string;
+  city?: string;
   industry?: string;
+  size?: string;
+  website?: string;
+  contactPerson?: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  activePlan?: "Bronze" | "Silver" | "Gold";
   verificationStatus: VerificationStatus;
   status: CompanyStatus;
   clientUser?: CompanyClientUser | null;
+  assessmentsSummary?: OrganizationAssessmentSummary;
+  latestAssessment?: OrganizationLatestAssessment | null;
   verificationAuditTrail?: {
     verifiedAt?: string;
     verifiedBy?: string;
@@ -34,7 +61,14 @@ export interface CompanyCreatePayload {
   domain: string;
   registrationNumber?: string;
   country?: string;
+  city?: string;
   industry?: string;
+  size?: string;
+  website?: string;
+  contactPerson?: string;
+  email?: string;
+  phone?: string;
+  address?: string;
   user?: {
     name: string;
     email: string;
