@@ -1,121 +1,109 @@
 "use client";
 
 import React, { useState, Suspense } from "react";
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { authService } from "@/services/auth.service";
-import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
-import { AlertCircle, CheckCircle2, ArrowLeft } from "lucide-react";
 
-function ResetPasswordForm() {
+function ResetPasswordContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const token = searchParams.get("token") || "";
-
+  const [token, setToken] = useState(searchParams.get("token") || "");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
     if (newPassword !== confirmPassword) {
-      setError("Passwords do not match.");
-      return;
-    }
-
-    if (!token) {
-      setError("Invalid or missing reset token.");
+      setError("Passwords do not match");
       return;
     }
 
     setLoading(true);
-
     try {
-      const res = await authService.resetPassword({ token, newPassword });
-      if (res.success) {
-        setSuccess("Password reset successfully. Redirecting to sign in...");
-        setTimeout(() => {
-          router.push("/login");
-        }, 1800);
-      } else {
-        setError(res.error?.message || "Failed to reset password. The link may have expired.");
-      }
-    } catch {
-      setError("Unable to connect to server. Please try again.");
+      await authService.resetPassword({ token, newPassword });
+      setSuccess(true);
+      setTimeout(() => router.push("/login"), 2000);
+    } catch (err: any) {
+      setError(err?.message || "Failed to reset password or token expired");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="bg-white py-8 px-6 shadow-sm rounded-2xl border border-slate-200 sm:px-8">
-      <div className="mb-6">
-        <h1 className="text-xl font-bold text-slate-900 tracking-tight">
-          Set new password
-        </h1>
-        <p className="mt-1 text-xs text-slate-500">
-          Enter your new password below.
-        </p>
+    <div className="space-y-6">
+      <div>
+        <h3 className="text-lg font-semibold text-slate-900">Reset Password</h3>
+        <p className="text-sm text-slate-500">Enter your new password below</p>
       </div>
 
       {error && (
-        <div className="mb-5 flex items-center gap-2 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs font-medium">
-          <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
-          <span>{error}</span>
+        <div className="p-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg">
+          {error}
         </div>
       )}
 
-      {success && (
-        <div className="mb-5 flex items-center gap-2 p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-medium">
-          <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
-          <span>{success}</span>
+      {success ? (
+        <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-800 text-sm">
+          Password updated successfully! Redirecting to login...
         </div>
+      ) : (
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Reset Token</label>
+            <input
+              type="text"
+              required
+              value={token}
+              onChange={(e) => setToken(e.target.value)}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Reset token"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">New Password</label>
+            <input
+              type="password"
+              required
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="••••••••"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Confirm New Password</label>
+            <input
+              type="password"
+              required
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="••••••••"
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium text-sm rounded-lg transition"
+          >
+            {loading ? "Updating..." : "Update Password"}
+          </button>
+        </form>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <Input
-          label="New password"
-          type="password"
-          required
-          value={newPassword}
-          onChange={(e) => setNewPassword(e.target.value)}
-          placeholder="Enter new password"
-          helperText="Must be at least 8 characters"
-          autoComplete="new-password"
-        />
-
-        <Input
-          label="Confirm password"
-          type="password"
-          required
-          value={confirmPassword}
-          onChange={(e) => setConfirmPassword(e.target.value)}
-          placeholder="Enter confirm password"
-          autoComplete="new-password"
-        />
-
-        <Button
-          type="submit"
-          variant="primary"
-          size="md"
-          className="w-full mt-2 font-medium"
-          isLoading={loading}
-        >
-          Reset password
-        </Button>
-      </form>
-
-      <div className="mt-6 pt-5 border-t border-slate-100 text-center text-xs text-slate-500">
-        <Link
-          href="/login"
-          className="inline-flex items-center gap-1.5 font-semibold text-indigo-600 hover:text-indigo-700"
-        >
-          <ArrowLeft className="w-3.5 h-3.5" /> Back to sign in
+      <div className="border-t border-slate-200 pt-4 text-center">
+        <Link href="/login" className="text-xs text-blue-600 font-medium hover:underline">
+          Return to sign in
         </Link>
       </div>
     </div>
@@ -124,14 +112,8 @@ function ResetPasswordForm() {
 
 export default function ResetPasswordPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="bg-white py-8 px-6 shadow-sm rounded-2xl border border-slate-200 text-center text-xs text-slate-500">
-          Loading...
-        </div>
-      }
-    >
-      <ResetPasswordForm />
+    <Suspense fallback={<div className="p-4 text-center text-sm text-slate-500">Loading reset form...</div>}>
+      <ResetPasswordContent />
     </Suspense>
   );
 }

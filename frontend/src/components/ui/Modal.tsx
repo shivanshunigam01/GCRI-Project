@@ -1,109 +1,156 @@
 "use client";
 
-import React, { useEffect } from "react";
-import { X } from "lucide-react";
-import { cn } from "@/lib/utils";
+import React from "react";
+import { AlertCircle, AlertTriangle, CheckCircle2, Info, RefreshCw, X } from "lucide-react";
+
+export type ModalVariant = "default" | "danger" | "warning" | "info" | "success";
+export type ConfirmationVariant = ModalVariant;
 
 export interface ModalProps {
   isOpen: boolean;
   onClose: () => void;
-  title?: React.ReactNode;
-  description?: string;
-  children: React.ReactNode;
-  footer?: React.ReactNode;
-  size?: "sm" | "md" | "lg" | "xl";
-  className?: string;
+  title?: string;
+  children?: React.ReactNode;
+  message?: string | React.ReactNode;
+  onConfirm?: () => void | Promise<void>;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  variant?: ModalVariant;
+  loading?: boolean;
+  maxWidth?: "sm" | "md" | "lg" | "xl";
 }
 
 export function Modal({
   isOpen,
   onClose,
   title,
-  description,
   children,
-  footer,
-  size = "md",
-  className,
+  message,
+  onConfirm,
+  confirmLabel = "Confirm",
+  cancelLabel = "Cancel",
+  variant = "default",
+  loading = false,
+  maxWidth = "md",
 }: ModalProps) {
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && isOpen) {
-        onClose();
-      }
-    };
-    if (isOpen) {
-      document.addEventListener("keydown", handleKeyDown);
-      document.body.style.overflow = "hidden";
-    }
-    return () => {
-      document.removeEventListener("keydown", handleKeyDown);
-      document.body.style.overflow = "unset";
-    };
-  }, [isOpen, onClose]);
-
   if (!isOpen) return null;
 
-  const sizeStyles = {
-    sm: "max-w-sm",
-    md: "max-w-lg",
-    lg: "max-w-2xl",
-    xl: "max-w-4xl",
+  const getVariantStyles = () => {
+    switch (variant) {
+      case "danger":
+        return {
+          icon: <AlertCircle className="h-5 w-5 text-rose-600" />,
+          iconBg: "bg-rose-50 border-rose-100",
+          btnColor: "bg-rose-600 hover:bg-rose-700 text-white focus:ring-rose-500",
+        };
+      case "warning":
+        return {
+          icon: <AlertTriangle className="h-5 w-5 text-amber-600" />,
+          iconBg: "bg-amber-50 border-amber-100",
+          btnColor: "bg-amber-600 hover:bg-amber-700 text-white focus:ring-amber-500",
+        };
+      case "success":
+        return {
+          icon: <CheckCircle2 className="h-5 w-5 text-emerald-600" />,
+          iconBg: "bg-emerald-50 border-emerald-100",
+          btnColor: "bg-emerald-600 hover:bg-emerald-700 text-white focus:ring-emerald-500",
+        };
+      case "info":
+        return {
+          icon: <Info className="h-5 w-5 text-teal-600" />,
+          iconBg: "bg-teal-50 border-teal-100",
+          btnColor: "bg-teal-600 hover:bg-teal-700 text-white focus:ring-teal-500",
+        };
+      default:
+        return {
+          icon: null,
+          iconBg: "",
+          btnColor: "bg-slate-900 hover:bg-slate-800 text-white focus:ring-slate-900",
+        };
+    }
   };
 
+  const styles = getVariantStyles();
+
+  const widthClass = {
+    sm: "max-w-sm",
+    md: "max-w-md",
+    lg: "max-w-lg",
+    xl: "max-w-xl",
+  }[maxWidth];
+
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto" role="dialog" aria-modal="true">
-      {/* Backdrop */}
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in duration-150"
+      onClick={onClose}
+    >
       <div
-        className="fixed inset-0 bg-slate-950/50 backdrop-blur-xs transition-opacity duration-200"
-        onClick={onClose}
-        aria-hidden="true"
-      />
-
-      <div className="min-h-full flex items-center justify-center p-4 sm:p-6 text-center">
-        <div
-          className={cn(
-            "w-full bg-white rounded-2xl shadow-2xl text-left overflow-hidden transform transition-all border border-[var(--border-subtle)] my-8 z-10",
-            sizeStyles[size],
-            className
-          )}
-        >
-          {/* Header */}
-          {(title || description) && (
-            <div className="p-5 sm:p-6 border-b border-[var(--border-divider)] flex items-start justify-between gap-4">
-              <div className="flex-1 min-w-0">
-                {title && (
-                  <h3 className="text-base sm:text-lg font-bold text-[var(--text-main)] tracking-tight">
-                    {title}
-                  </h3>
-                )}
-                {description && (
-                  <p className="text-xs sm:text-sm text-[var(--text-muted)] mt-1">
-                    {description}
-                  </p>
-                )}
-              </div>
-              <button
-                type="button"
-                onClick={onClose}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
-                aria-label="Close dialog"
+        className={`bg-white rounded-2xl shadow-2xl border border-slate-200 w-full ${widthClass} overflow-hidden animate-in zoom-in-95 duration-150`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+          <div className="flex items-center gap-3 min-w-0">
+            {styles.icon && (
+              <div
+                className={`h-9 w-9 rounded-xl flex items-center justify-center border shrink-0 ${styles.iconBg}`}
               >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-          )}
+                {styles.icon}
+              </div>
+            )}
+            {title && (
+              <h3 className="font-bold text-slate-900 text-sm truncate">{title}</h3>
+            )}
+          </div>
+          <button
+            onClick={onClose}
+            disabled={loading}
+            className="text-slate-400 hover:text-slate-600 p-1 rounded-md transition disabled:opacity-40"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
 
-          {/* Content */}
-          <div className="p-5 sm:p-6">{children}</div>
-
-          {/* Footer */}
-          {footer && (
-            <div className="px-5 sm:px-6 py-4 bg-slate-50 border-t border-[var(--border-divider)] flex items-center justify-end gap-3">
-              {footer}
-            </div>
+        {/* Content Body */}
+        <div className="p-5 text-xs text-slate-600 leading-relaxed">
+          {message ? (
+            typeof message === "string" ? <p>{message}</p> : message
+          ) : (
+            children
           )}
         </div>
+
+        {/* Action Buttons / Footer */}
+        {onConfirm && (
+          <div className="p-3.5 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={loading}
+              className="px-3.5 py-1.5 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg transition disabled:opacity-50"
+            >
+              {cancelLabel}
+            </button>
+            <button
+              type="button"
+              onClick={onConfirm}
+              disabled={loading}
+              className={`px-4 py-1.5 text-xs font-semibold rounded-lg shadow-xs transition flex items-center gap-1.5 disabled:opacity-50 ${styles.btnColor}`}
+            >
+              {loading ? (
+                <>
+                  <RefreshCw className="h-3 w-3 animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                confirmLabel
+              )}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
 }
+
+export default Modal;

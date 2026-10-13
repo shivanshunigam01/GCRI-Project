@@ -1,173 +1,34 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
 @import "tailwindcss";
 
-@theme {
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-mono: 'JetBrains Mono', monospace;
+@layer base {
+  :root {
+    --background: 220 20% 97%;
+    --foreground: 222 47% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    --primary: 221 83% 53%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222 47% 11%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
+    --border: 214 32% 91%;
+    --ring: 221 83% 53%;
+  }
 
-  --color-primary: var(--primary);
-  --color-primary-hover: var(--primary-hover);
-  --color-primary-subtle: var(--primary-subtle);
-  --color-primary-foreground: var(--primary-foreground);
+  * {
+    box-sizing: border-box;
+  }
 
-  --color-accent: var(--accent);
-  --color-accent-hover: var(--accent-hover);
-  --color-accent-subtle: var(--accent-subtle);
-  --color-accent-border: var(--accent-border);
+  body {
+    background-color: #f8fafc;
+    color: #0f172a;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    margin: 0;
+    padding: 0;
+  }
 
-  --color-success: var(--success);
-  --color-success-bg: var(--success-bg);
-  --color-success-border: var(--success-border);
-  --color-success-text: var(--success-text);
-
-  --color-warning: var(--warning);
-  --color-warning-bg: var(--warning-bg);
-  --color-warning-border: var(--warning-border);
-  --color-warning-text: var(--warning-text);
-
-  --color-danger: var(--danger);
-  --color-danger-bg: var(--danger-bg);
-  --color-danger-border: var(--danger-border);
-  --color-danger-text: var(--danger-text);
-
-  --color-info: var(--info);
-  --color-info-bg: var(--info-bg);
-  --color-info-border: var(--info-border);
-  --color-info-text: var(--info-text);
-
-  --color-neutral: var(--neutral);
-  --color-neutral-bg: var(--neutral-bg);
-  --color-neutral-border: var(--neutral-border);
-  --color-neutral-text: var(--neutral-text);
-
-  --color-canvas: var(--bg-app);
-  --color-surface: var(--bg-surface);
-  --color-sidebar: var(--bg-sidebar);
-}
-
-:root {
-  /* =========================================================================
-     1. SINGLE SOURCE OF TRUTH BASE HUES
-     Changing any hue systematically shifts all derived states across the app.
-     ========================================================================= */
-  --primary-h: 222;  /* Slate Blue / Corporate Midnight Navy */
-  --primary-s: 47%;
-
-  --accent-h: 221;   /* High-Trust Tech AI Blue */
-  --accent-s: 83%;
-
-  --success-h: 158;  /* Emerald */
-  --success-s: 64%;
-
-  --warning-h: 38;   /* Amber */
-  --warning-s: 92%;
-
-  --danger-h: 0;     /* Rose / Carmine */
-  --danger-s: 84%;
-
-  --info-h: 217;     /* Sky / Indigo */
-  --info-s: 91%;
-
-  --neutral-h: 215;  /* Slate Neutral */
-  --neutral-s: 16%;
-
-  /* =========================================================================
-     2. DERIVED FUNCTIONAL TOKENS
-     ========================================================================= */
-  --primary: hsl(var(--primary-h), var(--primary-s), 11%);          /* #0f172a */
-  --primary-hover: hsl(var(--primary-h), var(--primary-s), 16%);    /* #1e293b */
-  --primary-active: hsl(var(--primary-h), var(--primary-s), 8%);    /* #090d16 */
-  --primary-subtle: hsl(var(--primary-h), var(--primary-s), 96%);   /* #f1f5f9 */
-  --primary-foreground: hsl(0, 0%, 100%);
-
-  --accent: hsl(var(--accent-h), var(--accent-s), 53%);             /* #2563eb */
-  --accent-hover: hsl(var(--accent-h), var(--accent-s), 45%);       /* #1d4ed8 */
-  --accent-subtle: hsl(var(--accent-h), var(--accent-s), 96%);      /* #eff6ff */
-  --accent-border: hsl(var(--accent-h), var(--accent-s), 84%);      /* #bfdbfe */
-  --accent-foreground: hsl(0, 0%, 100%);
-
-  --success: hsl(var(--success-h), var(--success-s), 40%);          /* #10b981 */
-  --success-bg: hsl(var(--success-h), var(--success-s), 96%);       /* #ecfdf5 */
-  --success-border: hsl(var(--success-h), var(--success-s), 82%);   /* #a7f3d0 */
-  --success-text: hsl(var(--success-h), var(--success-s), 24%);     /* #065f46 */
-
-  --warning: hsl(var(--warning-h), var(--warning-s), 48%);          /* #f59e0b */
-  --warning-bg: hsl(var(--warning-h), var(--warning-s), 96%);       /* #fffbeb */
-  --warning-border: hsl(var(--warning-h), var(--warning-s), 82%);   /* #fde68a */
-  --warning-text: hsl(var(--warning-h), var(--warning-s), 28%);     /* #92400e */
-
-  --danger: hsl(var(--danger-h), var(--danger-s), 55%);             /* #ef4444 */
-  --danger-bg: hsl(var(--danger-h), var(--danger-s), 97%);          /* #fef2f2 */
-  --danger-border: hsl(var(--danger-h), var(--danger-s), 86%);      /* #fecaca */
-  --danger-text: hsl(var(--danger-h), var(--danger-s), 32%);        /* #991b1b */
-
-  --info: hsl(var(--info-h), var(--info-s), 55%);                /* #3b82f6 */
-  --info-bg: hsl(var(--info-h), var(--info-s), 97%);             /* #eff6ff */
-  --info-border: hsl(var(--info-h), var(--info-s), 85%);         /* #bfdbfe */
-  --info-text: hsl(var(--info-h), var(--info-s), 28%);           /* #1e40af */
-
-  --neutral: hsl(var(--neutral-h), var(--neutral-s), 47%);          /* #64748b */
-  --neutral-bg: hsl(var(--neutral-h), var(--neutral-s), 97%);       /* #f8fafc */
-  --neutral-border: hsl(var(--neutral-h), var(--neutral-s), 88%);   /* #e2e8f0 */
-  --neutral-text: hsl(var(--neutral-h), var(--neutral-s), 25%);     /* #334155 */
-
-  /* =========================================================================
-     3. SUBSCRIPTION PLAN TIERS (Screen 6 Alignment)
-     ========================================================================= */
-  --tier-bronze: #b45309;
-  --tier-bronze-bg: #fffbeb;
-  --tier-bronze-border: #fde68a;
-
-  --tier-silver: #475569;
-  --tier-silver-bg: #f8fafc;
-  --tier-silver-border: #cbd5e1;
-
-  --tier-gold: #d97706;
-  --tier-gold-bg: #fefce8;
-  --tier-gold-border: #fef08a;
-
-  /* =========================================================================
-     4. SURFACES & BORDERS
-     ========================================================================= */
-  --bg-app: #f8fafc;
-  --bg-surface: #ffffff;
-  --bg-sidebar: #0f172a;
-  --border-subtle: #e2e8f0;
-  --border-divider: #f1f5f9;
-
-  --text-main: #0f172a;
-  --text-muted: #64748b;
-  --text-subtle: #94a3b8;
-}
-
-body {
-  background-color: var(--bg-app);
-  color: var(--text-main);
-  font-family: var(--font-sans);
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-/* Custom Scrollbar for Dense Tables & Assessment Navigation */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 9999px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
-}
-
-::selection {
-  background-color: var(--primary);
-  color: #ffffff;
+  .font-editorial {
+    font-family: 'Instrument Serif', Georgia, serif;
+  }
 }

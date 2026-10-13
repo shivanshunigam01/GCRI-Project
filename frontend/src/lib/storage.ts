@@ -1,23 +1,20 @@
-const TOKEN_KEY = "graice_auth_token";
-const USER_KEY = "graice_user_profile";
+const TOKEN_KEY = "gcri_auth_token";
+const USER_KEY = "gcri_auth_user";
 
 export const storage = {
-  getToken: (): string | null => {
+  getToken(): string | null {
     if (typeof window === "undefined") return null;
     return localStorage.getItem(TOKEN_KEY);
   },
-
-  setToken: (token: string): void => {
+  setToken(token: string): void {
     if (typeof window === "undefined") return;
     localStorage.setItem(TOKEN_KEY, token);
   },
-
-  removeToken: (): void => {
+  removeToken(): void {
     if (typeof window === "undefined") return;
     localStorage.removeItem(TOKEN_KEY);
   },
-
-  getUser: <T>(): T | null => {
+  getUser<T>(): T | null {
     if (typeof window === "undefined") return null;
     const data = localStorage.getItem(USER_KEY);
     if (!data) return null;
@@ -27,13 +24,15 @@ export const storage = {
       return null;
     }
   },
-
-  setUser: <T>(user: T): void => {
+  setUser<T>(user: T): void {
     if (typeof window === "undefined") return;
     localStorage.setItem(USER_KEY, JSON.stringify(user));
   },
-
-  clearAuth: (): void => {
+  removeUser(): void {
+    if (typeof window === "undefined") return;
+    localStorage.removeItem(USER_KEY);
+  },
+  clear(): void {
     if (typeof window === "undefined") return;
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(USER_KEY);

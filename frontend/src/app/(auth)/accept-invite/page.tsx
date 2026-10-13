@@ -1,156 +1,115 @@
 "use client";
 
 import React, { useState, Suspense } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { userService } from "@/services/user.service";
-import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
-import Spinner from "@/components/ui/Spinner";
-import { ShieldCheck, CheckCircle2, AlertCircle } from "lucide-react";
 
 function AcceptInviteContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const token = searchParams.get("token") || "";
+  const initialToken = searchParams.get("token") || "";
 
+  const [token, setToken] = useState(initialToken);
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-
-    if (!token) {
-      setError("Invitation token is missing or invalid. Please check your invitation link.");
-      return;
-    }
-
-    if (password.length < 8) {
-      setError("Password must be at least 8 characters long.");
-      return;
-    }
+    setMessage(null);
 
     if (password !== confirmPassword) {
-      setError("Passwords do not match.");
+      setError("Passwords do not match");
       return;
     }
 
     setLoading(true);
-
     try {
-      const res = await userService.acceptInvite({ token, password });
-
-      if (res.success) {
-        setSuccess(true);
-        setTimeout(() => {
-          router.push("/login");
-        }, 2500);
-      } else {
-        setError(res.error?.message || "Failed to accept invitation. The invitation link may have expired.");
-      }
-    } catch {
-      setError("Unable to connect to the server. Please try again later.");
+      await userService.acceptInvite({ token, password });
+      setMessage("Account activated successfully! Redirecting to login...");
+      setTimeout(() => {
+        router.push("/login");
+      }, 2000);
+    } catch (err: any) {
+      setError(err?.message || "Failed to accept invitation or token expired");
     } finally {
       setLoading(false);
     }
   };
 
-  if (success) {
-    return (
-      <div className="bg-white py-8 px-6 sm:px-8 rounded-2xl border border-zinc-200/80 shadow-[0_1px_3px_0_rgba(0,0,0,0.03)] text-center space-y-4">
-        <div className="w-12 h-12 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto">
-          <CheckCircle2 className="w-6 h-6" />
-        </div>
-        <h1 className="text-xl font-bold text-zinc-900 tracking-tight">Account Activated</h1>
-        <p className="text-xs text-zinc-500 leading-relaxed max-w-sm mx-auto">
-          Your credentials have been configured successfully. You will be redirected to the sign-in portal momentarily.
-        </p>
-        <div className="pt-2">
-          <Link href="/login">
-            <Button variant="primary" size="md" className="w-full font-medium">
-              Proceed to Sign In
-            </Button>
-          </Link>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="bg-white py-8 px-6 sm:px-8 rounded-2xl border border-zinc-200/80 shadow-[0_1px_3px_0_rgba(0,0,0,0.03)]">
-      <div className="mb-6">
-        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-800 text-[11px] font-semibold mb-2.5">
-          <ShieldCheck className="w-3.5 h-3.5 text-zinc-900" />
-          <span>Account Invitation</span>
-        </div>
-        <h1 className="text-xl font-bold text-zinc-900 tracking-tight">
-          Complete Your Account Setup
-        </h1>
-        <p className="mt-1 text-xs text-zinc-500">
-          You have been invited to join the GRAICE platform. Create a secure password to activate your access.
-        </p>
+    <div className="space-y-6">
+      <div>
+        <h3 className="text-lg font-semibold text-slate-900">Accept Invitation</h3>
+        <p className="text-sm text-slate-500">Set your password to activate your enterprise account</p>
       </div>
 
       {error && (
-        <div className="mb-5 flex items-center gap-2 p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium">
-          <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
-          <span>{error}</span>
+        <div className="p-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg">
+          {error}
         </div>
       )}
 
-      {!token ? (
-        <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs space-y-2">
-          <p className="font-semibold">Missing Invitation Token</p>
-          <p className="text-[11px]">
-            This page requires a valid cryptographic invitation token in the URL. Please verify your invitation email or contact your administrator.
-          </p>
-          <div className="pt-2">
-            <Link href="/login" className="font-semibold text-zinc-900 underline">
-              Return to Login
-            </Link>
-          </div>
+      {message && (
+        <div className="p-3 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg">
+          {message}
         </div>
-      ) : (
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <Input
-            label="Create password"
+      )}
+
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">Invitation Token</label>
+          <input
+            type="text"
+            required
+            value={token}
+            onChange={(e) => setToken(e.target.value)}
+            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder="Paste token or click invite link"
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">Create Password</label>
+          <input
             type="password"
             required
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder="Enter new password"
-            helperText="Must be at least 8 characters"
-            autoComplete="new-password"
+            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder="Minimum 8 characters"
           />
+        </div>
 
-          <Input
-            label="Confirm password"
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">Confirm Password</label>
+          <input
             type="password"
             required
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
-            placeholder="Confirm new password"
-            autoComplete="new-password"
+            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder="Repeat password"
           />
+        </div>
 
-          <Button
-            type="submit"
-            variant="primary"
-            size="md"
-            className="w-full mt-2 font-medium"
-            isLoading={loading}
-          >
-            Activate Account
-          </Button>
-        </form>
-      )}
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium text-sm rounded-lg transition"
+        >
+          {loading ? "Activating..." : "Activate Account"}
+        </button>
+      </form>
 
-      <div className="mt-6 pt-5 border-t border-zinc-100 text-center text-[11px] text-zinc-400">
-        GRAICE Responsible AI Governance System · Authorized Personnel Only
+      <div className="border-t border-slate-200 pt-4 text-center">
+        <Link href="/login" className="text-xs text-blue-600 font-medium hover:underline">
+          Return to sign in
+        </Link>
       </div>
     </div>
   );
@@ -158,13 +117,7 @@ function AcceptInviteContent() {
 
 export default function AcceptInvitePage() {
   return (
-    <Suspense
-      fallback={
-        <div className="min-h-[300px] flex items-center justify-center">
-          <Spinner size="md" />
-        </div>
-      }
-    >
+    <Suspense fallback={<div className="p-4 text-center text-sm text-slate-500">Loading invitation form...</div>}>
       <AcceptInviteContent />
     </Suspense>
   );

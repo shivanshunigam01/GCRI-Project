@@ -3,20 +3,16 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { authService } from "@/services/auth.service";
 import { useAuth } from "@/context/AuthContext";
-import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
-import { AlertCircle, KeyRound, ArrowLeft, ShieldCheck } from "lucide-react";
+import { authService } from "@/services/auth.service";
 
 export default function LoginPage() {
   const router = useRouter();
   const { login } = useAuth();
-
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [mfaToken, setMfaToken] = useState("");
-  const [showMfaChallenge, setShowMfaChallenge] = useState(false);
+  const [showMfa, setShowMfa] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -29,134 +25,140 @@ export default function LoginPage() {
       const res = await authService.login({
         email,
         password,
-        ...(showMfaChallenge ? { mfaToken } : {}),
+        mfaToken: mfaToken.trim() || undefined,
       });
 
-      if (res.success && res.data) {
-        login(res.data);
+      if (res.data?.token && res.data?.user) {
+        login(res.data.token, res.data.user);
         router.push("/dashboard");
-      } else if (res.error?.code === "MFA_REQUIRED") {
-        setShowMfaChallenge(true);
-      } else if (res.error?.code === "ADMIN_MFA_ENFORCEMENT_REQUIRED") {
-        setError(
-          "Multi-factor authentication (MFA) is mandatory for Administrator accounts. Please contact system security or complete enrollment."
-        );
-      } else {
-        setError(res.error?.message || "Invalid email or password.");
+      } else if (res.data?.mfaRequired) {
+        setShowMfa(true);
+        setError("MFA required: Enter your authenticator code or recovery backup code (e.g. 12345678).");
       }
-    } catch {
-      setError("Unable to connect to server. Please try again.");
+    } catch (err: any) {
+      if (err?.data?.error?.code === "MFA_REQUIRED") {
+        setShowMfa(true);
+        setError("MFA required: Enter your authenticator code or recovery code.");
+      } else {
+        setError(err?.message || "Failed to log in");
+      }
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="bg-white py-8 px-6 sm:px-8 rounded-2xl border border-zinc-200/80 shadow-[0_1px_3px_0_rgba(0,0,0,0.03),0_1px_2px_-1px_rgba(0,0,0,0.03)]">
-      <div className="mb-6">
-        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-800 text-[11px] font-semibold mb-2.5">
-          <ShieldCheck className="w-3.5 h-3.5 text-zinc-900" />
-          <span>Admin Portal</span>
-        </div>
-        <h1 className="text-xl font-bold text-zinc-900 tracking-tight">
-          {showMfaChallenge ? "Two-Factor Authentication" : "Sign In to Admin Portal"}
-        </h1>
-        <p className="mt-1 text-xs text-zinc-500">
-          {showMfaChallenge
-            ? "Enter the 6-digit verification code from your authenticator app."
-            : "Enter your administrator credentials to access the governance platform."}
-        </p>
+    <div className="space-y-6">
+      <div>
+        <h3 className="text-lg font-semibold text-slate-900">Sign in to your account</h3>
+        <p className="text-sm text-slate-500">Access your organization assessments</p>
       </div>
 
       {error && (
-        <div className="mb-5 flex items-center gap-2 p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium">
-          <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
-          <span>{error}</span>
+        <div className="p-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg">
+          {error}
         </div>
       )}
 
       <form onSubmit={handleSubmit} className="space-y-4">
-        {!showMfaChallenge ? (
-          <>
-            <Input
-              label="Email address"
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="Enter your email"
-              autoComplete="email"
-            />
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">Email address</label>
+          <input
+            type="email"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder="auditor@graice.io"
+          />
+        </div>
 
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="block text-xs font-semibold text-zinc-700">
-                  Password <span className="text-rose-500">*</span>
-                </label>
-                <Link
-                  href="/forgot-password"
-                  className="text-xs font-medium text-zinc-600 hover:text-zinc-950 transition-colors"
-                >
-                  Forgot password?
-                </Link>
-              </div>
-              <Input
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Enter your password"
-                autoComplete="current-password"
-              />
-            </div>
-          </>
-        ) : (
-          <div className="space-y-3">
-            <div className="p-3 rounded-lg bg-zinc-50 border border-zinc-200 flex items-center gap-2.5 text-xs text-zinc-800">
-              <KeyRound className="w-4 h-4 text-zinc-700 shrink-0" />
-              <span>Multi-factor authentication is active on your account</span>
-            </div>
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <label className="block text-sm font-medium text-slate-700">Password</label>
+            <Link href="/forgot-password" className="text-xs text-blue-600 hover:underline">
+              Forgot password?
+            </Link>
+          </div>
+          <input
+            type="password"
+            required
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder="••••••••"
+          />
+        </div>
 
-            <Input
-              label="Authentication code"
+        {showMfa && (
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              MFA / Recovery Code
+            </label>
+            <input
               type="text"
-              maxLength={8}
-              required
               value={mfaToken}
-              onChange={(e) => setMfaToken(e.target.value.trim())}
-              placeholder="Enter 6-digit code or recovery key"
-              autoFocus
+              onChange={(e) => setMfaToken(e.target.value)}
+              className="w-full px-3 py-2 border border-blue-300 bg-blue-50/30 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+              placeholder="e.g. 12345678"
             />
+            <p className="text-[11px] text-slate-500 mt-1">
+              For Super Admin testing, use recovery code <code className="text-blue-600 font-semibold">12345678</code>
+            </p>
           </div>
         )}
 
-        <Button
+        <button
           type="submit"
-          variant="primary"
-          size="md"
-          className="w-full mt-2 font-medium"
-          isLoading={loading}
+          disabled={loading}
+          className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium text-sm rounded-lg transition shadow-sm"
         >
-          {showMfaChallenge ? "Verify and continue" : "Sign in"}
-        </Button>
+          {loading ? "Signing in..." : "Sign in"}
+        </button>
+      </form>
 
-        {showMfaChallenge && (
+      {/* Quick Fill Testing Credentials */}
+      <div className="pt-2 border-t border-slate-100 space-y-2">
+        <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider text-center">
+          1-Click Quick Fill Credentials
+        </p>
+        <div className="grid grid-cols-2 gap-2">
           <button
             type="button"
             onClick={() => {
-              setShowMfaChallenge(false);
+              setEmail("auditor@graice.io");
+              setPassword("Auditor@123456");
               setMfaToken("");
+              setShowMfa(false);
               setError(null);
             }}
-            className="w-full flex items-center justify-center gap-1.5 text-xs text-zinc-500 hover:text-zinc-800 pt-1 cursor-pointer"
+            className="py-2 px-2.5 rounded-lg border border-emerald-200 bg-emerald-50/50 hover:bg-emerald-100 text-[11px] font-semibold text-emerald-800 transition text-center"
           >
-            <ArrowLeft className="w-3.5 h-3.5" /> Back to email & password
+            Direct Login: Auditor (Piyush)
           </button>
-        )}
-      </form>
+          <button
+            type="button"
+            onClick={() => {
+              setEmail("admin@graice.io");
+              setPassword("Admin@123456");
+              setMfaToken("11223344");
+              setShowMfa(true);
+              setError(null);
+            }}
+            className="py-2 px-2.5 rounded-lg border border-purple-200 bg-purple-50/50 hover:bg-purple-100 text-[11px] font-semibold text-purple-800 transition text-center"
+          >
+            Super Admin (+ MFA)
+          </button>
+        </div>
+      </div>
 
-      <div className="mt-6 pt-5 border-t border-zinc-100 text-center text-[11px] text-zinc-400">
-        GRAICE Responsible AI Governance System · Authorized Personnel Only
+      <div className="border-t border-slate-200 pt-3 text-center">
+        <p className="text-xs text-slate-500">
+          Have an invitation link?{" "}
+          <Link href="/accept-invite" className="text-blue-600 font-medium hover:underline">
+            Accept Invitation
+          </Link>
+        </p>
       </div>
     </div>
   );

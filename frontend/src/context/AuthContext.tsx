@@ -1,118 +1,83 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useState, useMemo } from "react";
-import { User, LoginResponseData } from "@/types/auth.types";
+import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
+import { User } from "@/types/auth.types";
 import { storage } from "@/lib/storage";
-import { apiClient } from "@/services/apiClient";
+import { userService } from "@/services/user.service";
 
 interface AuthContextType {
   user: User | null;
-  token: string | null;
   loading: boolean;
-  isHydrated: boolean;
-  isAdmin: boolean;
-  isCompanyLead: boolean;
-  isAssessor: boolean;
-  companyName: string | null;
-  companyId: string | null;
-  login: (data: LoginResponseData) => void;
+  login: (token: string, user: User) => void;
   logout: () => void;
   refreshUser: () => Promise<void>;
+  isAdmin: boolean;
+  isAssessor: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
-  const [isHydrated, setIsHydrated] = useState<boolean>(false);
 
-  useEffect(() => {
-    const savedToken = storage.getToken();
-    const savedUser = storage.getUser<User>();
-    if (savedToken) {
-      setToken(savedToken);
-      if (savedUser) {
-        setUser(savedUser);
-      }
-      apiClient<User>("/users/me")
-        .then((res) => {
-          if (res.success && res.data) {
-            setUser(res.data);
-            storage.setUser(res.data);
-          }
-        })
-        .finally(() => {
-          setLoading(false);
-          setIsHydrated(true);
-        });
-    } else {
+  const refreshUser = useCallback(async () => {
+    const token = storage.getToken();
+    if (!token) {
+      setUser(null);
       setLoading(false);
-      setIsHydrated(true);
+      return;
+    }
+
+    try {
+      const res = await userService.getCurrentUser();
+      if (res && res.data) {
+        setUser(res.data);
+        storage.setUser(res.data);
+      }
+    } catch {
+      storage.clear();
+      setUser(null);
+    } finally {
+      setLoading(false);
     }
   }, []);
 
-  const login = (data: LoginResponseData) => {
-    storage.setToken(data.token);
-    storage.setUser(data.user);
-    setToken(data.token);
-    setUser(data.user);
+  useEffect(() => {
+    const cachedUser = storage.getUser<User>();
+    if (cachedUser) {
+      setUser(cachedUser);
+    }
+    refreshUser();
+  }, [refreshUser]);
+
+  const login = (token: string, newUser: User) => {
+    storage.setToken(token);
+    storage.setUser(newUser);
+    setUser(newUser);
   };
 
   const logout = () => {
-    storage.clearAuth();
-    setToken(null);
+    storage.clear();
     setUser(null);
     if (typeof window !== "undefined") {
-      /* eslint-disable-next-line @next/next/no-location-assign-relative-destination */
-      window.location.assign("/login");
+      window.location.href = "/login";
     }
   };
 
-  const refreshUser = async () => {
-    const res = await apiClient<User>("/users/me");
-    if (res.success && res.data) {
-      setUser(res.data);
-      storage.setUser(res.data);
-    }
-  };
-
-  const isAdmin = useMemo(() => user?.role === "Admin", [user]);
-  const isCompanyLead = useMemo(() => user?.role === "MembershipApprover", [user]);
-  const isAssessor = useMemo(() => user?.role === "Assessor", [user]);
-
-  const companyName = useMemo(() => {
-    if (!user?.companyId) return null;
-    if (typeof user.companyId === "object" && "name" in user.companyId) {
-      return (user.companyId as { name: string }).name;
-    }
-    return null;
-  }, [user]);
-
-  const companyId = useMemo(() => {
-    if (!user?.companyId) return null;
-    if (typeof user.companyId === "object" && "_id" in user.companyId) {
-      return (user.companyId as { _id: string })._id;
-    }
-    return typeof user.companyId === "string" ? user.companyId : null;
-  }, [user]);
+  const isAdmin = user?.role === "Admin";
+  const isAssessor = user?.role === "Assessor";
 
   return (
     <AuthContext.Provider
       value={{
         user,
-        token,
         loading,
-        isHydrated,
-        isAdmin,
-        isCompanyLead,
-        isAssessor,
-        companyName,
-        companyId,
         login,
         logout,
         refreshUser,
+        isAdmin,
+        isAssessor,
       }}
     >
       {children}

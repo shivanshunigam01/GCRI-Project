@@ -1,20 +1,18 @@
-export interface ApiError {
-  code: string;
-  message: string;
-  details?: unknown;
-}
-
-export interface ApiPagination {
-  page: number;
-  limit: number;
-  total: number;
-  totalPages: number;
-}
-
-export interface ApiResponse<T = unknown> {
+export interface ApiResponse<T = any> {
   success: boolean;
-  data?: T;
-  error?: ApiError;
-  pagination?: ApiPagination;
-  timestamp: string;
+  message?: string;
+  data: T;
+  error?: string;
+  pagination?: {
+    total: number;
+    page: number;
+    limit: number;
+    pages: number;
+  };
+}
+
+export interface ApiError {
+  message: string;
+  statusCode?: number;
+  error?: string;
 }
