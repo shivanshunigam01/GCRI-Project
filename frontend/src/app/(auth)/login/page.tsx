@@ -70,6 +70,7 @@ export default function LoginPage() {
             onChange={(e) => setEmail(e.target.value)}
             className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             placeholder="auditor@graice.io"
+            suppressHydrationWarning
           />
         </div>
 
@@ -87,6 +88,7 @@ export default function LoginPage() {
             onChange={(e) => setPassword(e.target.value)}
             className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             placeholder="••••••••"
+            suppressHydrationWarning
           />
         </div>
 
@@ -101,6 +103,7 @@ export default function LoginPage() {
               onChange={(e) => setMfaToken(e.target.value)}
               className="w-full px-3 py-2 border border-blue-300 bg-blue-50/30 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
               placeholder="e.g. 12345678"
+              suppressHydrationWarning
             />
             <p className="text-[11px] text-slate-500 mt-1">
               For Super Admin testing, use recovery code <code className="text-blue-600 font-semibold">12345678</code>
@@ -139,6 +142,7 @@ export default function LoginPage() {
           <button
             type="button"
             onClick={() => {
+              
               setEmail("admin@graice.io");
               setPassword("Admin@123456");
               setMfaToken("11223344");
