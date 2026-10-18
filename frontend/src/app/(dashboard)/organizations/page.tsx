@@ -31,6 +31,7 @@ import { useAuth } from "@/context/AuthContext";
 import { Company, CompanyStatus, VerificationStatus, SubscriptionTier } from "@/types/company.types";
 import OrganizationDetailDrawer from "@/components/features/companies/OrganizationDetailDrawer";
 import Modal, { ConfirmationVariant } from "@/components/ui/Modal";
+import { AnimatedNumber } from "@/components/ui/AnimatedNumber";
 
 export default function OrganizationsPage() {
   // Live Data State
@@ -474,49 +475,61 @@ export default function OrganizationsPage() {
       {/* Compact 4-Card Metric Grid (Fixed Top - Logo Inspired Colors) */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 shrink-0">
         {/* Card 1: Total Organizations - Ocean Blue */}
-        <div className="bg-white rounded-xl border border-slate-200/90 p-3.5 shadow-xs hover:shadow-md transition-shadow flex items-center gap-3">
-          <div className="h-10 w-10 rounded-2xl bg-cyan-50 text-cyan-700 flex items-center justify-center shrink-0 border border-cyan-100 shadow-2xs">
+        <div className="group relative overflow-hidden bg-white rounded-xl border border-slate-200/90 p-3.5 shadow-xs transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-[0_12px_24px_-6px_rgba(15,23,42,0.08),0_4px_8px_-2px_rgba(15,23,42,0.03)] hover:border-cyan-300/80 flex items-center gap-3">
+          <div className="absolute top-0 inset-x-0 h-0.75 bg-gradient-to-r from-transparent via-cyan-500/70 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
+          <div className="h-10 w-10 rounded-2xl bg-cyan-50 text-cyan-700 flex items-center justify-center shrink-0 border border-cyan-100 shadow-2xs transition-all duration-300 ease-out group-hover:scale-105 group-hover:ring-4 group-hover:ring-cyan-100/70">
             <Building2 className="h-5 w-5" strokeWidth={1.85} />
           </div>
           <div className="min-w-0">
-            <div className="text-xl font-extrabold text-slate-900 leading-tight tracking-tight">{totalCount}</div>
-            <div className="text-[11px] font-medium text-slate-500 truncate mt-0.5">Total Organizations</div>
+            <div className="text-xl font-extrabold text-slate-900 leading-tight tracking-tight group-hover:text-slate-950 transition-colors">
+              <AnimatedNumber value={totalCount} delay={0} />
+            </div>
+            <div className="text-[11px] font-medium text-slate-500 truncate mt-0.5 group-hover:text-slate-600 transition-colors">Total Organizations</div>
             <div className="text-[10px] font-semibold text-teal-600 mt-0.5">▲ Live in DB</div>
           </div>
         </div>
 
         {/* Card 2: Active Clients - Emerald/Teal */}
-        <div className="bg-white rounded-xl border border-slate-200/90 p-3.5 shadow-xs hover:shadow-md transition-shadow flex items-center gap-3">
-          <div className="h-10 w-10 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 border border-emerald-100 shadow-2xs">
+        <div className="group relative overflow-hidden bg-white rounded-xl border border-slate-200/90 p-3.5 shadow-xs transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-[0_12px_24px_-6px_rgba(15,23,42,0.08),0_4px_8px_-2px_rgba(15,23,42,0.03)] hover:border-emerald-300/80 flex items-center gap-3">
+          <div className="absolute top-0 inset-x-0 h-0.75 bg-gradient-to-r from-transparent via-emerald-500/70 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
+          <div className="h-10 w-10 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 border border-emerald-100 shadow-2xs transition-all duration-300 ease-out group-hover:scale-105 group-hover:ring-4 group-hover:ring-emerald-100/70">
             <CheckCircle2 className="h-5 w-5" strokeWidth={1.85} />
           </div>
           <div className="min-w-0">
-            <div className="text-xl font-extrabold text-slate-900 leading-tight tracking-tight">{activeCount}</div>
-            <div className="text-[11px] font-medium text-slate-500 truncate mt-0.5">Active Clients</div>
+            <div className="text-xl font-extrabold text-slate-900 leading-tight tracking-tight group-hover:text-slate-950 transition-colors">
+              <AnimatedNumber value={activeCount} delay={70} />
+            </div>
+            <div className="text-[11px] font-medium text-slate-500 truncate mt-0.5 group-hover:text-slate-600 transition-colors">Active Clients</div>
             <div className="text-[10px] font-semibold text-emerald-600 mt-0.5">● On this page</div>
           </div>
         </div>
 
         {/* Card 3: DNS Verified - Teal */}
-        <div className="bg-white rounded-xl border border-slate-200/90 p-3.5 shadow-xs hover:shadow-md transition-shadow flex items-center gap-3">
-          <div className="h-10 w-10 rounded-2xl bg-teal-50 text-teal-700 flex items-center justify-center shrink-0 border border-teal-100 shadow-2xs">
+        <div className="group relative overflow-hidden bg-white rounded-xl border border-slate-200/90 p-3.5 shadow-xs transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-[0_12px_24px_-6px_rgba(15,23,42,0.08),0_4px_8px_-2px_rgba(15,23,42,0.03)] hover:border-teal-300/80 flex items-center gap-3">
+          <div className="absolute top-0 inset-x-0 h-0.75 bg-gradient-to-r from-transparent via-teal-500/70 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
+          <div className="h-10 w-10 rounded-2xl bg-teal-50 text-teal-700 flex items-center justify-center shrink-0 border border-teal-100 shadow-2xs transition-all duration-300 ease-out group-hover:scale-105 group-hover:ring-4 group-hover:ring-teal-100/70">
             <ShieldCheck className="h-5 w-5" strokeWidth={1.85} />
           </div>
           <div className="min-w-0">
-            <div className="text-xl font-extrabold text-slate-900 leading-tight tracking-tight">{verifiedCount}</div>
-            <div className="text-[11px] font-medium text-slate-500 truncate mt-0.5">DNS Verified</div>
+            <div className="text-xl font-extrabold text-slate-900 leading-tight tracking-tight group-hover:text-slate-950 transition-colors">
+              <AnimatedNumber value={verifiedCount} delay={140} />
+            </div>
+            <div className="text-[11px] font-medium text-slate-500 truncate mt-0.5 group-hover:text-slate-600 transition-colors">DNS Verified</div>
             <div className="text-[10px] font-semibold text-teal-600 mt-0.5">Cryptographic Check</div>
           </div>
         </div>
 
         {/* Card 4: Gold Tier Subscribers - Amber/Royal */}
-        <div className="bg-white rounded-xl border border-slate-200/90 p-3.5 shadow-xs hover:shadow-md transition-shadow flex items-center gap-3">
-          <div className="h-10 w-10 rounded-2xl bg-amber-50 text-amber-700 flex items-center justify-center shrink-0 border border-amber-100 shadow-2xs">
+        <div className="group relative overflow-hidden bg-white rounded-xl border border-slate-200/90 p-3.5 shadow-xs transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-[0_12px_24px_-6px_rgba(15,23,42,0.08),0_4px_8px_-2px_rgba(15,23,42,0.03)] hover:border-amber-300/80 flex items-center gap-3">
+          <div className="absolute top-0 inset-x-0 h-0.75 bg-gradient-to-r from-transparent via-amber-500/70 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
+          <div className="h-10 w-10 rounded-2xl bg-amber-50 text-amber-700 flex items-center justify-center shrink-0 border border-amber-100 shadow-2xs transition-all duration-300 ease-out group-hover:scale-105 group-hover:ring-4 group-hover:ring-amber-100/70">
             <Crown className="h-5 w-5" strokeWidth={1.85} />
           </div>
           <div className="min-w-0">
-            <div className="text-xl font-extrabold text-slate-900 leading-tight tracking-tight">{goldCount}</div>
-            <div className="text-[11px] font-medium text-slate-500 truncate mt-0.5">Gold Subscriptions</div>
+            <div className="text-xl font-extrabold text-slate-900 leading-tight tracking-tight group-hover:text-slate-950 transition-colors">
+              <AnimatedNumber value={goldCount} delay={210} />
+            </div>
+            <div className="text-[11px] font-medium text-slate-500 truncate mt-0.5 group-hover:text-slate-600 transition-colors">Gold Subscriptions</div>
             <div className="text-[10px] font-semibold text-amber-600 mt-0.5">Enterprise Tier</div>
           </div>
         </div>
