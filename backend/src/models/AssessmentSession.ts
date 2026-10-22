@@ -77,6 +77,8 @@ export interface IAssessmentSession extends Document {
   answers: IAnswer[];
   scoreSnapshot?: IScoreSnapshot;
   reportMetadata?: IReportMetadata;
+  dueDate?: Date;
+  targetCompletionDate?: Date;
   submittedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
@@ -177,6 +179,8 @@ const AssessmentSessionSchema = new Schema<IAssessmentSession>(
       checksum: { type: String },
       storageType: { type: String, enum: ["s3", "local"], default: "local" },
     },
+    dueDate: { type: Date, index: true },
+    targetCompletionDate: { type: Date },
     submittedAt: { type: Date },
   },
   { timestamps: true }

@@ -98,6 +98,7 @@ class S3StorageService {
         Bucket: this.bucketName,
         Key: s3Key,
         ContentType: contentType,
+        ServerSideEncryption: "AES256",
       });
 
       const uploadUrl = await getSignedUrl(this.s3Client, command, { expiresIn });
@@ -145,6 +146,7 @@ class S3StorageService {
         Key: s3Key,
         Body: buffer,
         ContentType: mimeType,
+        ServerSideEncryption: "AES256",
       });
 
       await this.s3Client.send(command);

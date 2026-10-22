@@ -9,6 +9,8 @@ import auditorMappingRoutes from "./auditorMapping.routes.js";
 import dashboardRoutes from "./dashboard.routes.js";
 import adminFrameworkRoutes from "./adminFramework.routes.js";
 import auditLogRoutes from "./auditLog.routes.js";
+import apiKeyRoutes from "./apiKey.routes.js";
+import webhookRoutes from "./webhook.routes.js";
 
 const router = Router();
 
@@ -21,6 +23,8 @@ router.use("/frameworks", frameworkRoutes);
 router.use("/admin/auditor-mappings", auditorMappingRoutes);
 router.use("/admin/frameworks", adminFrameworkRoutes);
 router.use("/admin/audit-logs", auditLogRoutes);
+router.use("/admin/api-keys", apiKeyRoutes);
+router.use("/webhooks", webhookRoutes);
 router.use("/dashboard", dashboardRoutes);
 
 export default router;

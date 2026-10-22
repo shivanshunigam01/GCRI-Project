@@ -13,6 +13,7 @@ import { ReportService } from "../services/report.service.js";
 import { ExportService } from "../services/export.service.js";
 import { scopeQueryByCompany, scopeQueryByCompanyAsync, isAuditorAssignedToOrg } from "../middlewares/companyScope.js";
 import { NotificationService } from "../services/notification.service.js";
+import { emailService } from "../services/email.service.js";
 
 /**
  * Helper to record authorization-denied events in the audit log
@@ -1208,6 +1209,153 @@ export async function exportAssessmentExcel(req: Request, res: Response, next: N
     );
     res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
     return res.send(excelBuffer);
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * Manual trigger for sending an assessment reminder to client contact or auditor
+ */
+export async function sendAssessmentReminderNotification(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { id } = req.params;
+    const session = await AssessmentSession.findById(id);
+    if (!session) {
+      return sendError(res, "Assessment session not found", 404, "SESSION_NOT_FOUND");
+    }
+
+    if (session.status !== "InProgress") {
+      return sendError(
+        res,
+        "Reminders can only be sent for in-progress assessments",
+        400,
+        "INVALID_SESSION_STATUS"
+      );
+    }
+
+    // Role check: Auditor must be assigned to org or be Admin
+    if (req.user?.role !== "Admin") {
+      const isAssigned = await isAuditorAssignedToOrg(req.user!.userId, session.companyId.toString());
+      const isCreator = session.conductedByUserId?.toString() === req.user!.userId;
+      if (!isAssigned && !isCreator) {
+        return sendError(res, "Access denied. You are not assigned to this organization.", 403, "CROSS_COMPANY_ACCESS_DENIED");
+      }
+    }
+
+    const company = await Company.findById(session.companyId);
+    if (!company) {
+      return sendError(res, "Company not found", 404, "COMPANY_NOT_FOUND");
+    }
+
+    const recipientEmail = req.body?.recipientEmail || session.clientContact?.email;
+    if (!recipientEmail) {
+      return sendError(res, "Recipient email address is required", 400, "RECIPIENT_EMAIL_REQUIRED");
+    }
+
+    const clientBaseUrl = process.env.CLIENT_BASE_URL || "http://localhost:3000";
+    const deepLinkUrl = `${clientBaseUrl}/assessments/${session._id}`;
+
+    await emailService.sendAssessmentReminder({
+      recipientEmail,
+      assessmentId: session._id.toString(),
+      companyName: company.name,
+      frameworkTitle: `GRAICE Framework (${session.frameworkVersion} ${session.assessmentType})`,
+      dueDate: session.dueDate,
+      deepLinkUrl,
+    });
+
+    await AuditLog.create({
+      actorId: req.user!.userId,
+      actorEmail: req.user!.email,
+      action: "ASSESSMENT_REMINDER_SENT",
+      entity: "AssessmentSession",
+      entityId: session._id.toString(),
+      after: { recipientEmail },
+      ipAddress: req.ip,
+      userAgent: req.headers["user-agent"],
+    });
+
+    return sendSuccess(res, {
+      message: `Assessment reminder notification dispatched to ${recipientEmail}`,
+      assessmentId: session._id,
+      recipientEmail,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * Trigger for sending assessment completion scorecard and report link
+ */
+export async function sendAssessmentCompletionNotification(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { id } = req.params;
+    const session = await AssessmentSession.findById(id);
+    if (!session) {
+      return sendError(res, "Assessment session not found", 404, "SESSION_NOT_FOUND");
+    }
+
+    if (session.status !== "Submitted") {
+      return sendError(
+        res,
+        "Completion notification can only be dispatched for submitted assessments",
+        400,
+        "ASSESSMENT_NOT_SUBMITTED"
+      );
+    }
+
+    // Role check: Auditor must be assigned or Admin
+    if (req.user?.role !== "Admin") {
+      const isAssigned = await isAuditorAssignedToOrg(req.user!.userId, session.companyId.toString());
+      const isCreator = session.conductedByUserId?.toString() === req.user!.userId;
+      if (!isAssigned && !isCreator) {
+        return sendError(res, "Access denied. You are not assigned to this organization.", 403, "CROSS_COMPANY_ACCESS_DENIED");
+      }
+    }
+
+    const company = await Company.findById(session.companyId);
+    if (!company) {
+      return sendError(res, "Company not found", 404, "COMPANY_NOT_FOUND");
+    }
+
+    const recipientEmail = req.body?.recipientEmail || session.clientContact?.email;
+    if (!recipientEmail) {
+      return sendError(res, "Recipient email address is required", 400, "RECIPIENT_EMAIL_REQUIRED");
+    }
+
+    const score = session.scoreSnapshot?.compliancePercentage ?? session.scoreSnapshot?.overallPercentage ?? 0;
+    const maturityLevel = session.scoreSnapshot?.maturityLevel || "Emerging";
+    const reportDownloadUrl = session.reportMetadata?.fileUrl;
+
+    await emailService.sendAssessmentCompleted({
+      recipientEmail,
+      companyName: company.name,
+      assessmentType: session.assessmentType,
+      score,
+      maturityLevel,
+      reportDownloadUrl,
+    });
+
+    await AuditLog.create({
+      actorId: req.user!.userId,
+      actorEmail: req.user!.email,
+      action: "ASSESSMENT_COMPLETION_NOTIFICATION_SENT",
+      entity: "AssessmentSession",
+      entityId: session._id.toString(),
+      after: { recipientEmail, score, maturityLevel },
+      ipAddress: req.ip,
+      userAgent: req.headers["user-agent"],
+    });
+
+    return sendSuccess(res, {
+      message: `Assessment completion notification dispatched to ${recipientEmail}`,
+      assessmentId: session._id,
+      recipientEmail,
+      score,
+      maturityLevel,
+    });
   } catch (err) {
     next(err);
   }

@@ -20,6 +20,11 @@ import { swaggerSpec } from "./config/swagger.js";
 app.use(
   helmet({
     contentSecurityPolicy: false, // Allows Swagger UI to render CDN stylesheets/scripts
+    hsts: {
+      maxAge: 31536000,
+      includeSubDomains: true,
+      preload: true,
+    },
   })
 );
 app.use(
@@ -65,6 +70,15 @@ async function startServer() {
       console.log("Connected to mongodb ", PORT)
       console.log(`[Server] GRAICE Backend API listening on port ${PORT}`);
       console.log(`[Server] Health Check available at: http://localhost:${PORT}/api/v1/health`);
+
+      // Initialize background cron scheduler
+      import("./services/scheduler.service.js")
+        .then(({ platformScheduler }) => {
+          platformScheduler.startScheduler();
+        })
+        .catch((err) => {
+          console.error("[Server] Failed to initialize platform scheduler:", err);
+        });
     });
   } catch (error) {
     console.error("[Server] Fatal error starting server:", error);

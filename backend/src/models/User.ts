@@ -11,6 +11,8 @@ export interface IUser extends Document {
   role: UserRole;
   status: UserStatus;
   companyId?: Types.ObjectId;
+  authProvider?: "credentials" | "google" | "microsoft";
+  oauthId?: string;
   mfa: {
     enabled: boolean;
     secret?: string;
@@ -48,6 +50,13 @@ const UserSchema = new Schema<IUser>(
       index: true,
     },
     companyId: { type: Schema.Types.ObjectId, ref: "Company", index: true },
+    authProvider: {
+      type: String,
+      enum: ["credentials", "google", "microsoft"],
+      default: "credentials",
+      index: true,
+    },
+    oauthId: { type: String, index: true },
     mfa: {
       enabled: { type: Boolean, default: false },
       secret: { type: String },

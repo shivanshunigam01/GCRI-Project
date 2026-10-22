@@ -18,6 +18,8 @@ import {
   generateAssessmentReport,
   downloadAssessmentReport,
   exportAssessmentExcel,
+  sendAssessmentReminderNotification,
+  sendAssessmentCompletionNotification,
 } from "../controllers/assessment.controller.js";
 import { authenticate, authorize } from "../middlewares/auth.js";
 import { validateRequest } from "../middlewares/validate.js";
@@ -533,6 +535,104 @@ router.get("/:id/report", authenticate, validateRequest(AssessmentParamSchema), 
  *         description: Forbidden
  */
 router.get("/:id/export", authenticate, validateRequest(AssessmentParamSchema), exportAssessmentExcel);
+
+/**
+ * @openapi
+ * /api/v1/assessments/{id}/remind:
+ *   post:
+ *     summary: Trigger manual assessment reminder notification
+ *     description: Dispatches an assessment reminder email to client contact or auditor with deep-link resumption aid.
+ *     tags:
+ *       - Assessment Sessions
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Reminder email dispatched
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/AssessmentReminderResponse'
+ *       400:
+ *         description: Invalid session state
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       403:
+ *         description: Forbidden
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       404:
+ *         description: Assessment not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
+router.post(
+  "/:id/remind",
+  authenticate,
+  validateRequest(AssessmentParamSchema),
+  sendAssessmentReminderNotification
+);
+
+/**
+ * @openapi
+ * /api/v1/assessments/{id}/notifications/completion:
+ *   post:
+ *     summary: Trigger assessment completion scorecard alert
+ *     description: Dispatches completion confirmation email with executive maturity scorecard and PDF report download link.
+ *     tags:
+ *       - Assessment Sessions
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Completion alert dispatched
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/AssessmentCompletionResponse'
+ *       400:
+ *         description: Assessment not yet submitted
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       403:
+ *         description: Forbidden
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       404:
+ *         description: Assessment not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
+router.post(
+  "/:id/notifications/completion",
+  authenticate,
+  validateRequest(AssessmentParamSchema),
+  sendAssessmentCompletionNotification
+);
 
 export default router;
 
