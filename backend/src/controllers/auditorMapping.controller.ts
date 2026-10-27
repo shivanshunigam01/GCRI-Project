@@ -22,6 +22,16 @@ export async function assignAuditor(req: Request, res: Response, next: NextFunct
       return sendError(res, "Organization not found", 404, "ORGANIZATION_NOT_FOUND");
     }
 
+    // Tenant check: Org Admin cannot map auditors to other organizations
+    if (req.user?.role === "Admin" && req.user.companyId !== organizationId.toString()) {
+      return sendError(
+        res,
+        "Access denied. You can only assign auditors to your own organization.",
+        403,
+        "CROSS_COMPANY_ACCESS_DENIED"
+      );
+    }
+
     // 2. Verify auditor exists and has Assessor role
     const auditor = await User.findById(auditorId);
     if (!auditor) {
@@ -109,7 +119,12 @@ export async function getAuditorMappings(req: Request, res: Response, next: Next
     if (status && status !== "All") {
       filter.status = status;
     }
-    if (organizationId) {
+    if (req.user?.role === "Admin") {
+      if (!req.user.companyId) {
+        return sendSuccess(res, { mappings: [], pagination: { page: 1, limit: 20, total: 0, totalPages: 0 } });
+      }
+      filter.organizationId = new Types.ObjectId(req.user.companyId);
+    } else if (organizationId) {
       filter.organizationId = new Types.ObjectId(organizationId as string);
     }
     if (auditorId) {
@@ -228,6 +243,16 @@ export async function removeAuditorMapping(req: Request, res: Response, next: Ne
     const mapping = await AuditorOrganization.findById(id);
     if (!mapping) {
       return sendError(res, "Auditor mapping not found", 404, "MAPPING_NOT_FOUND");
+    }
+
+    // Tenant check: Org Admin can only unassign from own organization
+    if (req.user?.role === "Admin" && mapping.organizationId.toString() !== req.user.companyId) {
+      return sendError(
+        res,
+        "Access denied. You can only unassign auditors from your own organization.",
+        403,
+        "CROSS_COMPANY_ACCESS_DENIED"
+      );
     }
 
     mapping.status = "Inactive";

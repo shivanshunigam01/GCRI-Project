@@ -40,7 +40,7 @@ const router = Router();
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  */
-router.post("/", authenticate, authorize("Admin"), createApiKey);
+router.post("/", authenticate, authorize("SuperAdmin", "Admin"), createApiKey);
 
 /**
  * @openapi
@@ -66,7 +66,7 @@ router.post("/", authenticate, authorize("Admin"), createApiKey);
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  */
-router.get("/", authenticate, authorize("Admin"), listApiKeys);
+router.get("/", authenticate, authorize("SuperAdmin", "Admin"), listApiKeys);
 
 /**
  * @openapi
@@ -104,6 +104,6 @@ router.get("/", authenticate, authorize("Admin"), listApiKeys);
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  */
-router.delete("/:id", authenticate, authorize("Admin"), revokeApiKey);
+router.delete("/:id", authenticate, authorize("SuperAdmin", "Admin"), revokeApiKey);
 
 export default router;

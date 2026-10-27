@@ -33,7 +33,7 @@ const router = Router();
  *       403:
  *         description: Platform administrators only
  */
-router.get("/admin/summary", authenticate, authorize("Admin"), getAdminDashboardSummary);
+router.get("/admin/summary", authenticate, authorize("SuperAdmin", "Admin"), getAdminDashboardSummary);
 
 /**
  * @openapi
@@ -77,7 +77,7 @@ router.get("/admin/summary", authenticate, authorize("Admin"), getAdminDashboard
 router.get(
   "/admin/assessments",
   authenticate,
-  authorize("Admin"),
+  authorize("SuperAdmin", "Admin"),
   validateRequest(AdminDashboardAssessmentsQuerySchema),
   getAdminDashboardAssessments
 );

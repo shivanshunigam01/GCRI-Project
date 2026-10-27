@@ -10,7 +10,7 @@ export const notificationEvents = new NotificationEmitter();
 // Attach automated listeners to forward platform events to email service
 notificationEvents.on("COMPANY_ONBOARDED", async ({ company, actor }: { company: ICompany; actor: { id: string; email: string } }) => {
   try {
-    const adminUsers = await User.find({ role: "Admin", status: "Active" }).select("email");
+    const adminUsers = await User.find({ role: { $in: ["SuperAdmin", "Admin"] }, status: "Active" }).select("email");
     const adminEmails = adminUsers.map((u) => u.email);
     if (adminEmails.length === 0) {
       adminEmails.push(process.env.ADMIN_EMAIL || "admin@graice.ai");
@@ -30,7 +30,7 @@ notificationEvents.on("COMPANY_ONBOARDED", async ({ company, actor }: { company:
 
 notificationEvents.on("DOMAIN_VERIFICATION_PENDING", async ({ company, reason }: { company: ICompany; reason: string }) => {
   try {
-    const adminUsers = await User.find({ role: "Admin", status: "Active" }).select("email");
+    const adminUsers = await User.find({ role: { $in: ["SuperAdmin", "Admin"] }, status: "Active" }).select("email");
     const adminEmails = adminUsers.map((u) => u.email);
     if (adminEmails.length === 0) {
       adminEmails.push(process.env.ADMIN_EMAIL || "admin@graice.ai");

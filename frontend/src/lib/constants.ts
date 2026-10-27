@@ -9,6 +9,7 @@ export const GRAICE_PILLARS = [
 ] as const;
 
 export const USER_ROLES = {
+  SUPER_ADMIN: "SuperAdmin",
   ADMIN: "Admin",
   ASSESSOR: "Assessor",
   MEMBERSHIP_APPROVER: "MembershipApprover",

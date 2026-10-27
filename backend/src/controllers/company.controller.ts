@@ -166,7 +166,7 @@ export async function getCompanies(req: Request, res: Response, next: NextFuncti
 
     const baseFilter: Record<string, unknown> = {};
 
-    if (req.user?.role !== "Admin" && !req.user?.companyId && req.user?.userId) {
+    if (req.user?.role !== "SuperAdmin" && !req.user?.companyId && req.user?.userId) {
       const u = await User.findById(req.user.userId);
       if (u?.companyId) {
         req.user.companyId = u.companyId.toString();
@@ -408,7 +408,11 @@ export async function getCompanyTrends(req: Request, res: Response, next: NextFu
       return sendError(res, "Authentication required", 401, "UNAUTHORIZED");
     }
 
-    if (req.user.role !== "Admin") {
+    if (req.user.role === "Admin") {
+      if (!req.user.companyId || req.user.companyId.toString() !== id.toString()) {
+        return sendError(res, "Access denied. You cannot view trends outside your organization.", 403, "CROSS_COMPANY_ACCESS_DENIED");
+      }
+    } else if (req.user.role !== "SuperAdmin") {
       const isAssigned = await isAuditorAssignedToOrg(req.user.userId, id);
       if (!isAssigned) {
         return sendError(res, "Access denied. You are not assigned to this organization.", 403, "CROSS_COMPANY_ACCESS_DENIED");

@@ -53,7 +53,7 @@ const router = Router();
 router.post(
   "/",
   authenticate,
-  authorize("Admin"),
+  authorize("SuperAdmin", "Admin"),
   validateRequest(AssignAuditorSchema),
   assignAuditor
 );
@@ -85,7 +85,7 @@ router.post(
  *       200:
  *         description: Paginated list of auditor-organization assignments
  */
-router.get("/", authenticate, authorize("Admin"), getAuditorMappings);
+router.get("/", authenticate, authorize("SuperAdmin", "Admin"), getAuditorMappings);
 
 /**
  * @openapi
@@ -109,7 +109,7 @@ router.get("/", authenticate, authorize("Admin"), getAuditorMappings);
 router.get(
   "/org/:organizationId",
   authenticate,
-  authorize("Admin", "Assessor"),
+  authorize("SuperAdmin", "Admin", "Assessor"),
   validateRequest(OrganizationParamSchema),
   getAuditorsForOrganization
 );
@@ -136,7 +136,7 @@ router.get(
 router.get(
   "/auditor/:auditorId",
   authenticate,
-  authorize("Admin", "Assessor"),
+  authorize("SuperAdmin", "Admin", "Assessor"),
   validateRequest(AuditorParamSchema),
   getOrganizationsForAuditor
 );
@@ -165,7 +165,7 @@ router.get(
 router.delete(
   "/:id",
   authenticate,
-  authorize("Admin"),
+  authorize("SuperAdmin", "Admin"),
   validateRequest(MappingIdParamSchema),
   removeAuditorMapping
 );

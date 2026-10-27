@@ -1,4 +1,4 @@
-export type UserRole = "Admin" | "Assessor" | "MembershipApprover";
+export type UserRole = "SuperAdmin" | "Admin" | "Assessor" | "MembershipApprover";
 export type UserStatus = "Active" | "Deactivated";
 
 export interface UserCompany {

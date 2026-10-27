@@ -71,7 +71,9 @@ export async function updateMe(req: Request, res: Response, next: NextFunction) 
 }
 
 /**
- * List all users with filtering, search, and pagination (Admin only)
+ * List all users with filtering, search, and pagination (SuperAdmin or Admin)
+ * SuperAdmins see all users across all organizations.
+ * Admins are strictly scoped to users in their own organization.
  */
 export async function getUsers(req: Request, res: Response, next: NextFunction) {
   try {
@@ -81,16 +83,23 @@ export async function getUsers(req: Request, res: Response, next: NextFunction) 
 
     const filter: Record<string, unknown> = {};
 
+    // Organization Admins are strictly scoped to their own company
+    if (req.user?.role === "Admin") {
+      if (!req.user.companyId) {
+        return sendSuccess(res, [], 200, { page, limit, total: 0, totalPages: 0 });
+      }
+      filter.companyId = req.user.companyId;
+    } else if (req.query.companyId && typeof req.query.companyId === "string") {
+      // SuperAdmin can filter by specific organization
+      filter.companyId = req.query.companyId;
+    }
+
     if (req.query.role && typeof req.query.role === "string") {
       filter.role = req.query.role;
     }
 
     if (req.query.status && typeof req.query.status === "string") {
       filter.status = req.query.status;
-    }
-
-    if (req.query.companyId && typeof req.query.companyId === "string") {
-      filter.companyId = req.query.companyId;
     }
 
     if (req.query.search && typeof req.query.search === "string") {
@@ -122,7 +131,7 @@ export async function getUsers(req: Request, res: Response, next: NextFunction) 
 }
 
 /**
- * Get individual user by ID (Admin only)
+ * Get individual user by ID (SuperAdmin or Admin)
  */
 export async function getUserById(req: Request, res: Response, next: NextFunction) {
   try {
@@ -135,6 +144,18 @@ export async function getUserById(req: Request, res: Response, next: NextFunctio
       return sendError(res, "User not found", 404, "USER_NOT_FOUND");
     }
 
+    // Tenant isolation: Org Admins cannot inspect users belonging to other organizations
+    if (req.user?.role === "Admin") {
+      if (!user.companyId || user.companyId.toString() !== req.user.companyId) {
+        return sendError(
+          res,
+          "Access denied. You cannot view users outside your organization.",
+          403,
+          "CROSS_COMPANY_ACCESS_DENIED"
+        );
+      }
+    }
+
     return sendSuccess(res, user);
   } catch (err) {
     next(err);
@@ -142,13 +163,51 @@ export async function getUserById(req: Request, res: Response, next: NextFunctio
 }
 
 /**
- * Invite a new user or assessor (Admin only)
+ * Invite a new user, assessor, or admin (SuperAdmin or Admin)
+ * SuperAdmins can invite Admins for a specific company, Assessors, or other SuperAdmins.
+ * Org Admins can only invite Assessors or MembershipApprovers for their own company.
  */
 export async function inviteUser(req: Request, res: Response, next: NextFunction) {
   try {
     const { email, name, role, companyId } = req.body;
     const actorId = req.user?.userId;
+    const actorRole = req.user?.role;
     const actorEmail = req.user?.email || "unknown";
+
+    let targetCompanyId = companyId;
+
+    // RBAC Guardrails
+    if (actorRole === "Admin") {
+      // Organization Admins cannot invite SuperAdmins or other Admins
+      if (role === "SuperAdmin" || role === "Admin") {
+        return sendError(
+          res,
+          "Organization Admins cannot invite Admin or SuperAdmin accounts.",
+          403,
+          "PRIVILEGE_ESCALATION_DENIED"
+        );
+      }
+      // Force companyId to actor's organization to prevent cross-tenant user creation
+      targetCompanyId = req.user?.companyId;
+      if (!targetCompanyId) {
+        return sendError(
+          res,
+          "Your administrative account is not linked to an organization.",
+          400,
+          "COMPANY_NOT_LINKED"
+        );
+      }
+    } else if (actorRole === "SuperAdmin") {
+      // When SuperAdmin creates an Admin, an organization MUST be specified
+      if (role === "Admin" && !companyId) {
+        return sendError(
+          res,
+          "Organization ID (companyId) is required when inviting an Admin for an organization.",
+          400,
+          "COMPANY_ID_REQUIRED"
+        );
+      }
+    }
 
     const cleanEmail = email.toLowerCase().trim();
 
@@ -171,7 +230,7 @@ export async function inviteUser(req: Request, res: Response, next: NextFunction
       email: cleanEmail,
       name,
       role,
-      companyId: companyId || undefined,
+      companyId: targetCompanyId || undefined,
       status: "Active",
       invitationToken: hashedToken,
       invitationExpires: expires,
@@ -287,20 +346,23 @@ export async function acceptInvite(req: Request, res: Response, next: NextFuncti
 }
 
 /**
- * Toggle user active/deactivated status (Admin only)
+ * Toggle user active/deactivated status (SuperAdmin or Admin)
+ * SuperAdmins can toggle any Admin or user.
+ * Org Admins can only toggle Assessors/users within their own organization.
  */
 export async function updateUserStatus(req: Request, res: Response, next: NextFunction) {
   try {
     const { id } = req.params;
     const { status } = req.body;
     const actorId = req.user?.userId;
+    const actorRole = req.user?.role;
     const actorEmail = req.user?.email || "unknown";
 
-    // Safety Guard: Prevent Admin from deactivating own account
+    // Safety Guard: Prevent user from deactivating own account
     if (actorId === id && status === "Deactivated") {
       return sendError(
         res,
-        "You cannot deactivate your own administrative account.",
+        "You cannot deactivate your own account.",
         400,
         "SELF_DEACTIVATION_PROHIBITED"
       );
@@ -309,6 +371,39 @@ export async function updateUserStatus(req: Request, res: Response, next: NextFu
     const user = await User.findById(id);
     if (!user) {
       return sendError(res, "User not found", 404, "USER_NOT_FOUND");
+    }
+
+    // Role-based boundary enforcement
+    if (actorRole === "Admin") {
+      // Organization Admin cannot touch SuperAdmin or other Admins
+      if (user.role === "SuperAdmin" || user.role === "Admin") {
+        return sendError(
+          res,
+          "Organization Admins cannot modify Admin or SuperAdmin accounts.",
+          403,
+          "FORBIDDEN"
+        );
+      }
+      // Must be within own organization
+      if (!user.companyId || user.companyId.toString() !== req.user?.companyId) {
+        return sendError(
+          res,
+          "Access denied. You cannot modify users outside your organization.",
+          403,
+          "CROSS_COMPANY_ACCESS_DENIED"
+        );
+      }
+    } else if (actorRole === "SuperAdmin" && user.role === "SuperAdmin" && status === "Deactivated") {
+      // Prevent deactivating sole active SuperAdmin
+      const superAdminCount = await User.countDocuments({ role: "SuperAdmin", status: "Active" });
+      if (superAdminCount <= 1) {
+        return sendError(
+          res,
+          "Cannot deactivate the sole active Super Administrator of the platform.",
+          400,
+          "SOLE_SUPER_ADMIN_ACTION_PROHIBITED"
+        );
+      }
     }
 
     const previousStatus = user.status;
@@ -346,31 +441,62 @@ export async function updateUserStatus(req: Request, res: Response, next: NextFu
 }
 
 /**
- * Reassign user role (Admin only)
+ * Reassign user role (SuperAdmin only)
+ * Only SuperAdmins have authority to elevate or demote roles.
  */
 export async function updateUserRole(req: Request, res: Response, next: NextFunction) {
   try {
     const { id } = req.params;
     const { role } = req.body;
     const actorId = req.user?.userId;
+    const actorRole = req.user?.role;
     const actorEmail = req.user?.email || "unknown";
+
+    if (actorRole !== "SuperAdmin") {
+      return sendError(
+        res,
+        "Only Super Administrators can reassign user roles.",
+        403,
+        "SUPER_ADMIN_REQUIRED"
+      );
+    }
 
     const user = await User.findById(id);
     if (!user) {
       return sendError(res, "User not found", 404, "USER_NOT_FOUND");
     }
 
-    // Safety Guard: Prevent last Admin from demoting themselves
-    if (actorId === id && role !== "Admin") {
-      const adminCount = await User.countDocuments({ role: "Admin", status: "Active" });
-      if (adminCount <= 1) {
+    // Safety Guard: Prevent user from demoting their own SuperAdmin account
+    if (actorId === id && user.role === "SuperAdmin" && role !== "SuperAdmin") {
+      return sendError(
+        res,
+        "You cannot demote your own Super Administrator account.",
+        400,
+        "SELF_DEMOTION_PROHIBITED"
+      );
+    }
+
+    // Safety Guard: Prevent last SuperAdmin from demoting themselves or others
+    if (user.role === "SuperAdmin" && role !== "SuperAdmin") {
+      const superAdminCount = await User.countDocuments({ role: "SuperAdmin", status: "Active" });
+      if (superAdminCount <= 1) {
         return sendError(
           res,
-          "Cannot demote the sole active administrator of the platform.",
+          "Cannot demote the sole active Super Administrator of the platform.",
           400,
-          "SOLE_ADMIN_DEMOTION_PROHIBITED"
+          "SOLE_SUPER_ADMIN_DEMOTION_PROHIBITED"
         );
       }
+    }
+
+    // Guard: An Admin must belong to an organization
+    if (role === "Admin" && !user.companyId) {
+      return sendError(
+        res,
+        "Cannot promote user to Organization Admin without an associated organization (companyId).",
+        400,
+        "COMPANY_ASSOCIATION_REQUIRED"
+      );
     }
 
     const previousRole = user.role;
@@ -403,8 +529,9 @@ export async function updateUserRole(req: Request, res: Response, next: NextFunc
 }
 
 /**
- * Admin-initiated password reset token generation
- * Generates cryptographic reset token and logs audit event.
+ * Admin-initiated password reset token generation (SuperAdmin or Admin)
+ * SuperAdmin can reset for anyone.
+ * Org Admin can only reset for users in their own organization.
  */
 export async function adminResetPassword(
   req: Request,
@@ -414,11 +541,32 @@ export async function adminResetPassword(
   try {
     const { id } = req.params;
     const actorId = req.user?.userId;
+    const actorRole = req.user?.role;
     const actorEmail = req.user?.email || "admin";
 
     const user = await User.findById(id);
     if (!user) {
       return sendError(res, "User not found", 404, "USER_NOT_FOUND");
+    }
+
+    // Org Admin boundary check
+    if (actorRole === "Admin") {
+      if (user.role === "SuperAdmin" || user.role === "Admin") {
+        return sendError(
+          res,
+          "Organization Admins cannot reset password for Admin or SuperAdmin accounts.",
+          403,
+          "FORBIDDEN"
+        );
+      }
+      if (!user.companyId || user.companyId.toString() !== req.user?.companyId) {
+        return sendError(
+          res,
+          "Access denied. You cannot reset password for users outside your organization.",
+          403,
+          "CROSS_COMPANY_ACCESS_DENIED"
+        );
+      }
     }
 
     const rawToken = crypto.randomBytes(32).toString("hex");
@@ -462,7 +610,7 @@ export async function adminResetPassword(
 }
 
 /**
- * Admin update of user profile details (name, phone, companyId, role, status)
+ * Admin update of user profile details (SuperAdmin or Admin)
  */
 export async function adminUpdateUser(
   req: Request,
@@ -472,6 +620,7 @@ export async function adminUpdateUser(
   try {
     const { id } = req.params;
     const actorId = req.user?.userId;
+    const actorRole = req.user?.role;
     const actorEmail = req.user?.email || "admin";
     const { name, phone, companyId, role, status } = req.body;
 
@@ -480,16 +629,45 @@ export async function adminUpdateUser(
       return sendError(res, "User not found", 404, "USER_NOT_FOUND");
     }
 
-    // Protection: Prevent last admin from demoting or deactivating themselves
-    if (actorId === id && ((role && role !== "Admin") || (status && status !== "Active"))) {
-      const adminCount = await User.countDocuments({ role: "Admin", status: "Active" });
-      if (adminCount <= 1) {
+    // Role-based isolation
+    if (actorRole === "Admin") {
+      if (user.role === "SuperAdmin" || user.role === "Admin") {
         return sendError(
           res,
-          "Cannot demote or deactivate the sole active administrator of the platform.",
-          400,
-          "SOLE_ADMIN_ACTION_PROHIBITED"
+          "Organization Admins cannot modify Admin or SuperAdmin accounts.",
+          403,
+          "FORBIDDEN"
         );
+      }
+      if (!user.companyId || user.companyId.toString() !== req.user?.companyId) {
+        return sendError(
+          res,
+          "Access denied. You cannot modify users outside your organization.",
+          403,
+          "CROSS_COMPANY_ACCESS_DENIED"
+        );
+      }
+      // Org Admins cannot alter roles or company associations
+      if (role !== undefined || companyId !== undefined) {
+        return sendError(
+          res,
+          "Organization Admins cannot reassign roles or company associations.",
+          403,
+          "PRIVILEGE_ESCALATION_DENIED"
+        );
+      }
+    } else if (actorRole === "SuperAdmin") {
+      // Protection: Prevent last SuperAdmin from demoting or deactivating themselves
+      if (actorId === id && ((role && role !== "SuperAdmin") || (status && status !== "Active"))) {
+        const superAdminCount = await User.countDocuments({ role: "SuperAdmin", status: "Active" });
+        if (superAdminCount <= 1) {
+          return sendError(
+            res,
+            "Cannot demote or deactivate the sole active Super Administrator of the platform.",
+            400,
+            "SOLE_SUPER_ADMIN_ACTION_PROHIBITED"
+          );
+        }
       }
     }
 
@@ -503,8 +681,8 @@ export async function adminUpdateUser(
 
     if (name !== undefined) user.name = name;
     if (phone !== undefined) user.phone = phone;
-    if (companyId !== undefined) user.companyId = companyId;
-    if (role !== undefined) user.role = role;
+    if (actorRole === "SuperAdmin" && companyId !== undefined) user.companyId = companyId;
+    if (actorRole === "SuperAdmin" && role !== undefined) user.role = role;
     if (status !== undefined) user.status = status;
 
     await user.save();

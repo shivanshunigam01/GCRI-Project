@@ -78,7 +78,7 @@ const router = Router();
 router.post(
   "/",
   authenticate,
-  authorize("Admin", "Assessor"),
+  authorize("SuperAdmin", "Admin", "Assessor"),
   validateRequest(CreateAssessmentSchema),
   createAssessment
 );
@@ -192,7 +192,7 @@ router.get("/:id", authenticate, validateRequest(AssessmentParamSchema), getAsse
 router.put(
   "/:id/answers",
   authenticate,
-  authorize("Admin", "Assessor"),
+  authorize("SuperAdmin", "Admin", "Assessor"),
   validateRequest(SubmitAnswersSchema),
   saveAnswers
 );
@@ -249,7 +249,7 @@ router.get(
 router.post(
   "/:id/submit",
   authenticate,
-  authorize("Admin", "Assessor"),
+  authorize("SuperAdmin", "Admin", "Assessor"),
   validateRequest(AssessmentParamSchema),
   submitAssessment
 );
@@ -297,7 +297,7 @@ router.post(
 router.post(
   "/:id/evidence/presigned-url",
   authenticate,
-  authorize("Admin", "Assessor"),
+  authorize("SuperAdmin", "Admin", "Assessor"),
   validateRequest(PresignedUrlSchema),
   getEvidencePresignedUrl
 );
@@ -325,7 +325,7 @@ router.post(
 router.post(
   "/:id/evidence/upload",
   authenticate,
-  authorize("Admin", "Assessor"),
+  authorize("SuperAdmin", "Admin", "Assessor"),
   upload.single("file"),
   uploadEvidenceDirect
 );

@@ -30,8 +30,8 @@ import {
 
 const router = Router();
 
-// Enforce authentication and Admin role across all routes in this router
-router.use(authenticate, authorize("Admin"));
+// Enforce authentication and SuperAdmin role across all framework administrative routes
+router.use(authenticate, authorize("SuperAdmin"));
 
 /**
  * @openapi

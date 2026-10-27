@@ -119,7 +119,7 @@ router.patch("/me", authenticate, validateRequest(UpdateProfileSchema), updateMe
 router.post(
   "/invite",
   authenticate,
-  authorize("Admin"),
+  authorize("SuperAdmin", "Admin"),
   validateRequest(InviteUserSchema),
   inviteUser
 );
@@ -200,7 +200,7 @@ router.post("/accept-invite", validateRequest(AcceptInviteSchema), acceptInvite)
  *       403:
  *         description: Admin role required
  */
-router.get("/", authenticate, authorize("Admin"), getUsers);
+router.get("/", authenticate, authorize("SuperAdmin", "Admin"), getUsers);
 
 /**
  * @openapi
@@ -229,7 +229,7 @@ router.get("/", authenticate, authorize("Admin"), getUsers);
 router.get(
   "/:id",
   authenticate,
-  authorize("Admin"),
+  authorize("SuperAdmin", "Admin"),
   validateRequest(UserParamSchema),
   getUserById
 );
@@ -273,7 +273,7 @@ router.get(
 router.patch(
   "/:id/status",
   authenticate,
-  authorize("Admin"),
+  authorize("SuperAdmin", "Admin"),
   validateRequest(UpdateUserStatusSchema),
   updateUserStatus
 );
@@ -317,7 +317,7 @@ router.patch(
 router.patch(
   "/:id/role",
   authenticate,
-  authorize("Admin"),
+  authorize("SuperAdmin"),
   validateRequest(UpdateUserRoleSchema),
   updateUserRole
 );
@@ -349,7 +349,7 @@ router.patch(
 router.post(
   "/:id/reset-password",
   authenticate,
-  authorize("Admin"),
+  authorize("SuperAdmin", "Admin"),
   validateRequest(AdminUserIdParamSchema),
   adminResetPassword
 );
@@ -400,7 +400,7 @@ router.post(
 router.patch(
   "/:id",
   authenticate,
-  authorize("Admin"),
+  authorize("SuperAdmin", "Admin"),
   validateRequest(AdminUpdateUserSchema),
   adminUpdateUser
 );

@@ -13,8 +13,8 @@ export const InviteUserSchema = z.object({
   body: z.object({
     email: z.string().trim().email("Invalid email address").toLowerCase(),
     name: z.string().trim().min(2, "Name must be at least 2 characters").max(100),
-    role: z.enum(["Admin", "Assessor", "MembershipApprover"], {
-      message: "Role must be Admin, Assessor, or MembershipApprover",
+    role: z.enum(["SuperAdmin", "Admin", "Assessor", "MembershipApprover"], {
+      message: "Role must be SuperAdmin, Admin, Assessor, or MembershipApprover",
     }),
     companyId: z.string().regex(objectIdRegex, "Invalid Company ID format").optional(),
   }),
@@ -43,8 +43,8 @@ export const UpdateUserRoleSchema = z.object({
     id: z.string().regex(objectIdRegex, "Invalid User ID format"),
   }),
   body: z.object({
-    role: z.enum(["Admin", "Assessor", "MembershipApprover"], {
-      message: "Role must be Admin, Assessor, or MembershipApprover",
+    role: z.enum(["SuperAdmin", "Admin", "Assessor", "MembershipApprover"], {
+      message: "Role must be SuperAdmin, Admin, Assessor, or MembershipApprover",
     }),
   }),
 });

@@ -162,9 +162,9 @@ export async function login(req: Request, res: Response, next: NextFunction) {
         await user.save();
         return sendError(res, "Invalid MFA verification or recovery code", 401, "INVALID_MFA_TOKEN");
       }
-    } else if (user.role === "Admin") {
-      // Milestone 1.3: MFA Enforcement for Admin Accounts
-      // Admin accounts without MFA enabled must complete enrollment
+    } else if (user.role === "SuperAdmin" || user.role === "Admin") {
+      // MFA Enforcement for SuperAdmin and Admin Accounts
+      // Administrative accounts without MFA enabled must complete enrollment
       const secret = process.env.JWT_SECRET || "default_jwt_secret_dev";
       const tempToken = jwt.sign(
         {
@@ -180,7 +180,7 @@ export async function login(req: Request, res: Response, next: NextFunction) {
 
       return sendError(
         res,
-        "Multi-factor authentication is mandatory for Admin accounts. Please enroll in MFA before logging in.",
+        "Multi-factor authentication is mandatory for Administrative accounts. Please enroll in MFA before logging in.",
         403,
         "ADMIN_MFA_ENFORCEMENT_REQUIRED",
         { mfaSetupRequired: true, userId: user._id, tempToken }
@@ -369,10 +369,10 @@ export async function disableMfa(req: Request, res: Response, next: NextFunction
       return sendError(res, "MFA is not currently enabled for this account", 400, "MFA_NOT_ENABLED");
     }
 
-    if (user.role === "Admin") {
+    if (user.role === "SuperAdmin" || user.role === "Admin") {
       return sendError(
         res,
-        "MFA is mandatory for Admin accounts and cannot be disabled.",
+        "MFA is mandatory for Administrative accounts and cannot be disabled.",
         403,
         "ADMIN_MFA_MANDATORY"
       );

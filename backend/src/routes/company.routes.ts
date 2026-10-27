@@ -69,7 +69,7 @@ const router = Router();
 router.post(
   "/",
   authenticate,
-  authorize("Admin", "Assessor"),
+  authorize("SuperAdmin", "Admin", "Assessor"),
   validateRequest(CreateCompanySchema),
   createCompany
 );
@@ -237,7 +237,7 @@ router.patch(
 router.post(
   "/:id/verify",
   authenticate,
-  authorize("Admin"),
+  authorize("SuperAdmin"),
   validateRequest(VerifyCompanySchema),
   verifyCompany
 );
@@ -281,7 +281,7 @@ router.post(
 router.patch(
   "/:id/status",
   authenticate,
-  authorize("Admin"),
+  authorize("SuperAdmin"),
   validateRequest(UpdateCompanyStatusSchema),
   updateCompanyStatus
 );

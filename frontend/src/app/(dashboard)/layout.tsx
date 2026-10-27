@@ -38,12 +38,12 @@ export default function DashboardLayout({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, loading, logout, isAdmin } = useAuth();
+  const { user, loading, logout, isAdmin, isSuperAdmin } = useAuth();
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // Strict Security: Role is determined strictly by the verified JWT session user
-  const activeRoleView: "Admin" | "Auditor" = user?.role === "Admin" ? "Admin" : "Auditor";
+  const activeRoleView: "Admin" | "Auditor" = (user?.role === "SuperAdmin" || user?.role === "Admin") ? "Admin" : "Auditor";
 
   // Redirect non-authenticated users to login
   useEffect(() => {
@@ -74,22 +74,31 @@ export default function DashboardLayout({
     { label: "Settings", href: "/settings/profile", icon: Settings },
   ];
 
-  const adminNavItems = [
-    { label: "Dashboard", href: "/dashboard", icon: Home, active: pathname === "/dashboard" },
-    { label: "Users", href: "/admin/assessors", icon: Users },
-    { label: "Organizations", href: "/organizations", icon: Building2 },
-    { label: "Assessments", href: "/assessments", icon: FileCheck2 },
-    { label: "Framework Versions", href: "/admin/frameworks", icon: Layers },
-    { label: "Pillars", href: "/admin/frameworks#pillars", icon: Award },
-    { label: "Controls", href: "/admin/frameworks#controls", icon: SlidersHorizontal },
-    { label: "Questions", href: "/admin/frameworks#questions", icon: HelpCircle },
-    { label: "Evidence", href: "/evidence", icon: FolderLock },
-    { label: "Reports", href: "/reports", icon: FileText },
-    { label: "Subscriptions", href: "/subscriptions", icon: CreditCard },
-    { label: "Permissions", href: "/admin/permissions", icon: Lock },
-    { label: "Audit Logs", href: "/admin/audit-logs", icon: History },
-    { label: "System Settings", href: "/settings/security", icon: Settings },
-  ];
+  // SuperAdmin sees global governance; Org Admin sees tenant items
+  const adminNavItems = isSuperAdmin
+    ? [
+        { label: "Dashboard", href: "/dashboard", icon: Home, active: pathname === "/dashboard" },
+        { label: "Organizations", href: "/organizations", icon: Building2 },
+        { label: "Users & Admins", href: "/admin/assessors", icon: Users },
+        { label: "Assessments", href: "/assessments", icon: FileCheck2 },
+        { label: "Framework Versions", href: "/admin/frameworks", icon: Layers },
+        { label: "Auditor Mappings", href: "/admin/auditor-mappings", icon: SlidersHorizontal },
+        { label: "Evidence", href: "/evidence", icon: FolderLock },
+        { label: "Reports", href: "/reports", icon: FileText },
+        { label: "Subscriptions", href: "/subscriptions", icon: CreditCard },
+        { label: "Audit Logs", href: "/admin/audit-logs", icon: History },
+        { label: "System Settings", href: "/settings/security", icon: Settings },
+      ]
+    : [
+        { label: "Dashboard", href: "/dashboard", icon: Home, active: pathname === "/dashboard" },
+        { label: "Organization", href: "/organizations", icon: Building2 },
+        { label: "Assessors / Team", href: "/admin/assessors", icon: Users },
+        { label: "Assessments", href: "/assessments", icon: FileCheck2 },
+        { label: "Evidence", href: "/evidence", icon: FolderLock },
+        { label: "Reports", href: "/reports", icon: FileText },
+        { label: "Audit Logs", href: "/admin/audit-logs", icon: History },
+        { label: "Settings", href: "/settings/profile", icon: Settings },
+      ];
 
   return (
     <div className="h-screen w-screen overflow-hidden bg-[#f8fafc] flex">

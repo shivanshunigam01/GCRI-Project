@@ -15,9 +15,18 @@ import { logAuthorizationDenied } from "./assessment.controller.js";
  */
 export async function getAdminDashboardSummary(req: Request, res: Response, next: NextFunction) {
   try {
-    if (req.user?.role !== "Admin") {
-      return sendError(res, "Access denied. Platform administrators only.", 403, "ADMIN_ROLE_REQUIRED");
+    if (req.user?.role !== "SuperAdmin" && req.user?.role !== "Admin") {
+      return sendError(res, "Access denied. Administrators only.", 403, "ADMIN_ROLE_REQUIRED");
     }
+
+    const isSuperAdmin = req.user.role === "SuperAdmin";
+    const companyId = req.user.companyId;
+
+    // Filters based on role
+    const userFilter: Record<string, any> = isSuperAdmin ? {} : { companyId };
+    const auditorFilter: Record<string, any> = isSuperAdmin ? { role: "Assessor" } : { companyId, role: "Assessor" };
+    const orgFilter: Record<string, any> = isSuperAdmin ? {} : { _id: companyId };
+    const sessionFilter: Record<string, any> = isSuperAdmin ? {} : { companyId };
 
     const [
       totalUsers,
@@ -30,24 +39,24 @@ export async function getAdminDashboardSummary(req: Request, res: Response, next
       companies,
       recentLogs,
     ] = await Promise.all([
-      User.countDocuments(),
-      User.countDocuments({ role: "Assessor" }),
-      Company.countDocuments(),
-      AssessmentSession.countDocuments(),
-      AssessmentSession.countDocuments({ status: "Submitted" }),
-      AssessmentSession.countDocuments({ status: "InProgress" }),
+      User.countDocuments(userFilter),
+      User.countDocuments(auditorFilter),
+      Company.countDocuments(orgFilter),
+      AssessmentSession.countDocuments(sessionFilter),
+      AssessmentSession.countDocuments({ ...sessionFilter, status: "Submitted" }),
+      AssessmentSession.countDocuments({ ...sessionFilter, status: "InProgress" }),
       AssessmentFramework.distinct("version").then((v) => v.length),
-      Company.find().sort({ createdAt: -1 }).limit(5),
-      AuditLog.find({ action: { $ne: "AUTHORIZATION_DENIED" } })
+      Company.find(orgFilter).sort({ createdAt: -1 }).limit(5),
+      AuditLog.find(isSuperAdmin ? { action: { $ne: "AUTHORIZATION_DENIED" } } : { actorId: req.user.userId })
         .sort({ timestamp: -1 })
         .limit(6),
     ]);
 
     // Plan distributions
     const [bronzeCount, silverCount, goldCount] = await Promise.all([
-      Company.countDocuments({ $or: [{ activePlan: "Bronze" }, { activePlan: { $exists: false } }] }),
-      Company.countDocuments({ activePlan: "Silver" }),
-      Company.countDocuments({ activePlan: "Gold" }),
+      Company.countDocuments({ ...orgFilter, $or: [{ activePlan: "Bronze" }, { activePlan: { $exists: false } }] }),
+      Company.countDocuments({ ...orgFilter, activePlan: "Silver" }),
+      Company.countDocuments({ ...orgFilter, activePlan: "Gold" }),
     ]);
 
     // Assessment count by company for recent organizations widget
@@ -120,8 +129,8 @@ export async function getAdminDashboardSummary(req: Request, res: Response, next
  */
 export async function getAdminDashboardAssessments(req: Request, res: Response, next: NextFunction) {
   try {
-    if (req.user?.role !== "Admin") {
-      return sendError(res, "Access denied. Platform administrators only.", 403, "ADMIN_ROLE_REQUIRED");
+    if (req.user?.role !== "SuperAdmin" && req.user?.role !== "Admin") {
+      return sendError(res, "Access denied. Administrators only.", 403, "ADMIN_ROLE_REQUIRED");
     }
 
     const { status, search, assessmentType } = req.query as {
@@ -135,6 +144,11 @@ export async function getAdminDashboardAssessments(req: Request, res: Response, 
 
     const query: any = {};
 
+    // Organization Admins are strictly scoped to their own company
+    if (req.user?.role === "Admin") {
+      query.companyId = req.user.companyId;
+    }
+
     if (status && status !== "all") {
       query.status = status;
     }
@@ -147,7 +161,11 @@ export async function getAdminDashboardAssessments(req: Request, res: Response, 
         name: { $regex: search, $options: "i" },
       }).select("_id");
       const companyIds = matchingCompanies.map((c) => c._id);
-      query.companyId = { $in: companyIds };
+      if (req.user?.role === "Admin") {
+        query.companyId = req.user.companyId;
+      } else {
+        query.companyId = { $in: companyIds };
+      }
     }
 
     const [total, sessions] = await Promise.all([

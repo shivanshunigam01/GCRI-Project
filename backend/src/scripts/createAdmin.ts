@@ -33,37 +33,50 @@ async function createAdmin() {
       recoveryCodes.map(code => bcrypt.hash(code, saltRounds))
     );
 
-    let adminUser = await User.findOne({ email });
+    // 1. Provision / Update Super Admin Account (Global Platform Owner)
+    const superAdminEmail = (process.env.SUPER_ADMIN_EMAIL || "superadmin@graice.io").toLowerCase();
+    const superAdminPassword = process.env.SUPER_ADMIN_PASSWORD || "SuperAdmin@123456";
+    const superAdminName = process.env.SUPER_ADMIN_NAME || "Super Administrator";
+    const superAdminHash = await bcrypt.hash(superAdminPassword, saltRounds);
 
-    if (adminUser) {
-      adminUser.passwordHash = passwordHash;
-      adminUser.role = "Admin";
-      adminUser.status = "Active";
-      adminUser.name = name;
-      adminUser.loginAttempts = 0;
-      adminUser.lockUntil = undefined;
-      adminUser.mfa = {
+    let superAdminUser = await User.findOne({ email: superAdminEmail });
+    if (superAdminUser) {
+      superAdminUser.passwordHash = superAdminHash;
+      superAdminUser.role = "SuperAdmin";
+      superAdminUser.status = "Active";
+      superAdminUser.name = superAdminName;
+      superAdminUser.loginAttempts = 0;
+      superAdminUser.lockUntil = undefined;
+      superAdminUser.mfa = {
         enabled: true,
         recoveryCodes: hashedRecoveryCodes,
       };
-      await adminUser.save();
-      console.log(`✅ Admin account updated!`);
+      await superAdminUser.save();
+      console.log(`✅ Super Admin account updated!`);
     } else {
-      adminUser = await User.create({
-        email,
-        passwordHash,
-        name,
-        role: "Admin",
+      superAdminUser = await User.create({
+        email: superAdminEmail,
+        passwordHash: superAdminHash,
+        name: superAdminName,
+        role: "SuperAdmin",
         status: "Active",
         mfa: {
           enabled: true,
           recoveryCodes: hashedRecoveryCodes,
         },
       });
-      console.log(`✅ New Admin account created!`);
+      console.log(`✅ New Super Admin account created!`);
     }
 
-    // Also provision/update a standard Auditor account for seamless 1-click testing (no MFA needed)
+    // Also migrate existing admin@graice.io to SuperAdmin if present so previous logins continue working
+    const legacyAdmin = await User.findOne({ email: "admin@graice.io" });
+    if (legacyAdmin && legacyAdmin._id.toString() !== superAdminUser._id.toString()) {
+      legacyAdmin.role = "SuperAdmin";
+      await legacyAdmin.save();
+      console.log(`✅ Upgraded legacy admin@graice.io to SuperAdmin.`);
+    }
+
+    // 2. Also provision/update a standard Auditor account for seamless 1-click testing (no MFA needed)
     const auditorEmail = "auditor@graice.io";
     const auditorPassword = "Auditor@123456";
     const auditorHash = await bcrypt.hash(auditorPassword, saltRounds);
@@ -93,9 +106,10 @@ async function createAdmin() {
 
     console.log("-----------------------------------------");
     console.log("Credentials:");
-    console.log(`Email:         ${email}`);
-    console.log(`Password:      ${password}`);
-    console.log(`Role:         ${adminUser.role}`);
+    console.log(`Super Admin (Global Scope):`);
+    console.log(`Email:         ${superAdminEmail}`);
+    console.log(`Password:      ${superAdminPassword}`);
+    console.log(`Role:          ${superAdminUser.role}`);
     console.log(`MFA Recovery:  12345678 (or any in pool)`);
     console.log("-----------------------------------------");
     console.log("Auditor (Direct Login - No MFA):");
@@ -105,7 +119,7 @@ async function createAdmin() {
     console.log("-----------------------------------------");
 
     // Also list all existing users so the user has full visibility
-    const allUsers = await User.find({}, "email role name status").lean();
+    const allUsers = await User.find({}, "email role name status companyId").lean();
     console.log("\nAll registered users in database:");
     console.table(allUsers);
   } catch (err) {
