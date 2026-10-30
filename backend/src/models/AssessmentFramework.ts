@@ -46,6 +46,28 @@ export interface IPillar {
   order: number;
 }
 
+export interface IDocumentRequestItem {
+  documentId: string;
+  pillarNumber: number;
+  pillarName: string;
+  title: string;
+  description: string;
+  exampleContent?: string;
+  linkedControls: string[];
+}
+
+export interface IMeetingRequestItem {
+  meetingNumber: number;
+  pillarName: string;
+  topic: string;
+  frameworkAlignment?: string;
+  agendaItems?: string;
+  leaderTitles?: string;
+  teamMemberTitles?: string;
+  duration?: string;
+  preparationNotes?: string;
+}
+
 export interface IAssessmentFramework extends Document {
   version: string;
   status: "Draft" | "Published" | "Archived";
@@ -55,6 +77,8 @@ export interface IAssessmentFramework extends Document {
   totalQuestions: number;
   pillars: IPillar[];
   questions: IQuestionControl[];
+  documentRequests?: IDocumentRequestItem[];
+  meetingRequests?: IMeetingRequestItem[];
   maturityThresholds: {
     initialMax: number;
     emergingMax: number;
@@ -121,6 +145,34 @@ const PillarSchema = new Schema<IPillar>(
   { _id: false }
 );
 
+const DocumentRequestItemSchema = new Schema<IDocumentRequestItem>(
+  {
+    documentId: { type: String, required: true },
+    pillarNumber: { type: Number, required: true },
+    pillarName: { type: String, required: true },
+    title: { type: String, required: true },
+    description: { type: String, required: true },
+    exampleContent: { type: String },
+    linkedControls: [{ type: String }],
+  },
+  { _id: false }
+);
+
+const MeetingRequestItemSchema = new Schema<IMeetingRequestItem>(
+  {
+    meetingNumber: { type: Number, required: true },
+    pillarName: { type: String, required: true },
+    topic: { type: String, required: true },
+    frameworkAlignment: { type: String },
+    agendaItems: { type: String },
+    leaderTitles: { type: String },
+    teamMemberTitles: { type: String },
+    duration: { type: String },
+    preparationNotes: { type: String },
+  },
+  { _id: false }
+);
+
 const AssessmentFrameworkSchema = new Schema<IAssessmentFramework>(
   {
     version: { type: String, required: true, index: true },
@@ -141,6 +193,8 @@ const AssessmentFrameworkSchema = new Schema<IAssessmentFramework>(
     totalQuestions: { type: Number, default: 0 },
     pillars: [PillarSchema],
     questions: [QuestionControlSchema],
+    documentRequests: [DocumentRequestItemSchema],
+    meetingRequests: [MeetingRequestItemSchema],
     maturityThresholds: {
       initialMax: { type: Number, default: 30 },
       emergingMax: { type: Number, default: 60 },

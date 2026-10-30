@@ -8,6 +8,8 @@ import {
   IQuestionControl,
   IPillar,
   IResponseOption,
+  IDocumentRequestItem,
+  IMeetingRequestItem,
 } from "../models/AssessmentFramework.js";
 
 dotenv.config();
@@ -133,14 +135,18 @@ function parseFullAssessmentControls(workbookPath: string): IQuestionControl[] {
 
     const pillarName = String(row["B"] || "").trim();
     const pillarId = getPillarId(pillarName);
-    const pillarNumber = parseInt(String(row["C"] || "").split(".")[0], 10) || getPillarNumber(pillarName);
+    const pillarNumber =
+      parseInt(String(row["C"] || "").split(".")[0], 10) || getPillarNumber(pillarName);
     const questionText = String(row["D"] || "").trim();
     const controlDesc = String(row["E"] || "").trim();
     const testProc = String(row["F"] || "").trim();
     const scope = String(row["G"] || "").trim();
     const linkedDocsRaw = String(row["H"] || "").trim();
     const linkedDocs = linkedDocsRaw
-      ? linkedDocsRaw.split(/[,;]+/).map((d) => d.trim()).filter(Boolean)
+      ? linkedDocsRaw
+          .split(/[,;]+/)
+          .map((d) => d.trim())
+          .filter(Boolean)
       : [];
     const assuranceTier = String(row["I"] || "").trim();
     const euAiAct = String(row["J"] || "").trim();
@@ -167,12 +173,97 @@ function parseFullAssessmentControls(workbookPath: string): IQuestionControl[] {
         oecdAi,
       },
       mandatory: true,
+      isActive: true,
       order: order++,
       responseOptions: FULL_RESPONSE_OPTIONS,
     });
   }
 
   return questions;
+}
+
+/**
+ * Parses Document Request List (73 artifacts) from the Excel Workbook
+ */
+function parseDocumentRequests(workbookPath: string): IDocumentRequestItem[] {
+  const wb = xlsx.readFile(workbookPath);
+  const sheet = wb.Sheets["Document Request List"];
+  if (!sheet) return [];
+
+  const rawRows: Record<string, any>[] = xlsx.utils.sheet_to_json(sheet, {
+    header: "A",
+    range: 1,
+    defval: "",
+  });
+
+  const docPattern = /^DOC-P\d+-\d+/;
+  const items: IDocumentRequestItem[] = [];
+
+  for (const row of rawRows) {
+    const documentId = String(row["A"] || "").trim();
+    if (!docPattern.test(documentId)) continue;
+
+    const pillarNumber = parseInt(String(row["B"] || "").trim(), 10) || 1;
+    const pillarName = String(row["C"] || "").trim();
+    const title = String(row["D"] || "").trim();
+    const description = String(row["E"] || "").trim();
+    const exampleContent = String(row["F"] || "").trim();
+    const linkedRaw = String(row["G"] || "").trim();
+    const linkedControls = linkedRaw
+      ? linkedRaw
+          .split(/[,;]+/)
+          .map((c) => c.trim())
+          .filter(Boolean)
+      : [];
+
+    items.push({
+      documentId,
+      pillarNumber,
+      pillarName,
+      title,
+      description,
+      exampleContent,
+      linkedControls,
+    });
+  }
+
+  return items;
+}
+
+/**
+ * Parses Meeting Request List (25 governance meetings) from the Excel Workbook
+ */
+function parseMeetingRequests(workbookPath: string): IMeetingRequestItem[] {
+  const wb = xlsx.readFile(workbookPath);
+  const sheet = wb.Sheets["Meeting Request List"];
+  if (!sheet) return [];
+
+  const rawRows: Record<string, any>[] = xlsx.utils.sheet_to_json(sheet, {
+    header: "A",
+    range: 2,
+    defval: "",
+  });
+
+  const items: IMeetingRequestItem[] = [];
+
+  for (const row of rawRows) {
+    const mtgNum = parseInt(String(row["A"] || "").trim(), 10);
+    if (isNaN(mtgNum) || mtgNum <= 0) continue;
+
+    items.push({
+      meetingNumber: mtgNum,
+      pillarName: String(row["B"] || "").trim(),
+      topic: String(row["C"] || "").trim(),
+      frameworkAlignment: String(row["D"] || "").trim(),
+      agendaItems: String(row["E"] || "").trim(),
+      leaderTitles: String(row["F"] || "").trim(),
+      teamMemberTitles: String(row["G"] || "").trim(),
+      duration: String(row["H"] || "").trim(),
+      preparationNotes: String(row["I"] || "").trim(),
+    });
+  }
+
+  return items;
 }
 
 /**
@@ -202,6 +293,7 @@ function getLightAssessmentQuestions(): IQuestionControl[] {
       text: "How would you describe your organization's AI adoption maturity?",
       order: 1,
       mandatory: true,
+      isActive: true,
       responseOptions: [
         { code: "EXPLORING", label: "Exploring AI opportunities", scoreValue: 1, order: 1 },
         { code: "PILOT", label: "Pilot projects underway", scoreValue: 2, order: 2 },
@@ -218,6 +310,7 @@ function getLightAssessmentQuestions(): IQuestionControl[] {
       text: "Approximately how many AI use cases are currently in production?",
       order: 2,
       mandatory: true,
+      isActive: true,
       responseOptions: [
         { code: "NONE", label: "None", scoreValue: 0, order: 1 },
         { code: "1_TO_5", label: "1-5", scoreValue: 1, order: 2 },
@@ -234,6 +327,7 @@ function getLightAssessmentQuestions(): IQuestionControl[] {
       text: "Does your organization use Generative AI (e.g., ChatGPT, Copilot, Claude, Gemini)?",
       order: 3,
       mandatory: true,
+      isActive: true,
       responseOptions: [
         { code: "EXTENSIVE", label: "Extensive use", scoreValue: 4, order: 1 },
         { code: "LIMITED", label: "Limited use", scoreValue: 2, order: 2 },
@@ -250,6 +344,7 @@ function getLightAssessmentQuestions(): IQuestionControl[] {
       text: "Are any AI systems involved in decisions impacting customers, employees, financial outcomes, healthcare, safety, or regulatory obligations?",
       order: 4,
       mandatory: true,
+      isActive: true,
       responseOptions: yesNoUnsureOpts,
     },
 
@@ -263,6 +358,7 @@ function getLightAssessmentQuestions(): IQuestionControl[] {
       text: "Has executive accountability for AI governance been formally assigned?",
       order: 5,
       mandatory: true,
+      isActive: true,
       responseOptions: yesNoUnsureOpts,
     },
     {
@@ -274,6 +370,7 @@ function getLightAssessmentQuestions(): IQuestionControl[] {
       text: "Is there an AI governance committee or formal oversight body?",
       order: 6,
       mandatory: true,
+      isActive: true,
       responseOptions: yesPlannedNoOpts,
     },
     {
@@ -285,6 +382,7 @@ function getLightAssessmentQuestions(): IQuestionControl[] {
       text: "Does leadership regularly review AI risks, incidents, and performance metrics?",
       order: 7,
       mandatory: true,
+      isActive: true,
       responseOptions: yesPlannedNoOpts,
     },
     {
@@ -296,6 +394,7 @@ function getLightAssessmentQuestions(): IQuestionControl[] {
       text: "Are AI concerns, incidents, or ethical issues escalated through a documented process?",
       order: 8,
       mandatory: true,
+      isActive: true,
       responseOptions: yesPlannedNoOpts,
     },
 
@@ -309,6 +408,7 @@ function getLightAssessmentQuestions(): IQuestionControl[] {
       text: "Do you maintain an inventory of AI systems and use cases?",
       order: 9,
       mandatory: true,
+      isActive: true,
       responseOptions: yesPlannedNoOpts,
     },
     {
@@ -320,6 +420,7 @@ function getLightAssessmentQuestions(): IQuestionControl[] {
       text: "Does each AI solution have a documented purpose, owner, and expected outcome?",
       order: 10,
       mandatory: true,
+      isActive: true,
       responseOptions: yesPlannedNoOpts,
     },
     {
@@ -331,6 +432,7 @@ function getLightAssessmentQuestions(): IQuestionControl[] {
       text: "Before deploying AI, do you assess whether AI is the most appropriate solution?",
       order: 11,
       mandatory: true,
+      isActive: true,
       responseOptions: yesNoUnsureOpts,
     },
     {
@@ -342,6 +444,7 @@ function getLightAssessmentQuestions(): IQuestionControl[] {
       text: "Are risks, benefits, and potential unintended consequences formally assessed?",
       order: 12,
       mandatory: true,
+      isActive: true,
       responseOptions: yesPlannedNoOpts,
     },
 
@@ -355,6 +458,7 @@ function getLightAssessmentQuestions(): IQuestionControl[] {
       text: "Can humans review, override, or challenge important AI-assisted decisions?",
       order: 13,
       mandatory: true,
+      isActive: true,
       responseOptions: yesNoUnsureOpts,
     },
     {
@@ -366,6 +470,7 @@ function getLightAssessmentQuestions(): IQuestionControl[] {
       text: "Are users informed when AI significantly influences recommendations or outcomes?",
       order: 14,
       mandatory: true,
+      isActive: true,
       responseOptions: yesNoUnsureOpts,
     },
     {
@@ -377,6 +482,7 @@ function getLightAssessmentQuestions(): IQuestionControl[] {
       text: "Is there a mechanism for individuals to request review of consequential AI-driven decisions?",
       order: 15,
       mandatory: true,
+      isActive: true,
       responseOptions: [
         { code: "YES", label: "Yes", scoreValue: 4, order: 1 },
         { code: "PLANNED", label: "Planned / In Progress", scoreValue: 2, order: 2 },
@@ -393,6 +499,7 @@ function getLightAssessmentQuestions(): IQuestionControl[] {
       text: "Have you assessed potential misuse, harmful outcomes, or unintended consequences from your AI systems?",
       order: 16,
       mandatory: true,
+      isActive: true,
       responseOptions: [
         { code: "YES", label: "Yes", scoreValue: 4, order: 1 },
         { code: "PLANNED", label: "Planned / In Progress", scoreValue: 2, order: 2 },
@@ -411,6 +518,7 @@ function getLightAssessmentQuestions(): IQuestionControl[] {
       text: "Are AI systems tested prior to deployment for accuracy, reliability, and performance?",
       order: 17,
       mandatory: true,
+      isActive: true,
       responseOptions: [
         { code: "YES", label: "Yes", scoreValue: 4, order: 1 },
         { code: "PLANNED", label: "Planned / In Progress", scoreValue: 2, order: 2 },
@@ -427,6 +535,7 @@ function getLightAssessmentQuestions(): IQuestionControl[] {
       text: "Are AI systems monitored for drift, degradation, or unexpected behavior after deployment?",
       order: 18,
       mandatory: true,
+      isActive: true,
       responseOptions: [
         { code: "YES", label: "Yes", scoreValue: 4, order: 1 },
         { code: "PLANNED", label: "Planned / In Progress", scoreValue: 2, order: 2 },
@@ -443,6 +552,7 @@ function getLightAssessmentQuestions(): IQuestionControl[] {
       text: "Is there a documented process for approving model updates, retraining events, or configuration changes?",
       order: 19,
       mandatory: true,
+      isActive: true,
       responseOptions: [
         { code: "YES", label: "Yes", scoreValue: 4, order: 1 },
         { code: "PLANNED", label: "Planned / In Progress", scoreValue: 2, order: 2 },
@@ -459,6 +569,7 @@ function getLightAssessmentQuestions(): IQuestionControl[] {
       text: "Is there a dedicated incident response process for AI failures, misuse, or harmful outcomes?",
       order: 20,
       mandatory: true,
+      isActive: true,
       responseOptions: [
         { code: "YES", label: "Yes", scoreValue: 4, order: 1 },
         { code: "PLANNED", label: "Planned / In Progress", scoreValue: 2, order: 2 },
@@ -477,6 +588,7 @@ function getLightAssessmentQuestions(): IQuestionControl[] {
       text: "Have executives received training on AI governance, risk, and regulatory obligations?",
       order: 21,
       mandatory: true,
+      isActive: true,
       responseOptions: [
         { code: "YES", label: "Yes", scoreValue: 4, order: 1 },
         { code: "PLANNED", label: "Planned / In Progress", scoreValue: 2, order: 2 },
@@ -493,6 +605,7 @@ function getLightAssessmentQuestions(): IQuestionControl[] {
       text: "Have technical teams received training on responsible AI development and governance?",
       order: 22,
       mandatory: true,
+      isActive: true,
       responseOptions: [
         { code: "YES", label: "Yes", scoreValue: 4, order: 1 },
         { code: "PLANNED", label: "Planned / In Progress", scoreValue: 2, order: 2 },
@@ -509,6 +622,7 @@ function getLightAssessmentQuestions(): IQuestionControl[] {
       text: "Are employees trained on safe AI usage, limitations, and escalation procedures?",
       order: 23,
       mandatory: true,
+      isActive: true,
       responseOptions: [
         { code: "YES", label: "Yes", scoreValue: 4, order: 1 },
         { code: "PLANNED", label: "Planned / In Progress", scoreValue: 2, order: 2 },
@@ -525,6 +639,7 @@ function getLightAssessmentQuestions(): IQuestionControl[] {
       text: "Are AI-related competencies or skills formally incorporated into workforce development programs?",
       order: 24,
       mandatory: true,
+      isActive: true,
       responseOptions: [
         { code: "YES", label: "Yes", scoreValue: 4, order: 1 },
         { code: "PLANNED", label: "Planned / In Progress", scoreValue: 2, order: 2 },
@@ -543,6 +658,7 @@ function getLightAssessmentQuestions(): IQuestionControl[] {
       text: "Can you identify the sources, ownership, and authorization status of data used by your AI systems?",
       order: 25,
       mandatory: true,
+      isActive: true,
       responseOptions: [
         { code: "YES", label: "Yes", scoreValue: 4, order: 1 },
         { code: "PLANNED", label: "Planned / In Progress", scoreValue: 2, order: 2 },
@@ -559,6 +675,7 @@ function getLightAssessmentQuestions(): IQuestionControl[] {
       text: "Have training datasets been evaluated for quality, completeness, accuracy, and representativeness?",
       order: 26,
       mandatory: true,
+      isActive: true,
       responseOptions: [
         { code: "YES", label: "Yes", scoreValue: 4, order: 1 },
         { code: "PLANNED", label: "Planned / In Progress", scoreValue: 2, order: 2 },
@@ -575,6 +692,7 @@ function getLightAssessmentQuestions(): IQuestionControl[] {
       text: "Is AI data lineage documented from original source through model input?",
       order: 27,
       mandatory: true,
+      isActive: true,
       responseOptions: [
         { code: "YES", label: "Yes", scoreValue: 4, order: 1 },
         { code: "PLANNED", label: "Planned / In Progress", scoreValue: 2, order: 2 },
@@ -591,6 +709,7 @@ function getLightAssessmentQuestions(): IQuestionControl[] {
       text: "Have you assessed AI training or operational data for bias, privacy, or legal/compliance risks?",
       order: 28,
       mandatory: true,
+      isActive: true,
       responseOptions: [
         { code: "YES", label: "Yes", scoreValue: 4, order: 1 },
         { code: "PLANNED", label: "Planned / In Progress", scoreValue: 2, order: 2 },
@@ -609,6 +728,7 @@ function getLightAssessmentQuestions(): IQuestionControl[] {
       text: "Could your organization demonstrate how AI systems are governed, approved, monitored, and controlled during an audit or regulatory review?",
       order: 29,
       mandatory: true,
+      isActive: true,
       responseOptions: yesNoUnsureOpts,
     },
     {
@@ -620,6 +740,7 @@ function getLightAssessmentQuestions(): IQuestionControl[] {
       text: "Are governance decisions, risk assessments, monitoring results, and approvals documented and retrievable?",
       order: 30,
       mandatory: true,
+      isActive: true,
       responseOptions: yesNoUnsureOpts,
     },
   ];
@@ -664,7 +785,11 @@ export async function seedFrameworks(): Promise<void> {
 
   console.log(`[Seed] Ingesting Full Assessment from: ${workbookPath}`);
   const fullQuestions = parseFullAssessmentControls(workbookPath);
-  console.log(`[Seed] Successfully parsed ${fullQuestions.length} Full Assessment controls`);
+  const documentRequests = parseDocumentRequests(workbookPath);
+  const meetingRequests = parseMeetingRequests(workbookPath);
+  console.log(
+    `[Seed] Successfully parsed ${fullQuestions.length} Full Assessment controls, ${documentRequests.length} Document Requests, and ${meetingRequests.length} Meeting Requests`
+  );
 
   // 2. Upsert Full Assessment Framework
   const fullVersion = "2026.1";
@@ -676,22 +801,24 @@ export async function seedFrameworks(): Promise<void> {
       status: "Published",
       title: "GRAICE Responsible AI Comprehensive Assessment Framework (2026)",
       description:
-        "Complete 65-control audit workbook across the 7 GRAICE Pillars with pre-mapped EU AI Act, NIST AI RMF, ISO 42001, and OECD AI regulatory controls.",
+        "Complete 65-control audit workbook across the 7 GRAICE Pillars with pre-mapped EU AI Act, NIST AI RMF, ISO 42001, and OECD AI regulatory controls, plus 73 Document Requests and 25 Audit Meetings.",
       totalQuestions: fullQuestions.length,
       pillars: PILLARS_CONFIG,
       questions: fullQuestions,
+      documentRequests,
+      meetingRequests,
       maturityThresholds: {
-        initialMax: 39,      // < 40%
+        initialMax: 39,      // <= 39%
         emergingMax: 69,     // 40% - 69%
         establishedMax: 89,  // 70% - 89%
-        advancedMax: 100,    // >= 90%
+        advancedMax: 100,    // > 89% (90% - 100%)
       },
     },
     { upsert: true, new: true, setDefaultsOnInsert: true }
   );
 
   console.log(
-    `[Seed] ✅ Full Assessment Framework seeded successfully (ID: ${fullFramework._id}, Version: ${fullFramework.version}, Controls: ${fullFramework.questions.length})`
+    `[Seed] ✅ Full Assessment Framework seeded successfully (ID: ${fullFramework._id}, Version: ${fullFramework.version}, Controls: ${fullFramework.questions.length}, Docs: ${fullFramework.documentRequests?.length || 0}, Meetings: ${fullFramework.meetingRequests?.length || 0})`
   );
 
   // 3. Upsert Light Assessment Framework

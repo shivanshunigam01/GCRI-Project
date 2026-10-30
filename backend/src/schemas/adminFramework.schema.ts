@@ -49,7 +49,7 @@ export const CreateQuestionSchema = z.object({
   body: z.object({
     questionId: z.string().trim().min(1, "questionId is required"),
     pillarId: z.string().trim().min(1, "pillarId is required"),
-    pillarNumber: z.number().int().min(1).max(7),
+    pillarNumber: z.number().int().min(0).max(7),
     pillarName: z.string().trim().min(1, "pillarName is required"),
     section: z.string().trim().optional(),
     text: z.string().trim().min(5, "Question text must be at least 5 characters"),
@@ -75,7 +75,7 @@ export const UpdateQuestionSchema = z.object({
   }),
   body: z.object({
     pillarId: z.string().trim().optional(),
-    pillarNumber: z.number().int().min(1).max(7).optional(),
+    pillarNumber: z.number().int().min(0).max(7).optional(),
     pillarName: z.string().trim().optional(),
     section: z.string().trim().optional(),
     text: z.string().trim().min(5).optional(),

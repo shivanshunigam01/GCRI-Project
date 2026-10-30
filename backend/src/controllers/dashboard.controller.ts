@@ -9,6 +9,29 @@ import { sendSuccess, sendError } from "../utils/response.js";
 import { getAssignedOrganizationIds, isAuditorAssignedToOrg } from "../middlewares/companyScope.js";
 import { logAuthorizationDenied } from "./assessment.controller.js";
 
+const CANONICAL_GRAICE_PILLARS = [
+  { key: "P1", pillarId: "ethical-leadership", number: 1, name: "Ethical Leadership", defaultControls: 10 },
+  { key: "P2", pillarId: "purpose-driven-innovation", number: 2, name: "Purpose-Driven Innovation", defaultControls: 9 },
+  { key: "P3", pillarId: "human-centric-use", number: 3, name: "Human-Centric Use", defaultControls: 9 },
+  { key: "P4", pillarId: "responsible-implementation", number: 4, name: "Responsible Implementation", defaultControls: 10 },
+  { key: "P5", pillarId: "ai-literacy-workforce-readiness", number: 5, name: "AI Literacy & Workforce Readiness", defaultControls: 8 },
+  { key: "P6", pillarId: "data-governance-integrity", number: 6, name: "Data Governance & Integrity", defaultControls: 10 },
+  { key: "P7", pillarId: "transparency-auditability", number: 7, name: "Transparency & Auditability", defaultControls: 9 },
+] as const;
+
+function resolvePillarInfo(pillarId?: string, pillarNumber?: number) {
+  if (pillarId === "ai-landscape" || pillarNumber === 0) {
+    return { key: "P0", pillarId: "ai-landscape", number: 0, name: "Organization & AI Landscape" };
+  }
+  const byId = CANONICAL_GRAICE_PILLARS.find(
+    (p) =>
+      p.pillarId === pillarId ||
+      p.key.toLowerCase() === (pillarId || "").toLowerCase() ||
+      p.number === pillarNumber
+  );
+  return byId || CANONICAL_GRAICE_PILLARS[0];
+}
+
 /**
  * Admin Operational Dashboard Summary (Screen 7 Alignment)
  * Exposes high-level administrative numbers without any confidential assessment content.
@@ -246,7 +269,7 @@ export async function getAuditorDashboardSummary(req: Request, res: Response, ne
     allSessions.forEach((s) => {
       const compName = (s.companyId as any)?.name || "Organization";
       s.answers?.forEach((a) => {
-        if (a.exceptionStatus === "ExceptionNoted") {
+        if (a.exceptionStatus === "ExceptionNoted" || a.selectedOptionCode === "EXCEPTION_NOTED") {
           totalFindings++;
           if (latestFindings.length < 5) {
             latestFindings.push({
@@ -262,33 +285,55 @@ export async function getAuditorDashboardSummary(req: Request, res: Response, ne
       });
     });
 
-    // 7 Pillars aggregate performance (for horizontal progress bars in Screen 1)
-    const pillarTotals: Record<string, { name: string; number: number; complete: number; total: number }> = {
-      P1: { name: "Ethical Leadership", number: 1, complete: 0, total: 10 },
-      P2: { name: "Data Governance & Integrity", number: 2, complete: 0, total: 10 },
-      P3: { name: "Purpose-Driven Innovation", number: 3, complete: 0, total: 10 },
-      P4: { name: "Human-Centric Use", number: 4, complete: 0, total: 10 },
-      P5: { name: "Responsible Implementation", number: 5, complete: 0, total: 10 },
-      P6: { name: "AI Literacy & Workforce Readiness", number: 6, complete: 0, total: 10 },
-      P7: { name: "Transparency & Auditability", number: 7, complete: 0, total: 10 },
-    };
+    // 7 GRAICE Pillars aggregate performance (aligned with official GRAICE Pillars 1-7)
+    const pillarTotals: Record<
+      string,
+      { pillarId: string; name: string; number: number; complete: number; total: number }
+    > = {};
+
+    for (const p of CANONICAL_GRAICE_PILLARS) {
+      pillarTotals[p.key] = {
+        pillarId: p.pillarId,
+        name: p.name,
+        number: p.number,
+        complete: 0,
+        total: 0,
+      };
+    }
 
     allSessions.forEach((s) => {
       s.answers?.forEach((a) => {
-        const pKey = a.pillarId || `P${a.pillarNumber || 1}`;
-        if (pillarTotals[pKey]) {
-          pillarTotals[pKey].total++;
-          if (a.testStatus === "Complete" || (a.scoreValue && a.scoreValue > 0)) {
-            pillarTotals[pKey].complete++;
+        if (a.pillarId === "ai-landscape" || a.pillarNumber === 0) {
+          return; // Section 1 context questions are tracked separately from the 7 Pillars
+        }
+        const matchedPillar = CANONICAL_GRAICE_PILLARS.find(
+          (p) =>
+            p.pillarId === a.pillarId ||
+            p.key.toLowerCase() === (a.pillarId || "").toLowerCase() ||
+            p.number === a.pillarNumber
+        );
+        if (matchedPillar) {
+          const bucket = pillarTotals[matchedPillar.key];
+          bucket.total++;
+          const isAnswered =
+            a.testStatus === "Complete" ||
+            !!a.selectedOptionCode ||
+            (typeof a.scoreValue === "number" && a.scoreValue > 0) ||
+            a.exceptionStatus === "NoExceptionNoted" ||
+            a.exceptionStatus === "ExceptionNoted";
+          if (isAnswered) {
+            bucket.complete++;
           }
         }
       });
     });
 
-    const pillarPerformance = Object.entries(pillarTotals).map(([pId, data]) => {
+    const pillarPerformance = CANONICAL_GRAICE_PILLARS.map((p) => {
+      const data = pillarTotals[p.key];
       const pct = data.total > 0 ? Math.round((data.complete / data.total) * 100) : 0;
       return {
-        pillarId: pId,
+        pillarId: p.key,
+        canonicalPillarId: p.pillarId,
         pillarNumber: data.number,
         name: data.name,
         completionPercentage: pct,
@@ -307,9 +352,22 @@ export async function getAuditorDashboardSummary(req: Request, res: Response, ne
 
     // Resumption Cards ("Continue Your Assessment")
     const activeAssessments = inProgressSessions.slice(0, 3).map((s) => {
-      const answeredCount = s.answers?.filter((a) => a.testStatus === "Complete").length || 0;
-      const totalCount = s.assessmentType === "Full" ? 65 : 30;
-      const pct = Math.round((answeredCount / totalCount) * 100);
+      const answeredCount =
+        s.answers?.filter(
+          (a) => a.testStatus === "Complete" || !!a.selectedOptionCode
+        ).length || 0;
+      const totalCount =
+        s.answers?.length || (s.assessmentType === "Full" ? 65 : 30);
+      const pct = totalCount > 0 ? Math.round((answeredCount / totalCount) * 100) : 0;
+
+      const nextUnanswered =
+        s.answers?.find(
+          (a) => a.testStatus !== "Complete" && !a.selectedOptionCode
+        ) || s.answers?.[s.answers.length - 1];
+      const resolvedPillar = resolvePillarInfo(
+        nextUnanswered?.pillarId,
+        nextUnanswered?.pillarNumber
+      );
 
       return {
         _id: s._id,
@@ -317,8 +375,8 @@ export async function getAuditorDashboardSummary(req: Request, res: Response, ne
         assessmentType: s.assessmentType,
         completionPercentage: pct,
         resumptionAid: {
-          currentPillarId: s.answers?.[s.answers.length - 1]?.pillarId || "P1",
-          currentPillarName: "Ethical Leadership",
+          currentPillarId: resolvedPillar.pillarId,
+          currentPillarName: resolvedPillar.name,
           currentQuestionIndex: answeredCount,
         },
       };
@@ -404,9 +462,22 @@ export async function getAuditorDashboardAssessments(req: Request, res: Response
     ]);
 
     const formatted = sessions.map((s) => {
-      const answeredCount = s.answers?.filter((a) => a.testStatus === "Complete").length || 0;
-      const totalCount = s.assessmentType === "Full" ? 65 : 30;
-      const pct = Math.round((answeredCount / totalCount) * 100);
+      const answeredCount =
+        s.answers?.filter(
+          (a) => a.testStatus === "Complete" || !!a.selectedOptionCode
+        ).length || 0;
+      const totalCount =
+        s.answers?.length || (s.assessmentType === "Full" ? 65 : 30);
+      const pct = totalCount > 0 ? Math.round((answeredCount / totalCount) * 100) : 0;
+
+      const nextUnanswered =
+        s.answers?.find(
+          (a) => a.testStatus !== "Complete" && !a.selectedOptionCode
+        ) || s.answers?.[s.answers.length - 1];
+      const resolvedPillar = resolvePillarInfo(
+        nextUnanswered?.pillarId,
+        nextUnanswered?.pillarNumber
+      );
 
       return {
         _id: s._id,
@@ -418,7 +489,8 @@ export async function getAuditorDashboardAssessments(req: Request, res: Response
         scoreSnapshot: s.scoreSnapshot,
         resumptionAid: {
           currentQuestionIndex: answeredCount,
-          currentPillarId: s.answers?.[s.answers.length - 1]?.pillarId || "P1",
+          currentPillarId: resolvedPillar.pillarId,
+          currentPillarName: resolvedPillar.name,
         },
         createdAt: s.createdAt,
         updatedAt: s.updatedAt,
@@ -482,8 +554,11 @@ export async function getAuditorOrganizations(req: Request, res: Response, next:
                 status: latest.status,
                 createdAt: latest.createdAt,
                 completionPercentage: Math.round(
-                  ((latest.answers?.filter((a) => a.testStatus === "Complete").length || 0) /
-                    (latest.assessmentType === "Full" ? 65 : 30)) *
+                  ((latest.answers?.filter(
+                    (a) => a.testStatus === "Complete" || !!a.selectedOptionCode
+                  ).length || 0) /
+                    (latest.answers?.length ||
+                      (latest.assessmentType === "Full" ? 65 : 30))) *
                     100
                 ),
               }

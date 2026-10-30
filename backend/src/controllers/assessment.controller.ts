@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import { Types } from "mongoose";
 import fs from "fs";
-import { AssessmentSession, IAnswer } from "../models/AssessmentSession.js";
+import { AssessmentSession, IAnswer, ExceptionStatus, TestStatus } from "../models/AssessmentSession.js";
 import { AssessmentFramework } from "../models/AssessmentFramework.js";
 import { Company } from "../models/Company.js";
 import { User } from "../models/User.js";
@@ -86,8 +86,10 @@ export async function createAssessment(req: Request, res: Response, next: NextFu
       );
     }
 
-    // Pre-populate empty answers for all controls in framework
-    const initialAnswers: IAnswer[] = framework.questions.map((q) => ({
+    const activeQuestions = framework.questions.filter((q) => q.isActive !== false);
+
+    // Pre-populate empty answers for all active controls in framework
+    const initialAnswers: IAnswer[] = activeQuestions.map((q) => ({
       questionId: q.questionId,
       pillarId: q.pillarId,
       pillarNumber: q.pillarNumber,
@@ -130,7 +132,7 @@ export async function createAssessment(req: Request, res: Response, next: NextFu
         frameworkInfo: {
           title: framework.title,
           version: framework.version,
-          totalQuestions: framework.questions.length,
+          totalQuestions: activeQuestions.length,
           pillarsCount: framework.pillars.length,
         },
       },
@@ -204,7 +206,9 @@ export async function getAssessmentById(req: Request, res: Response, next: NextF
             title: framework.title,
             version: framework.version,
             pillars: framework.pillars,
-            questions: framework.questions,
+            questions: framework.questions.filter((q) => q.isActive !== false),
+            documentRequests: framework.documentRequests || [],
+            meetingRequests: framework.meetingRequests || [],
             maturityThresholds: framework.maturityThresholds,
           }
         : null,
@@ -261,6 +265,8 @@ export async function getAssessments(req: Request, res: Response, next: NextFunc
 
 /**
  * Save/update answer(s) (Single or Batch)
+ * Deterministically resolves scoreValue, exceptionStatus, and pillar metadata
+ * against the active AssessmentFramework definition.
  */
 export async function saveAnswers(req: Request, res: Response, next: NextFunction) {
   try {
@@ -314,19 +320,83 @@ export async function saveAnswers(req: Request, res: Response, next: NextFunctio
       );
     }
 
+    const framework = await AssessmentFramework.findOne({
+      version: session.frameworkVersion,
+      assessmentType: session.assessmentType,
+    });
+    const questionMap = new Map(
+      (framework?.questions || []).map((q) => [q.questionId, q])
+    );
+
     // Merge answers into existing map
     const existingMap = new Map(session.answers.map((a) => [a.questionId, a]));
 
     for (const newAns of answers) {
       const current = existingMap.get(newAns.questionId);
+      const qDef = questionMap.get(newAns.questionId);
+
+      const resolvedPillarId =
+        qDef?.pillarId || newAns.pillarId || current?.pillarId || "";
+      const resolvedPillarNumber =
+        qDef?.pillarNumber ?? current?.pillarNumber;
+
+      let resolvedExceptionStatus: ExceptionStatus =
+        newAns.exceptionStatus || current?.exceptionStatus || "NotAssessed";
+      let resolvedSelectedCode: string | undefined =
+        newAns.selectedOptionCode ?? current?.selectedOptionCode;
+      let resolvedScoreValue: number =
+        typeof newAns.scoreValue === "number"
+          ? newAns.scoreValue
+          : current?.scoreValue || 0;
+      let resolvedTestStatus: TestStatus =
+        newAns.testStatus || current?.testStatus || "Complete";
+
+      if (session.assessmentType === "Full") {
+        if (
+          newAns.exceptionStatus === "NoExceptionNoted" ||
+          newAns.selectedOptionCode === "NO_EXCEPTION_NOTED"
+        ) {
+          resolvedExceptionStatus = "NoExceptionNoted";
+          resolvedSelectedCode = "NO_EXCEPTION_NOTED";
+          resolvedScoreValue = 1;
+        } else if (
+          newAns.exceptionStatus === "ExceptionNoted" ||
+          newAns.selectedOptionCode === "EXCEPTION_NOTED"
+        ) {
+          resolvedExceptionStatus = "ExceptionNoted";
+          resolvedSelectedCode = "EXCEPTION_NOTED";
+          resolvedScoreValue = 0;
+        } else if (
+          newAns.exceptionStatus === "NotAssessed" ||
+          newAns.selectedOptionCode === "NOT_ASSESSED"
+        ) {
+          resolvedExceptionStatus = "NotAssessed";
+          resolvedSelectedCode = "NOT_ASSESSED";
+          resolvedScoreValue = 0;
+        }
+      } else {
+        // Light Assessment: auto-derive scoreValue from framework responseOptions when selectedOptionCode is provided
+        if (resolvedSelectedCode && qDef?.responseOptions?.length) {
+          const matchedOpt = qDef.responseOptions.find(
+            (o) =>
+              o.code.toLowerCase() === resolvedSelectedCode!.toLowerCase() ||
+              o.label.toLowerCase() === resolvedSelectedCode!.toLowerCase()
+          );
+          if (matchedOpt) {
+            resolvedSelectedCode = matchedOpt.code;
+            resolvedScoreValue = matchedOpt.scoreValue;
+          }
+        }
+      }
+
       const updated: IAnswer = {
         questionId: newAns.questionId,
-        pillarId: newAns.pillarId || current?.pillarId || "",
-        pillarNumber: current?.pillarNumber,
-        testStatus: newAns.testStatus || current?.testStatus || "Complete",
-        exceptionStatus: newAns.exceptionStatus || current?.exceptionStatus || "NotAssessed",
-        selectedOptionCode: newAns.selectedOptionCode || current?.selectedOptionCode,
-        scoreValue: typeof newAns.scoreValue === "number" ? newAns.scoreValue : current?.scoreValue || 0,
+        pillarId: resolvedPillarId,
+        pillarNumber: resolvedPillarNumber,
+        testStatus: resolvedTestStatus,
+        exceptionStatus: resolvedExceptionStatus,
+        selectedOptionCode: resolvedSelectedCode,
+        scoreValue: resolvedScoreValue,
         workPaperReference: newAns.workPaperReference ?? current?.workPaperReference,
         evidenceNotes: newAns.evidenceNotes ?? current?.evidenceNotes,
         evidenceAttachmentUrl: newAns.evidenceAttachmentUrl ?? current?.evidenceAttachmentUrl,
@@ -354,6 +424,8 @@ export async function saveAnswers(req: Request, res: Response, next: NextFunctio
 
 /**
  * Calculate real-time progress for an assessment session
+ * Includes Section 1: Organization & AI Landscape (pillarNumber: 0) for Light Assessments
+ * so completion reaches 100% (30/30) when all questions are answered.
  */
 export async function getAssessmentProgress(req: Request, res: Response, next: NextFunction) {
   try {
@@ -363,11 +435,13 @@ export async function getAssessmentProgress(req: Request, res: Response, next: N
       return sendError(res, "Assessment session not found", 404, "SESSION_NOT_FOUND");
     }
 
-    if (
-      req.user?.role !== "Admin" &&
-      session.companyId.toString() !== req.user?.companyId?.toString()
-    ) {
-      return sendError(res, "Access denied.", 403, "CROSS_COMPANY_ACCESS_DENIED");
+    if (req.user?.role !== "Admin" && req.user?.role !== "SuperAdmin") {
+      const orgId = session.companyId.toString();
+      const isAssigned = await isAuditorAssignedToOrg(req.user!.userId, orgId);
+      const isCreator = session.conductedByUserId?.toString() === req.user?.userId;
+      if (!isAssigned && !isCreator && orgId !== req.user?.companyId?.toString()) {
+        return sendError(res, "Access denied.", 403, "CROSS_COMPANY_ACCESS_DENIED");
+      }
     }
 
     const framework = await AssessmentFramework.findOne({
@@ -378,10 +452,42 @@ export async function getAssessmentProgress(req: Request, res: Response, next: N
       return sendError(res, "Framework not found", 404, "FRAMEWORK_NOT_FOUND");
     }
 
+    const activeQuestions = framework.questions.filter((q) => q.isActive !== false);
     const answerMap = new Map(session.answers.map((a) => [a.questionId, a]));
 
-    const pillarProgress = framework.pillars.map((p) => {
-      const questions = framework.questions.filter((q) => q.pillarId === p.pillarId);
+    // Build list of sections/pillars to evaluate (prepend Section 1: AI Landscape if present)
+    const sectionsToTrack: Array<{
+      pillarId: string;
+      name: string;
+      pillarNumber?: number;
+    }> = [];
+
+    const hasLandscapeSection = activeQuestions.some(
+      (q) => q.pillarId === "ai-landscape" || q.pillarNumber === 0
+    );
+    if (
+      hasLandscapeSection &&
+      !framework.pillars.some((p) => p.pillarId === "ai-landscape" || p.pillarNumber === 0)
+    ) {
+      sectionsToTrack.push({
+        pillarId: "ai-landscape",
+        name: "Organization & AI Landscape",
+        pillarNumber: 0,
+      });
+    }
+
+    for (const p of framework.pillars) {
+      sectionsToTrack.push({
+        pillarId: p.pillarId,
+        name: p.name,
+        pillarNumber: p.pillarNumber,
+      });
+    }
+
+    const pillarProgress = sectionsToTrack.map((p) => {
+      const questions = activeQuestions.filter(
+        (q) => q.pillarId === p.pillarId || q.pillarNumber === p.pillarNumber
+      );
       let complete = 0;
       let inProgress = 0;
       let notStarted = 0;
@@ -390,19 +496,31 @@ export async function getAssessmentProgress(req: Request, res: Response, next: N
 
       for (const q of questions) {
         const a = answerMap.get(q.questionId);
-        if (!a || a.testStatus === "NotStarted" || (!a.testStatus && !a.selectedOptionCode)) {
+        if (
+          !a ||
+          (a.testStatus === "NotStarted" && !a.selectedOptionCode) ||
+          (!a.testStatus && !a.selectedOptionCode)
+        ) {
           notStarted++;
-        } else if (a.testStatus === "InProgress") {
+        } else if (a.testStatus === "InProgress" && !a.selectedOptionCode) {
           inProgress++;
         } else {
           complete++;
-          if (a.exceptionStatus === "ExceptionNoted") exceptionsNoted++;
-          if (a.exceptionStatus === "NoExceptionNoted") noExceptions++;
+          if (a.exceptionStatus === "ExceptionNoted" || a.selectedOptionCode === "EXCEPTION_NOTED") {
+            exceptionsNoted++;
+          }
+          if (
+            a.exceptionStatus === "NoExceptionNoted" ||
+            a.selectedOptionCode === "NO_EXCEPTION_NOTED"
+          ) {
+            noExceptions++;
+          }
         }
       }
 
       const total = questions.length;
-      const completionPercentage = total > 0 ? Math.round((complete / total) * 100 * 10) / 10 : 0;
+      const completionPercentage =
+        total > 0 ? Math.round((complete / total) * 100 * 10) / 10 : 0;
 
       return {
         pillarId: p.pillarId,
@@ -418,10 +536,12 @@ export async function getAssessmentProgress(req: Request, res: Response, next: N
       };
     });
 
-    const totalQuestions = framework.questions.length;
+    const totalQuestions = activeQuestions.length;
     const totalComplete = pillarProgress.reduce((s, p) => s + p.complete, 0);
     const overallCompletion =
-      totalQuestions > 0 ? Math.round((totalComplete / totalQuestions) * 100 * 10) / 10 : 0;
+      totalQuestions > 0
+        ? Math.round((totalComplete / totalQuestions) * 100 * 10) / 10
+        : 0;
 
     return sendSuccess(res, {
       assessmentId: session._id,
@@ -1360,4 +1480,3 @@ export async function sendAssessmentCompletionNotification(req: Request, res: Re
     next(err);
   }
 }
-

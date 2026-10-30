@@ -132,12 +132,22 @@ export async function createFrameworkVersion(
       },
     ];
     let questions: any[] = [];
-    let maturityThresholds = {
-      initialMax: 30,
-      emergingMax: 60,
-      establishedMax: 90,
-      advancedMax: 120,
-    };
+    let documentRequests: any[] = [];
+    let meetingRequests: any[] = [];
+    let maturityThresholds =
+      assessmentType === "Full"
+        ? {
+            initialMax: 39,
+            emergingMax: 69,
+            establishedMax: 89,
+            advancedMax: 100,
+          }
+        : {
+            initialMax: 30,
+            emergingMax: 60,
+            establishedMax: 90,
+            advancedMax: 120,
+          };
 
     if (cloneFromVersion) {
       const source = await AssessmentFramework.findOne({
@@ -180,8 +190,37 @@ export async function createFrameworkVersion(
         order: q.order,
         responseOptions: q.responseOptions,
       }));
+      if (source.documentRequests) {
+        documentRequests = source.documentRequests.map((d) => ({
+          documentId: d.documentId,
+          pillarNumber: d.pillarNumber,
+          pillarName: d.pillarName,
+          title: d.title,
+          description: d.description,
+          exampleContent: d.exampleContent,
+          linkedControls: d.linkedControls,
+        }));
+      }
+      if (source.meetingRequests) {
+        meetingRequests = source.meetingRequests.map((m) => ({
+          meetingNumber: m.meetingNumber,
+          pillarName: m.pillarName,
+          topic: m.topic,
+          frameworkAlignment: m.frameworkAlignment,
+          agendaItems: m.agendaItems,
+          leaderTitles: m.leaderTitles,
+          teamMemberTitles: m.teamMemberTitles,
+          duration: m.duration,
+          preparationNotes: m.preparationNotes,
+        }));
+      }
       if (source.maturityThresholds) {
-        maturityThresholds = { ...source.maturityThresholds };
+        maturityThresholds = {
+          initialMax: source.maturityThresholds.initialMax,
+          emergingMax: source.maturityThresholds.emergingMax,
+          establishedMax: source.maturityThresholds.establishedMax,
+          advancedMax: source.maturityThresholds.advancedMax,
+        };
       }
     }
 
@@ -196,6 +235,8 @@ export async function createFrameworkVersion(
       totalQuestions: questions.length,
       pillars,
       questions,
+      documentRequests,
+      meetingRequests,
       maturityThresholds,
     });
 
@@ -532,19 +573,21 @@ export async function addQuestionToFramework(
       );
     }
 
-    // Default response options if none provided
+    // Default response options if none provided (aligned with official GRAICE documents)
     if (!newQ.responseOptions || newQ.responseOptions.length === 0) {
       if (framework.assessmentType === "Full") {
         newQ.responseOptions = [
-          { code: "pass", label: "No Exception Noted (Pass)", scoreValue: 1, order: 1 },
-          { code: "fail", label: "Exception Noted (Fail)", scoreValue: 0, order: 2 },
-          { code: "na", label: "Not Assessed / N/A", scoreValue: 0, order: 3 },
+          { code: "NO_EXCEPTION_NOTED", label: "No Exception Noted", scoreValue: 1, order: 1 },
+          { code: "EXCEPTION_NOTED", label: "Exception Noted", scoreValue: 0, order: 2 },
+          { code: "NOT_ASSESSED", label: "Not Assessed", scoreValue: 0, order: 3 },
         ];
       } else {
         newQ.responseOptions = [
-          { code: "opt_0", label: "Not Implemented / No", scoreValue: 0, order: 1 },
-          { code: "opt_1", label: "Partially Implemented", scoreValue: 2, order: 2 },
-          { code: "opt_2", label: "Fully Implemented / Yes", scoreValue: 4, order: 3 },
+          { code: "YES", label: "Yes / Fully Implemented", scoreValue: 4, order: 1 },
+          { code: "PARTIAL", label: "Partially Implemented", scoreValue: 3, order: 2 },
+          { code: "PLANNED", label: "Planned / In Progress", scoreValue: 2, order: 3 },
+          { code: "NO", label: "No / Not Implemented", scoreValue: 0, order: 4 },
+          { code: "UNSURE", label: "Unsure", scoreValue: 0, order: 5 },
         ];
       }
     }
