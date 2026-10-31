@@ -31,7 +31,6 @@ export async function apiRequest<T = any>(
   const defaultHeaders: Record<string, string> = {
     "Content-Type": "application/json",
     Accept: "application/json",
-    "x-test-suite": "graice-internal-test",
   };
 
   if (token) {

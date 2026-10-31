@@ -32,6 +32,7 @@ import {
   Loader2,
   Paperclip,
   BookmarkCheck,
+  Bell,
 } from "lucide-react";
 
 export type EvaluationOption = "Pass" | "Fail" | "Inconclusive" | "N/A";
@@ -70,6 +71,10 @@ export default function AssessmentWorkspacePage({
   const [uploadingEvidence, setUploadingEvidence] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Operational Reminder State
+  const [sendingReminder, setSendingReminder] = useState(false);
+  const [reminderMessage, setReminderMessage] = useState<string | null>(null);
 
   // Load Session and Framework
   useEffect(() => {
@@ -343,6 +348,20 @@ export default function AssessmentWorkspacePage({
     }
   };
 
+  const handleSendReminder = async () => {
+    setSendingReminder(true);
+    setReminderMessage(null);
+    try {
+      const res = await assessmentService.sendReminder(id);
+      setReminderMessage(res?.data?.message || "Assessment reminder dispatched to stakeholders!");
+      setTimeout(() => setReminderMessage(null), 5000);
+    } catch (err: any) {
+      alert(err?.response?.data?.error?.message || err?.message || "Failed to dispatch reminder.");
+    } finally {
+      setSendingReminder(false);
+    }
+  };
+
   // Admin confidentiality block
   if (accessDenied) {
     return (
@@ -474,6 +493,23 @@ export default function AssessmentWorkspacePage({
             </div>
           )}
 
+          {!isLocked && (
+            <button
+              type="button"
+              disabled={sendingReminder}
+              onClick={handleSendReminder}
+              className="inline-flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 hover:bg-slate-50 disabled:opacity-50 text-slate-700 text-xs font-semibold rounded-lg shadow-2xs transition"
+              title="Dispatch an assessment reminder email to client contact or assigned auditor"
+            >
+              {sendingReminder ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-slate-500" />
+              ) : (
+                <Bell className="h-3.5 w-3.5 text-blue-600" />
+              )}
+              <span>Send Reminder</span>
+            </button>
+          )}
+
           <Link
             href={`/assessments/${id}/review`}
             className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#0c162c] hover:bg-slate-800 text-white font-semibold text-xs rounded-lg shadow-sm transition"
@@ -483,6 +519,21 @@ export default function AssessmentWorkspacePage({
           </Link>
         </div>
       </div>
+
+      {reminderMessage && (
+        <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-800 flex items-center justify-between animate-in fade-in">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="h-4 w-4 text-blue-600 shrink-0" />
+            <span>{reminderMessage}</span>
+          </div>
+          <button
+            onClick={() => setReminderMessage(null)}
+            className="text-slate-400 hover:text-slate-600 font-bold ml-2"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* 3-Column Workspace Canvas */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">

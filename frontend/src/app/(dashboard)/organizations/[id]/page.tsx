@@ -23,12 +23,15 @@ import {
   ArrowRight,
   Activity,
   Award,
+  TrendingUp,
+  TrendingDown,
+  BarChart2,
 } from "lucide-react";
 import { companyService } from "@/services/company.service";
 import { auditorMappingService } from "@/services/auditorMapping.service";
 import { assessmentService } from "@/services/assessment.service";
 import { userService } from "@/services/user.service";
-import { Company, CompanyStatus } from "@/types/company.types";
+import { Company, CompanyStatus, CompanyTrendsResponse } from "@/types/company.types";
 import { User as UserType } from "@/types/auth.types";
 import { AssessmentSession } from "@/types/assessment.types";
 import { OrgAuditorItem } from "@/types/auditorMapping.types";
@@ -129,6 +132,24 @@ export default function OrganizationProfileFullPage({
     }
   }, [id]);
 
+  // Fetch Longitudinal Maturity Trends
+  const [trends, setTrends] = useState<CompanyTrendsResponse | null>(null);
+  const [trendsLoading, setTrendsLoading] = useState(false);
+
+  const fetchTrends = useCallback(async () => {
+    setTrendsLoading(true);
+    try {
+      const res = await companyService.getCompanyTrends(id);
+      if (res?.data) {
+        setTrends(res.data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch company trends:", err);
+    } finally {
+      setTrendsLoading(false);
+    }
+  }, [id]);
+
   // Fetch Assessors for Assignment Dropdown (Admin only)
   const fetchAvailableAssessors = useCallback(async () => {
     if (!isAdmin) return;
@@ -147,7 +168,8 @@ export default function OrganizationProfileFullPage({
     fetchAssignedAuditors();
     fetchCompanyAssessments();
     fetchAvailableAssessors();
-  }, [fetchCompany, fetchAssignedAuditors, fetchCompanyAssessments, fetchAvailableAssessors]);
+    fetchTrends();
+  }, [fetchCompany, fetchAssignedAuditors, fetchCompanyAssessments, fetchAvailableAssessors, fetchTrends]);
 
   // Handle Assign Auditor
   const handleAssignAuditor = async (e: React.FormEvent) => {
@@ -341,6 +363,7 @@ export default function OrganizationProfileFullPage({
               fetchCompany();
               fetchAssignedAuditors();
               fetchCompanyAssessments();
+              fetchTrends();
             }}
             className="p-2 border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 text-xs flex items-center gap-1.5 font-medium shadow-2xs"
           >
@@ -479,6 +502,92 @@ export default function OrganizationProfileFullPage({
                   Manage Assigned Auditors ({auditors.length})
                 </button>
               </div>
+            </div>
+
+            {/* Longitudinal Maturity Progression Trends Card */}
+            <div className="md:col-span-3 bg-white rounded-xl border border-slate-200/90 p-5 shadow-2xs space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-2">
+                  <BarChart2 className="h-4 w-4 text-teal-600" />
+                  <h3 className="font-bold text-slate-900 text-sm">
+                    Longitudinal Maturity &amp; Compliance Progression
+                  </h3>
+                </div>
+                {trends && (
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="text-slate-500 font-medium">
+                      Submitted Sessions: <strong className="text-slate-800">{trends.totalCompletedAssessments}</strong>
+                    </span>
+                    {trends.progressionDeltaPercentage !== 0 && (
+                      <span
+                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold ${
+                          trends.progressionDeltaPercentage > 0
+                            ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                            : "bg-rose-50 text-rose-700 border border-rose-200"
+                        }`}
+                      >
+                        {trends.progressionDeltaPercentage > 0 ? (
+                          <TrendingUp className="h-3 w-3" />
+                        ) : (
+                          <TrendingDown className="h-3 w-3" />
+                        )}
+                        {trends.progressionDeltaPercentage > 0 ? "+" : ""}
+                        {trends.progressionDeltaPercentage}% Progression Delta
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {trendsLoading ? (
+                <div className="py-8 text-center text-xs text-slate-400 animate-pulse">
+                  Loading longitudinal audit trends...
+                </div>
+              ) : trends && trends.history && trends.history.length > 0 ? (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    {trends.history.map((h, idx) => (
+                      <div
+                        key={h.assessmentId || idx}
+                        className="p-3.5 rounded-xl border border-slate-200/80 bg-slate-50/60 hover:bg-slate-50 transition space-y-2.5"
+                      >
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="font-bold text-slate-800 font-mono">
+                            v{h.frameworkVersion} ({h.assessmentType})
+                          </span>
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-white border border-slate-200 text-slate-700">
+                            {h.maturityLevel}
+                          </span>
+                        </div>
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-slate-500">Compliance Score</span>
+                            <span className="font-bold text-slate-900">{h.overallPercentage}%</span>
+                          </div>
+                          <div className="w-full bg-slate-200 rounded-full h-1.5 overflow-hidden">
+                            <div
+                              className="bg-teal-600 h-1.5 rounded-full transition-all duration-500"
+                              style={{ width: `${Math.min(h.overallPercentage, 100)}%` }}
+                            />
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1 border-t border-slate-200/60">
+                          <span>{h.controlsAssessed} Controls</span>
+                          <span>{h.exceptionsNoted} Exceptions</span>
+                          <span>{h.submittedAt ? new Date(h.submittedAt).toLocaleDateString() : "—"}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="py-6 text-center text-xs text-slate-500">
+                  <p>No submitted assessment sessions recorded for this organization yet.</p>
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    Once assessments are submitted and finalized, historical compliance progression and maturity delta will automatically appear here.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         )}

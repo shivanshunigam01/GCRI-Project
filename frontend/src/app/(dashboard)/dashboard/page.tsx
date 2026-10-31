@@ -61,9 +61,9 @@ import {
 /* -------------------------------------------------------------------------- */
 
 export default function DashboardPage() {
-  const { user } = useAuth();
+  const { user, isSuperAdmin, isAdmin } = useAuth();
   const { setOrganizations, refreshTrigger } = useDashboardScope();
-  const roleView: "Admin" | "Auditor" = user?.role === "Admin" ? "Admin" : "Auditor";
+  const roleView: "Admin" | "Auditor" = isAdmin ? "Admin" : "Auditor";
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -197,6 +197,7 @@ export default function DashboardPage() {
         <AdminDashboardContent
           summary={adminSummary}
           assessments={adminAssessments}
+          isSuperAdmin={isSuperAdmin}
           onRefresh={fetchDashboard}
         />
       )}
@@ -1708,10 +1709,12 @@ function SevenPillarRadarChart({
 function AdminDashboardContent({
   summary,
   assessments,
+  isSuperAdmin = false,
   onRefresh,
 }: {
   summary: AdminDashboardSummary | null;
   assessments: AdminAssessmentItem[];
+  isSuperAdmin?: boolean;
   onRefresh: () => void;
 }) {
   const [isMounted, setIsMounted] = useState(false);
@@ -1812,7 +1815,7 @@ function AdminDashboardContent({
         <div>
           <div className="flex items-center gap-2.5">
             <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 font-editorial">
-              Platform Operations &amp; Governance
+              {isSuperAdmin ? "Platform Operations & Governance" : "Organization Governance & Compliance"}
             </h1>
             <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/80">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
@@ -1820,7 +1823,9 @@ function AdminDashboardContent({
             </span>
           </div>
           <p className="text-xs sm:text-sm text-slate-500 mt-1">
-            Global multi-tenant governance, auditor accreditation, compliance frameworks, and security audit logs.
+            {isSuperAdmin
+              ? "Global multi-tenant governance, auditor accreditation, compliance frameworks, and security audit logs."
+              : "Tenant oversight, team assessors, active assessment workloads, and audit activity."}
           </p>
         </div>
       </div>

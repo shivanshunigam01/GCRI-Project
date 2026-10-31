@@ -56,12 +56,12 @@ function DashboardLayoutContent({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, loading, logout, isAdmin } = useAuth();
+  const { user, loading, logout, isSuperAdmin, isOrgAdmin, isAdmin } = useAuth();
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // Strict Security: Role is determined strictly by the verified JWT session user
-  const activeRoleView: "Admin" | "Auditor" = user?.role === "Admin" ? "Admin" : "Auditor";
+  const activeRoleView: "Admin" | "Auditor" = isAdmin ? "Admin" : "Auditor";
 
   // Redirect non-authenticated users to login
   useEffect(() => {
@@ -75,7 +75,6 @@ function DashboardLayoutContent({
     setMobileMenuOpen(false);
   }, [pathname]);
 
-
   const auditorNavItems = [
     { label: "Dashboard", href: "/dashboard", icon: Home, active: pathname === "/dashboard" },
     { label: "Organizations", href: "/organizations", icon: Building2 },
@@ -88,17 +87,28 @@ function DashboardLayoutContent({
     { label: "Security & MFA", href: "/settings/security", icon: Shield },
   ];
 
-  const adminNavItems = [
-    { label: "Dashboard", href: "/dashboard", icon: Home, active: pathname === "/dashboard" },
-    { label: "Users", href: "/admin/users", icon: Users },
-    { label: "Auditor Mappings", href: "/admin/auditor-mappings", icon: UserCheck },
-    { label: "Organizations", href: "/organizations", icon: Building2 },
-    { label: "Assessments", href: "/assessments", icon: FileCheck2 },
-    { label: "Framework Versions", href: "/admin/frameworks", icon: Layers },
-    { label: "API Keys", href: "/admin/api-keys", icon: Lock },
-    { label: "Subscriptions", href: "/subscriptions", icon: CreditCard },
-    { label: "Audit Logs", href: "/admin/audit-logs", icon: History },
-  ];
+  // SuperAdmin sees global governance; Org Admin sees tenant-isolated items
+  const adminNavItems = isSuperAdmin
+    ? [
+        { label: "Dashboard", href: "/dashboard", icon: Home, active: pathname === "/dashboard" },
+        { label: "Organizations", href: "/organizations", icon: Building2 },
+        { label: "Users & Admins", href: "/admin/users", icon: Users },
+        { label: "Assessments", href: "/assessments", icon: FileCheck2 },
+        { label: "Framework Versions", href: "/admin/frameworks", icon: Layers },
+        { label: "Auditor Mappings", href: "/admin/auditor-mappings", icon: UserCheck },
+        { label: "API Keys", href: "/admin/api-keys", icon: Lock },
+        { label: "Subscriptions", href: "/subscriptions", icon: CreditCard },
+        { label: "Audit Logs", href: "/admin/audit-logs", icon: History },
+      ]
+    : [
+        { label: "Dashboard", href: "/dashboard", icon: Home, active: pathname === "/dashboard" },
+        { label: "Organization", href: "/organizations", icon: Building2 },
+        { label: "Assessors / Team", href: "/admin/users", icon: Users },
+        { label: "Assessments", href: "/assessments", icon: FileCheck2 },
+        { label: "Auditor Mappings", href: "/admin/auditor-mappings", icon: UserCheck },
+        { label: "Subscriptions", href: "/subscriptions", icon: CreditCard },
+        { label: "Audit Logs", href: "/admin/audit-logs", icon: History },
+      ];
 
   const adminSettingsNavItems = [
     { label: "Profile", href: "/settings/profile", icon: Settings },
@@ -201,7 +211,7 @@ function DashboardLayoutContent({
                     item.active ||
                     pathname === item.href ||
                     (item.href !== "/dashboard" && pathname.startsWith(item.href)) ||
-                    (item.label === "Users" && (pathname.startsWith("/admin/users") || pathname.startsWith("/admin/assessors")));
+                    (item.href === "/admin/users" && (pathname.startsWith("/admin/users") || pathname.startsWith("/admin/assessors")));
                   return (
                     <Link
                       key={item.label}
@@ -298,7 +308,7 @@ function DashboardLayoutContent({
                     {user?.name || "User"}
                   </div>
                   <div className="text-xs text-slate-500 leading-tight">
-                    {activeRoleView === "Admin" ? "Super Admin" : "Auditor"}
+                    {isSuperAdmin ? "Super Admin" : isOrgAdmin ? "Org Admin" : "Auditor"}
                   </div>
                 </div>
                 <ChevronDown className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-slate-400" />

@@ -38,8 +38,10 @@ import {
 import { companyService } from "@/services/company.service";
 import { User, UserRole, UserStatus } from "@/types/auth.types";
 import { Company } from "@/types/company.types";
+import { useAuth } from "@/context/AuthContext";
 
 export default function AdminAssessorsPage() {
+  const { isSuperAdmin, isOrgAdmin, user: currentUser } = useAuth();
   // Live State
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
@@ -381,11 +383,18 @@ export default function AdminAssessorsPage() {
   // Helper for Role Badges
   const getRoleBadge = (role: UserRole) => {
     switch (role) {
+      case "SuperAdmin":
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-rose-50/80 text-rose-700 border border-rose-200/80 shadow-2xs">
+            <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
+            Super Admin
+          </span>
+        );
       case "Admin":
         return (
           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-purple-50/80 text-purple-700 border border-purple-200/80 shadow-2xs">
             <span className="h-1.5 w-1.5 rounded-full bg-purple-500" />
-            Platform Admin
+            Org Admin
           </span>
         );
       case "Assessor":
@@ -568,7 +577,8 @@ export default function AdminAssessorsPage() {
               className="text-xs font-medium py-1.5 px-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-700 hover:border-slate-300 focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 transition cursor-pointer"
             >
               <option value="all">All Roles</option>
-              <option value="Admin">Admin</option>
+              {isSuperAdmin && <option value="SuperAdmin">Super Admin</option>}
+              <option value="Admin">Org Admin</option>
               <option value="Assessor">Assessor</option>
               <option value="MembershipApprover">Membership Approver</option>
             </select>
@@ -1092,7 +1102,8 @@ export default function AdminAssessorsPage() {
                         className="w-full text-xs py-2 px-2.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition cursor-pointer"
                       >
                         <option value="Assessor">Assessor</option>
-                        <option value="Admin">Platform Admin</option>
+                        {isSuperAdmin && <option value="SuperAdmin">Super Admin</option>}
+                        {isSuperAdmin && <option value="Admin">Organization Admin</option>}
                         <option value="MembershipApprover">Membership Approver</option>
                       </select>
                     </div>
@@ -1264,7 +1275,8 @@ export default function AdminAssessorsPage() {
                     className="w-full text-xs py-2 px-2.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition cursor-pointer"
                   >
                     <option value="Assessor">Assessor</option>
-                    <option value="Admin">Platform Admin</option>
+                    {isSuperAdmin && <option value="SuperAdmin">Super Admin</option>}
+                    {isSuperAdmin && <option value="Admin">Organization Admin</option>}
                     <option value="MembershipApprover">Membership Approver</option>
                   </select>
                 </div>
@@ -1381,18 +1393,25 @@ export default function AdminAssessorsPage() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    System Role *
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-semibold text-slate-700">
+                      System Role *
+                    </label>
+                    {!isSuperAdmin && (
+                      <span className="text-[10px] text-amber-600 font-medium">Super Admin only</span>
+                    )}
+                  </div>
                   <select
+                    disabled={!isSuperAdmin}
                     value={editForm.role}
                     onChange={(e) =>
                       setEditForm({ ...editForm, role: e.target.value as UserRole })
                     }
-                    className="w-full text-xs py-2 px-2.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition cursor-pointer"
+                    className="w-full text-xs py-2 px-2.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition cursor-pointer disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
                   >
                     <option value="Assessor">Assessor</option>
-                    <option value="Admin">Platform Admin</option>
+                    {isSuperAdmin && <option value="SuperAdmin">Super Admin</option>}
+                    <option value="Admin">Organization Admin</option>
                     <option value="MembershipApprover">Membership Approver</option>
                   </select>
                 </div>

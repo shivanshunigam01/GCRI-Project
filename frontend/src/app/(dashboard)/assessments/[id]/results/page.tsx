@@ -24,6 +24,8 @@ import {
   Sparkles,
   BarChart3,
   Calendar,
+  Send,
+  Mail,
 } from "lucide-react";
 
 export default function AssessmentResultsPage({
@@ -43,6 +45,8 @@ export default function AssessmentResultsPage({
   const [pillarsData, setPillarsData] = useState<AssessmentPillarsResponse | null>(null);
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const [pdfSuccessMessage, setPdfSuccessMessage] = useState<string | null>(null);
+  const [sendingCompletion, setSendingCompletion] = useState(false);
+  const [completionMessage, setCompletionMessage] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadResults() {
@@ -102,6 +106,20 @@ export default function AssessmentResultsPage({
 
   const handleDownloadExcel = () => {
     window.open(assessmentService.getExportDownloadUrl(id), "_blank");
+  };
+
+  const handleSendCompletion = async () => {
+    setSendingCompletion(true);
+    setCompletionMessage(null);
+    try {
+      const res = await assessmentService.sendCompletion(id);
+      setCompletionMessage(res?.data?.message || "Assessment completion scorecard dispatched via email!");
+      setTimeout(() => setCompletionMessage(null), 5000);
+    } catch (err: any) {
+      alert(err?.response?.data?.error?.message || err?.message || "Failed to dispatch completion alert.");
+    } finally {
+      setSendingCompletion(false);
+    }
   };
 
   if (accessDenied) {
@@ -259,8 +277,38 @@ export default function AssessmentResultsPage({
           >
             <FileSpreadsheet className="h-3.5 w-3.5" /> Excel Export
           </button>
+
+          <button
+            type="button"
+            disabled={sendingCompletion}
+            onClick={handleSendCompletion}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-semibold rounded-lg shadow-2xs transition"
+            title="Dispatch completion confirmation email with executive maturity scorecard"
+          >
+            {sendingCompletion ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Mail className="h-3.5 w-3.5" />
+            )}
+            <span>Email Scorecard</span>
+          </button>
         </div>
       </div>
+
+      {completionMessage && (
+        <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-800 flex items-center justify-between animate-in fade-in">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="h-4 w-4 text-blue-600 shrink-0" />
+            <span>{completionMessage}</span>
+          </div>
+          <button
+            onClick={() => setCompletionMessage(null)}
+            className="text-slate-400 hover:text-slate-600 font-bold ml-2"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {pdfSuccessMessage && (
         <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-800 flex items-center gap-2">

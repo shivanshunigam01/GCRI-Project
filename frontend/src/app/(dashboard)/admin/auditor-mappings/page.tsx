@@ -30,8 +30,15 @@ import { companyService } from "@/services/company.service";
 import { AuditorOrganizationMapping } from "@/types/auditorMapping.types";
 import { User as UserType } from "@/types/auth.types";
 import { Company } from "@/types/company.types";
+import { useAuth } from "@/context/AuthContext";
 
 export default function AuditorMappingsPage() {
+  const { user: currentUser, isSuperAdmin, isOrgAdmin } = useAuth();
+  const userCompanyId = currentUser?.companyId
+    ? typeof currentUser.companyId === "string"
+      ? currentUser.companyId
+      : currentUser.companyId._id
+    : "";
   // Live State
   const [mappings, setMappings] = useState<AuditorOrganizationMapping[]>([]);
   const [assessors, setAssessors] = useState<UserType[]>([]);
@@ -167,7 +174,8 @@ export default function AuditorMappingsPage() {
   // Handle Create Assignment
   const handleCreateAssignment = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!createForm.auditorId || !createForm.organizationId) {
+    const targetOrgId = !isSuperAdmin && userCompanyId ? userCompanyId : createForm.organizationId;
+    if (!createForm.auditorId || !targetOrgId) {
       setCreateError("Please select both a certified assessor and a client organization.");
       return;
     }
@@ -178,7 +186,7 @@ export default function AuditorMappingsPage() {
     try {
       await auditorMappingService.createMapping({
         auditorId: createForm.auditorId,
-        organizationId: createForm.organizationId,
+        organizationId: targetOrgId,
       });
 
       setActionSuccess("Assessor scope successfully assigned!");
@@ -706,10 +714,11 @@ export default function AuditorMappingsPage() {
                   Select Client Organization <span className="text-rose-500">*</span>
                 </label>
                 <select
-                  value={createForm.organizationId}
+                  disabled={!isSuperAdmin && Boolean(userCompanyId)}
+                  value={!isSuperAdmin && userCompanyId ? userCompanyId : createForm.organizationId}
                   onChange={(e) => setCreateForm({ ...createForm, organizationId: e.target.value })}
                   required
-                  className="w-full px-3 py-2 bg-slate-50 focus:bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 text-xs transition"
+                  className="w-full px-3 py-2 bg-slate-50 focus:bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 text-xs transition disabled:bg-slate-100 disabled:text-slate-600 disabled:cursor-not-allowed"
                 >
                   <option value="">-- Choose a Client Organization --</option>
                   {companies.map((c) => (
@@ -718,9 +727,15 @@ export default function AuditorMappingsPage() {
                     </option>
                   ))}
                 </select>
-                <p className="text-[10.5px] text-slate-400 mt-1">
-                  The client organization where the assessor will perform audit verifications.
-                </p>
+                {!isSuperAdmin && userCompanyId ? (
+                  <p className="text-[10.5px] text-purple-600 font-medium mt-1">
+                    Organization Admin: Scoped strictly to your organization.
+                  </p>
+                ) : (
+                  <p className="text-[10.5px] text-slate-400 mt-1">
+                    The client organization where the assessor will perform audit verifications.
+                  </p>
+                )}
               </div>
 
               {/* Modal Actions */}

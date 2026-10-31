@@ -19,10 +19,16 @@ import {
   Shield,
   ChevronRight,
   BookOpen,
+  Settings,
+  Search,
+  Sliders,
+  Check,
+  X,
 } from "lucide-react";
+import { AssessmentFramework, FrameworkQuestion } from "@/types/framework.types";
 
 export default function AdminFrameworksPage() {
-  const { isAdmin } = useAuth();
+  const { isSuperAdmin } = useAuth();
   const [frameworks, setFrameworks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -52,6 +58,129 @@ export default function AdminFrameworksPage() {
   useEffect(() => {
     fetchFrameworks();
   }, []);
+
+  // Control Inspection & Authoring Drawer State
+  const [controlsModalOpen, setControlsModalOpen] = useState(false);
+  const [activeFrameworkDetail, setActiveFrameworkDetail] = useState<AssessmentFramework | null>(null);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+  const [controlSearch, setControlSearch] = useState("");
+  const [showAddControl, setShowAddControl] = useState(false);
+  const [addingControl, setAddingControl] = useState(false);
+  const [newQuestionForm, setNewQuestionForm] = useState({
+    questionId: "",
+    pillarId: "",
+    text: "",
+    mandatory: true,
+  });
+
+  const openControlsDrawer = async (frameworkId: string) => {
+    setControlsModalOpen(true);
+    setLoadingDetail(true);
+    setShowAddControl(false);
+    setControlSearch("");
+    try {
+      const res = await adminFrameworkService.getFrameworkById(frameworkId);
+      const fw = res?.data;
+      if (fw) {
+        setActiveFrameworkDetail(fw);
+        if (fw.pillars?.length) {
+          setNewQuestionForm((prev) => ({ ...prev, pillarId: fw.pillars[0].pillarId }));
+        }
+      }
+    } catch (err: any) {
+      alert(err?.response?.data?.error?.message || "Failed to load framework controls.");
+      setControlsModalOpen(false);
+    } finally {
+      setLoadingDetail(false);
+    }
+  };
+
+  const handleToggleQuestion = async (questionId: string, currentActive: boolean) => {
+    if (!activeFrameworkDetail?._id) return;
+    try {
+      await adminFrameworkService.toggleQuestionStatus(activeFrameworkDetail._id, questionId, !currentActive);
+      setActiveFrameworkDetail((prev) => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          questions: prev.questions.map((q) =>
+            q.questionId === questionId ? { ...q, isActive: !currentActive } : q
+          ),
+        };
+      });
+    } catch (err: any) {
+      alert(err?.response?.data?.error?.message || "Failed to toggle question status.");
+    }
+  };
+
+  const handleDeleteQuestion = async (questionId: string) => {
+    if (!activeFrameworkDetail?._id) return;
+    if (!confirm(`Are you sure you want to delete control '${questionId}'?`)) return;
+    try {
+      await adminFrameworkService.deleteQuestion(activeFrameworkDetail._id, questionId);
+      setActiveFrameworkDetail((prev) => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          questions: prev.questions.filter((q) => q.questionId !== questionId),
+        };
+      });
+      fetchFrameworks();
+    } catch (err: any) {
+      alert(err?.response?.data?.error?.message || "Failed to delete control.");
+    }
+  };
+
+  const handleAddQuestion = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeFrameworkDetail?._id) return;
+    if (!newQuestionForm.questionId.trim() || !newQuestionForm.text.trim() || !newQuestionForm.pillarId) {
+      alert("Question ID, Pillar, and Requirement text are required.");
+      return;
+    }
+    setAddingControl(true);
+    try {
+      const selectedPillar = activeFrameworkDetail.pillars.find((p) => p.pillarId === newQuestionForm.pillarId);
+      const payload: FrameworkQuestion = {
+        questionId: newQuestionForm.questionId.trim(),
+        pillarId: newQuestionForm.pillarId,
+        pillarNumber: selectedPillar?.pillarNumber || 1,
+        pillarName: selectedPillar?.name || "Governance",
+        text: newQuestionForm.text.trim(),
+        mandatory: newQuestionForm.mandatory,
+        isActive: true,
+        order: activeFrameworkDetail.questions.length + 1,
+        responseOptions: [
+          { code: "Pass", label: "Full Compliance", scoreValue: 10, order: 1 },
+          { code: "Inconclusive", label: "Partial Compliance", scoreValue: 5, order: 2 },
+          { code: "Fail", label: "Non-Compliant Exception", scoreValue: 0, order: 3 },
+          { code: "N/A", label: "Not Applicable", scoreValue: 0, order: 4 },
+        ],
+      };
+
+      const res = await adminFrameworkService.addQuestion(activeFrameworkDetail._id, payload);
+      const addedQ = res.data?.question || payload;
+      setActiveFrameworkDetail((prev) => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          questions: [...prev.questions, addedQ],
+        };
+      });
+      setShowAddControl(false);
+      setNewQuestionForm({
+        questionId: "",
+        pillarId: activeFrameworkDetail.pillars[0]?.pillarId || "",
+        text: "",
+        mandatory: true,
+      });
+      fetchFrameworks();
+    } catch (err: any) {
+      alert(err?.response?.data?.error?.message || "Failed to add control.");
+    } finally {
+      setAddingControl(false);
+    }
+  };
 
   const handleCreateDraft = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -119,12 +248,12 @@ export default function AdminFrameworksPage() {
     }
   };
 
-  if (!isAdmin) {
+  if (!isSuperAdmin) {
     return (
-      <div className="max-w-md mx-auto my-12 p-8 bg-white rounded-2xl border border-slate-200 text-center space-y-3">
+      <div className="max-w-md mx-auto my-12 p-8 bg-white rounded-2xl border border-slate-200 text-center space-y-3 shadow-xs">
         <Shield className="h-8 w-8 text-rose-500 mx-auto" />
-        <h2 className="text-base font-bold text-slate-900">Access Restricted</h2>
-        <p className="text-xs text-slate-500">Only Platform Administrators can manage framework versions.</p>
+        <h2 className="text-base font-bold text-slate-900">Platform Governance Restricted</h2>
+        <p className="text-xs text-slate-500">Only Platform Super Administrators can author and publish framework versions.</p>
       </div>
     );
   }
@@ -234,6 +363,15 @@ export default function AdminFrameworksPage() {
 
                 {/* Framework Actions */}
                 <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => openControlsDrawer(fw._id)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs rounded-lg shadow-2xs transition"
+                  >
+                    <Sliders className="h-3.5 w-3.5 text-slate-500" />
+                    {isDraft ? "Manage Controls" : "View Controls"}
+                  </button>
+
                   {isDraft && (
                     <>
                       <button
@@ -388,6 +526,295 @@ export default function AdminFrameworksPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* Framework Controls Modal / Drawer */}
+      {controlsModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden">
+            {/* Header */}
+            <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-blue-50 text-blue-700 border border-blue-200">
+                  <Sliders className="h-5 w-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-bold text-slate-900 font-editorial">
+                      Framework Controls &amp; Question Builder
+                    </h3>
+                    {activeFrameworkDetail && (
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-200 text-slate-800 font-mono">
+                        v{activeFrameworkDetail.version}
+                      </span>
+                    )}
+                    {activeFrameworkDetail && (
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                          activeFrameworkDetail.status === "Published"
+                            ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                            : activeFrameworkDetail.status === "Draft"
+                            ? "bg-amber-50 text-amber-700 border-amber-200"
+                            : "bg-slate-100 text-slate-700 border-slate-200"
+                        }`}
+                      >
+                        {activeFrameworkDetail.status}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    {activeFrameworkDetail?.status === "Draft"
+                      ? "Author, modify, toggle, or remove compliance controls for this draft version."
+                      : "Cryptographically finalized controls for deterministic audit scoring."}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setControlsModalOpen(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Content Area */}
+            <div className="flex-1 overflow-y-auto p-5 space-y-4">
+              {loadingDetail ? (
+                <div className="py-16 text-center space-y-2">
+                  <Loader2 className="h-6 w-6 animate-spin text-blue-600 mx-auto" />
+                  <p className="text-xs text-slate-500">Loading controls specification...</p>
+                </div>
+              ) : activeFrameworkDetail ? (
+                <>
+                  {/* Top Control Bar: Search and + Add button */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="relative flex-1 max-w-sm">
+                      <Search className="h-4 w-4 text-slate-400 absolute left-3 top-2.5" />
+                      <input
+                        type="text"
+                        placeholder="Search controls by ID or text..."
+                        value={controlSearch}
+                        onChange={(e) => setControlSearch(e.target.value)}
+                        className="w-full pl-9 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+
+                    {activeFrameworkDetail.status === "Draft" && (
+                      <button
+                        type="button"
+                        onClick={() => setShowAddControl(!showAddControl)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#0c162c] hover:bg-slate-800 text-white font-semibold text-xs rounded-lg transition"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                        {showAddControl ? "Cancel Add" : "+ Add New Control"}
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Add Control Inline Form */}
+                  {showAddControl && activeFrameworkDetail.status === "Draft" && (
+                    <form
+                      onSubmit={handleAddQuestion}
+                      className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3 animate-in fade-in text-xs"
+                    >
+                      <h4 className="font-bold text-slate-900">Define New Framework Control</h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div>
+                          <label className="block font-semibold text-slate-700 mb-1">
+                            Control ID (e.g. SEC-08)
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            placeholder="e.g. SEC-08"
+                            value={newQuestionForm.questionId}
+                            onChange={(e) =>
+                              setNewQuestionForm((p) => ({ ...p, questionId: e.target.value }))
+                            }
+                            className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg font-mono text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block font-semibold text-slate-700 mb-1">
+                            Pillar Classification
+                          </label>
+                          <select
+                            value={newQuestionForm.pillarId}
+                            onChange={(e) =>
+                              setNewQuestionForm((p) => ({ ...p, pillarId: e.target.value }))
+                            }
+                            className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          >
+                            {activeFrameworkDetail.pillars?.map((p) => (
+                              <option key={p.pillarId} value={p.pillarId}>
+                                {p.name || p.pillarId}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block font-semibold text-slate-700 mb-1">
+                            Mandatory Control?
+                          </label>
+                          <select
+                            value={newQuestionForm.mandatory ? "yes" : "no"}
+                            onChange={(e) =>
+                              setNewQuestionForm((p) => ({
+                                ...p,
+                                mandatory: e.target.value === "yes",
+                              }))
+                            }
+                            className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          >
+                            <option value="yes">Yes (Mandatory)</option>
+                            <option value="no">No (Elective / Advisory)</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block font-semibold text-slate-700 mb-1">
+                          Control Requirement Statement / Verification Procedure
+                        </label>
+                        <textarea
+                          required
+                          rows={2}
+                          placeholder="Describe the control objective and evidence verification procedure required from the client..."
+                          value={newQuestionForm.text}
+                          onChange={(e) =>
+                            setNewQuestionForm((p) => ({ ...p, text: e.target.value }))
+                          }
+                          className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+
+                      <div className="flex justify-end gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => setShowAddControl(false)}
+                          className="px-3 py-1.5 text-slate-600 hover:text-slate-900 font-semibold"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={addingControl}
+                          className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold rounded-lg shadow-sm"
+                        >
+                          {addingControl ? (
+                            <>
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" /> Adding...
+                            </>
+                          ) : (
+                            <>
+                              <Plus className="h-3.5 w-3.5" /> Save Control
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </form>
+                  )}
+
+                  {/* Controls Table */}
+                  <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold uppercase text-[10px] tracking-wider">
+                        <tr>
+                          <th className="py-2.5 px-3">Control ID</th>
+                          <th className="py-2.5 px-3">Pillar</th>
+                          <th className="py-2.5 px-3">Control Statement</th>
+                          <th className="py-2.5 px-3">Status</th>
+                          {activeFrameworkDetail.status === "Draft" && (
+                            <th className="py-2.5 px-3 text-right">Actions</th>
+                          )}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 bg-white">
+                        {activeFrameworkDetail.questions
+                          .filter((q) => {
+                            if (!controlSearch.trim()) return true;
+                            const query = controlSearch.toLowerCase();
+                            return (
+                              q.questionId.toLowerCase().includes(query) ||
+                              q.text.toLowerCase().includes(query) ||
+                              q.pillarName?.toLowerCase().includes(query)
+                            );
+                          })
+                          .map((q) => (
+                            <tr key={q.questionId} className="hover:bg-slate-50/50 transition">
+                              <td className="py-2.5 px-3 font-mono font-bold text-slate-900 shrink-0">
+                                {q.questionId}
+                              </td>
+                              <td className="py-2.5 px-3 text-slate-600 shrink-0">
+                                <span className="px-2 py-0.5 rounded text-[10px] bg-slate-100 font-medium">
+                                  {q.pillarName || q.pillarId}
+                                </span>
+                              </td>
+                              <td className="py-2.5 px-3 text-slate-800 max-w-md">
+                                <p className="line-clamp-2">{q.text}</p>
+                              </td>
+                              <td className="py-2.5 px-3 shrink-0">
+                                <span
+                                  className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                    q.isActive !== false
+                                      ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                      : "bg-slate-100 text-slate-500 border border-slate-200"
+                                  }`}
+                                >
+                                  {q.isActive !== false ? "Active" : "Inactive"}
+                                </span>
+                              </td>
+                              {activeFrameworkDetail.status === "Draft" && (
+                                <td className="py-2.5 px-3 text-right shrink-0">
+                                  <div className="flex items-center justify-end gap-1.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleToggleQuestion(q.questionId, q.isActive !== false)}
+                                      className="p-1 rounded hover:bg-slate-100 text-slate-600 text-[11px] font-semibold"
+                                      title={q.isActive !== false ? "Deactivate Control" : "Activate Control"}
+                                    >
+                                      {q.isActive !== false ? "Deactivate" : "Activate"}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteQuestion(q.questionId)}
+                                      className="p-1 rounded hover:bg-rose-50 text-rose-600 text-[11px] font-semibold"
+                                      title="Delete Control"
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </button>
+                                  </div>
+                                </td>
+                              )}
+                            </tr>
+                          ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              ) : null}
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between text-xs text-slate-500">
+              <span>
+                Total Controls Assessed:{" "}
+                <strong className="text-slate-800 font-mono">
+                  {activeFrameworkDetail?.questions?.length || 0}
+                </strong>
+              </span>
+              <button
+                type="button"
+                onClick={() => setControlsModalOpen(false)}
+                className="px-4 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold rounded-lg shadow-2xs transition"
+              >
+                Close Specification
+              </button>
+            </div>
           </div>
         </div>
       )}

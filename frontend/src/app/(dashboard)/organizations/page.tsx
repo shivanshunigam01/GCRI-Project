@@ -87,7 +87,7 @@ export default function OrganizationsPage() {
     subscriptionTier: "Gold" as SubscriptionTier,
   });
 
-  const { user: currentUser, isAdmin } = useAuth();
+  const { user: currentUser, isSuperAdmin, isAdmin } = useAuth();
 
   // Action Menu Dropdown ID
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
@@ -856,37 +856,43 @@ export default function OrganizationsPage() {
                                   <ExternalLink className="h-3 w-3 text-slate-400" />
                                   View Profile
                                 </button>
-                                <button
-                                  onClick={() => handleVerifyDns(c)}
-                                  className="w-full text-left px-3 py-1.5 text-teal-700 hover:bg-teal-50 flex items-center gap-2 font-medium"
-                                >
-                                  <ShieldCheck className="h-3 w-3 text-teal-600" />
-                                  Verify DNS Now
-                                </button>
+                                {isSuperAdmin && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleVerifyDns(c)}
+                                    className="w-full text-left px-3 py-1.5 text-teal-700 hover:bg-teal-50 flex items-center gap-2 font-medium"
+                                  >
+                                    <ShieldCheck className="h-3 w-3 text-teal-600" />
+                                    Verify DNS Now
+                                  </button>
+                                )}
                               </div>
 
-                              <div className="py-0.5">
-                                <button
-                                  onClick={() => handleToggleStatus(c)}
-                                  className={`w-full text-left px-3 py-1.5 flex items-center gap-2 font-medium ${
-                                    c.status === "Active"
-                                      ? "text-rose-600 hover:bg-rose-50"
-                                      : "text-emerald-600 hover:bg-emerald-50"
-                                  }`}
-                                >
-                                  {c.status === "Active" ? (
-                                    <>
-                                      <XCircle className="h-3 w-3 text-rose-500" />
-                                      Suspend Account
-                                    </>
-                                  ) : (
-                                    <>
-                                      <CheckCircle2 className="h-3 w-3 text-emerald-500" />
-                                      Activate Account
-                                    </>
-                                  )}
-                                </button>
-                              </div>
+                              {isSuperAdmin && (
+                                <div className="py-0.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleToggleStatus(c)}
+                                    className={`w-full text-left px-3 py-1.5 flex items-center gap-2 font-medium ${
+                                      c.status === "Active"
+                                        ? "text-rose-600 hover:bg-rose-50"
+                                        : "text-emerald-600 hover:bg-emerald-50"
+                                    }`}
+                                  >
+                                    {c.status === "Active" ? (
+                                      <>
+                                        <XCircle className="h-3 w-3 text-rose-500" />
+                                        Suspend Account
+                                      </>
+                                    ) : (
+                                      <>
+                                        <CheckCircle2 className="h-3 w-3 text-emerald-500" />
+                                        Activate Account
+                                      </>
+                                    )}
+                                  </button>
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>

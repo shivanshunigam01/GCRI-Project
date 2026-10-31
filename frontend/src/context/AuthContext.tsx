@@ -11,7 +11,9 @@ interface AuthContextType {
   login: (token: string, user: User) => void;
   logout: () => void;
   refreshUser: () => Promise<void>;
+  isSuperAdmin: boolean;
   isAdmin: boolean;
+  isOrgAdmin: boolean;
   isAssessor: boolean;
 }
 
@@ -65,7 +67,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const isAdmin = Boolean(user && user.role === "Admin" && user.status === "Active");
+  const isSuperAdmin = Boolean(user && user.role === "SuperAdmin" && user.status === "Active");
+  const isOrgAdmin = Boolean(user && user.role === "Admin" && user.status === "Active");
+  const isAdmin = Boolean(user && (user.role === "SuperAdmin" || user.role === "Admin") && user.status === "Active");
   const isAssessor = Boolean(user && user.role === "Assessor" && user.status === "Active");
 
   return (
@@ -76,7 +80,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         login,
         logout,
         refreshUser,
+        isSuperAdmin,
         isAdmin,
+        isOrgAdmin,
         isAssessor,
       }}
     >
