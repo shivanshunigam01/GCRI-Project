@@ -1,21 +1,29 @@
 import { User } from "./auth.types";
 import { Company } from "./company.types";
 
+export type MappingStatus = "Active" | "Inactive";
+
+export interface AuditorAssignedBy {
+  _id: string;
+  name: string;
+  email: string;
+  role?: string;
+}
+
 export interface AuditorOrganizationMapping {
   _id: string;
   auditorId: string | User;
   organizationId: string | Company;
-  status: "Active" | "Inactive";
-  assignedBy?: string | { _id?: string; name?: string; email?: string };
-  assignedAt?: string;
-  createdAt?: string;
-  updatedAt?: string;
+  assignedBy: string | AuditorAssignedBy;
+  status: MappingStatus;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface OrgAuditorItem {
   mappingId: string;
   auditor: User;
-  assignedBy?: { _id: string; name: string; email: string };
+  assignedBy?: AuditorAssignedBy;
   assignedAt?: string;
 }
 
@@ -29,4 +37,3 @@ export interface CreateAuditorMappingPayload {
   auditorId: string;
   organizationId: string;
 }
-

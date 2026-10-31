@@ -33,6 +33,7 @@ import { User as UserType } from "@/types/auth.types";
 import { AssessmentSession } from "@/types/assessment.types";
 import { OrgAuditorItem } from "@/types/auditorMapping.types";
 import Modal, { ConfirmationVariant } from "@/components/ui/Modal";
+import { useAuth } from "@/context/AuthContext";
 
 export default function OrganizationProfileFullPage({
   params,
@@ -40,6 +41,7 @@ export default function OrganizationProfileFullPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
+  const { user: currentUser, isAdmin } = useAuth();
 
   const [company, setCompany] = useState<Company | null>(null);
   const [loading, setLoading] = useState(true);
@@ -127,8 +129,9 @@ export default function OrganizationProfileFullPage({
     }
   }, [id]);
 
-  // Fetch Assessors for Assignment Dropdown
+  // Fetch Assessors for Assignment Dropdown (Admin only)
   const fetchAvailableAssessors = useCallback(async () => {
+    if (!isAdmin) return;
     try {
       const res = await userService.getUsers({ limit: 100, role: "Assessor" });
       if (res?.data) {
@@ -137,7 +140,7 @@ export default function OrganizationProfileFullPage({
     } catch (err) {
       console.error("Failed to fetch assessors:", err);
     }
-  }, []);
+  }, [isAdmin]);
 
   useEffect(() => {
     fetchCompany();
@@ -272,8 +275,8 @@ export default function OrganizationProfileFullPage({
     );
   }
 
-  const completedCount = assessments.filter((a) => a.status === "Completed").length;
-  const inProgressCount = assessments.filter((a) => a.status === "InProgress" || a.status === "Submitted").length;
+  const completedCount = assessments.filter((a) => a.status === "Submitted").length;
+  const inProgressCount = assessments.filter((a) => a.status === "InProgress").length;
   const latestAssessment = assessments[0] || null;
 
   return (
@@ -451,13 +454,13 @@ export default function OrganizationProfileFullPage({
                 </div>
                 <div>
                   <span className="text-slate-400 block text-[11px] uppercase font-semibold">Subscription Tier</span>
-                  <span className="font-bold text-amber-700 text-sm">{company.activePlan || company.subscriptionTier || "Standard"}</span>
+                  <span className="font-bold text-amber-700 text-sm">{company.activePlan || "Bronze"}</span>
                 </div>
                 <div className="col-span-2">
                   <span className="text-slate-400 block text-[11px] uppercase font-semibold">DNS Verification</span>
                   <span className="inline-flex items-center gap-1.5 text-emerald-700 font-semibold text-sm mt-0.5">
                     <ShieldCheck className="h-4 w-4 text-emerald-600" />
-                    {(company.verificationStatus || company.dnsVerificationStatus) === "Verified" ? "Verified Domain" : "Pending Check"}
+                    {company.verificationStatus === "Verified" ? "Verified Domain" : "Pending Check"}
                   </span>
                 </div>
               </div>
@@ -500,9 +503,9 @@ export default function OrganizationProfileFullPage({
               </div>
               <div className="bg-white rounded-xl border border-slate-200/90 p-4 shadow-2xs text-center">
                 <div className="text-2xl font-black text-slate-400">
-                  {assessments.filter((a) => a.status === "Draft").length}
+                  {assessments.filter((a) => a.status === "Archived").length}
                 </div>
-                <div className="text-xs text-slate-400 font-medium">Not Started</div>
+                <div className="text-xs text-slate-400 font-medium">Archived</div>
               </div>
             </div>
 
@@ -530,12 +533,12 @@ export default function OrganizationProfileFullPage({
                   <div className="flex items-center gap-3">
                     <span
                       className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
-                        a.status === "Completed"
+                        a.status === "Submitted"
                           ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
                           : "bg-blue-50 text-blue-700 border border-blue-200"
                       }`}
                     >
-                      {a.status === "Completed" ? "Completed" : "In Progress"}
+                      {a.status === "Submitted" ? "Submitted" : "In Progress"}
                     </span>
                     <Link
                       href={`/assessments/${a._id}`}
@@ -562,12 +565,38 @@ export default function OrganizationProfileFullPage({
                   Assessors mapped with authorization to verify this client organization.
                 </p>
               </div>
-              <button
-                onClick={() => setShowAssignModal(true)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-teal-500 to-blue-600 text-white rounded-lg text-xs font-semibold shadow-xs hover:opacity-95 transition"
-              >
-                <Plus className="h-3.5 w-3.5" /> + Assign Auditor
-              </button>
+
+              {isAdmin ? (
+                <button
+                  onClick={() => setShowAssignModal(true)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-teal-500 to-blue-600 text-white rounded-lg text-xs font-semibold shadow-xs hover:opacity-95 transition"
+                >
+                  <Plus className="h-3.5 w-3.5" /> + Assign Auditor
+                </button>
+              ) : (
+                <span className="px-2.5 py-1 rounded-md text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200">
+                  Managed by Platform Admin
+                </span>
+              )}
+            </div>
+
+            {/* Access Role & Evaluation Scope Guide Banner */}
+            <div className="p-3 bg-slate-50 border border-slate-200/90 rounded-xl space-y-1.5 text-xs text-slate-600">
+              <div className="flex items-center gap-1.5 font-bold text-slate-800 text-xs">
+                <ShieldCheck className="h-4 w-4 text-teal-600 shrink-0" />
+                <span>Auditor Access &amp; Evaluation Privileges</span>
+              </div>
+              <ul className="space-y-1 text-xs text-slate-500 leading-tight">
+                <li>
+                  <strong className="text-slate-700">Owner (Full Edit Access):</strong> Initiates assessments, evaluates controls, and uploads evidence.
+                </li>
+                <li>
+                  <strong className="text-slate-700">Auditor (Review Access):</strong> Authorized co-auditor permitted to review working papers.
+                </li>
+                <li>
+                  <strong className="text-slate-700">Submitted Assessments:</strong> Formally locked to Read-Only / View Only for all parties.
+                </li>
+              </ul>
             </div>
 
             {/* List */}
@@ -576,15 +605,19 @@ export default function OrganizationProfileFullPage({
                 <Users className="h-8 w-8 text-slate-300 mx-auto" />
                 <p className="font-bold text-slate-800 text-sm">No Assessors Assigned</p>
                 <p className="text-xs text-slate-400">
-                  Click "+ Assign Auditor" above to grant an assessor review privileges for this company.
+                  {isAdmin
+                    ? 'Click "+ Assign Auditor" above to grant an assessor review privileges for this company.'
+                    : "No certified assessors have been mapped to this organization by the platform administrator yet."}
                 </p>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {auditors.map((item) => {
+                {auditors.map((item, idx) => {
                   const a = item.auditor;
                   const initial = a?.name?.charAt(0)?.toUpperCase() || "A";
                   const isUnassigning = unassigningId === item.mappingId;
+                  const isLeadOwner = idx === 0 || (assessments.length > 0 && a?._id === assessments[0]?.conductedByUserId);
+                  const isSubmitted = assessments.length > 0 && assessments[0]?.status === "Submitted";
 
                   return (
                     <div
@@ -600,26 +633,53 @@ export default function OrganizationProfileFullPage({
                             {a?.name || "Assessor"}
                           </div>
                           <div className="text-xs text-slate-500 truncate">{a?.email}</div>
+
+                          {/* Access Role Badge */}
+                          <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                            <span
+                              className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold border ${
+                                isLeadOwner
+                                  ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                                  : "bg-blue-50 text-blue-800 border-blue-200"
+                              }`}
+                            >
+                              <span
+                                className={`h-1.5 w-1.5 rounded-full ${
+                                  isLeadOwner ? "bg-emerald-500" : "bg-blue-500"
+                                }`}
+                              />
+                              {isLeadOwner ? "Owner (Full Edit Access)" : "Auditor (Review Access)"}
+                            </span>
+
+                            {isSubmitted && (
+                              <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-600 border border-slate-200">
+                                Submitted (View Only)
+                              </span>
+                            )}
+                          </div>
+
                           {item.assignedAt && (
-                            <div className="text-[10px] text-slate-400 mt-0.5">
+                            <div className="text-[10px] text-slate-400 mt-1">
                               Assigned {new Date(item.assignedAt).toLocaleDateString()}
                             </div>
                           )}
                         </div>
                       </div>
 
-                      <button
-                        onClick={() => handleUnassignAuditor(item.mappingId, a?.name || "Assessor")}
-                        disabled={isUnassigning}
-                        className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition disabled:opacity-50"
-                        title="Unassign auditor"
-                      >
-                        {isUnassigning ? (
-                          <RefreshCw className="h-4 w-4 animate-spin text-rose-500" />
-                        ) : (
-                          <Trash2 className="h-4 w-4" />
-                        )}
-                      </button>
+                      {isAdmin && (
+                        <button
+                          onClick={() => handleUnassignAuditor(item.mappingId, a?.name || "Assessor")}
+                          disabled={isUnassigning}
+                          className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition disabled:opacity-50"
+                          title="Unassign auditor"
+                        >
+                          {isUnassigning ? (
+                            <RefreshCw className="h-4 w-4 animate-spin text-rose-500" />
+                          ) : (
+                            <Trash2 className="h-4 w-4" />
+                          )}
+                        </button>
+                      )}
                     </div>
                   );
                 })}

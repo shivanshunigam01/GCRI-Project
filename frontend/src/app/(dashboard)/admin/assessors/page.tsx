@@ -38,10 +38,8 @@ import {
 import { companyService } from "@/services/company.service";
 import { User, UserRole, UserStatus } from "@/types/auth.types";
 import { Company } from "@/types/company.types";
-import { useAuth } from "@/context/AuthContext";
 
 export default function AdminAssessorsPage() {
-  const { isSuperAdmin } = useAuth();
   // Live State
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
@@ -383,18 +381,11 @@ export default function AdminAssessorsPage() {
   // Helper for Role Badges
   const getRoleBadge = (role: UserRole) => {
     switch (role) {
-      case "SuperAdmin":
-        return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-rose-50/80 text-rose-700 border border-rose-200/80 shadow-2xs">
-            <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
-            Super Admin
-          </span>
-        );
       case "Admin":
         return (
           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-purple-50/80 text-purple-700 border border-purple-200/80 shadow-2xs">
             <span className="h-1.5 w-1.5 rounded-full bg-purple-500" />
-            Org Admin
+            Platform Admin
           </span>
         );
       case "Assessor":
@@ -577,8 +568,7 @@ export default function AdminAssessorsPage() {
               className="text-xs font-medium py-1.5 px-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-700 hover:border-slate-300 focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 transition cursor-pointer"
             >
               <option value="all">All Roles</option>
-              {isSuperAdmin && <option value="SuperAdmin">Super Admin</option>}
-              <option value="Admin">Org Admin</option>
+              <option value="Admin">Admin</option>
               <option value="Assessor">Assessor</option>
               <option value="MembershipApprover">Membership Approver</option>
             </select>
@@ -1102,8 +1092,7 @@ export default function AdminAssessorsPage() {
                         className="w-full text-xs py-2 px-2.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition cursor-pointer"
                       >
                         <option value="Assessor">Assessor</option>
-                        <option value="Admin">Organization Admin</option>
-                        {isSuperAdmin && <option value="SuperAdmin">Super Admin</option>}
+                        <option value="Admin">Platform Admin</option>
                         <option value="MembershipApprover">Membership Approver</option>
                       </select>
                     </div>
@@ -1275,8 +1264,7 @@ export default function AdminAssessorsPage() {
                     className="w-full text-xs py-2 px-2.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition cursor-pointer"
                   >
                     <option value="Assessor">Assessor</option>
-                    <option value="Admin">Organization Admin</option>
-                    {isSuperAdmin && <option value="SuperAdmin">Super Admin</option>}
+                    <option value="Admin">Platform Admin</option>
                     <option value="MembershipApprover">Membership Approver</option>
                   </select>
                 </div>
@@ -1404,8 +1392,7 @@ export default function AdminAssessorsPage() {
                     className="w-full text-xs py-2 px-2.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition cursor-pointer"
                   >
                     <option value="Assessor">Assessor</option>
-                    <option value="Admin">Organization Admin</option>
-                    {isSuperAdmin && <option value="SuperAdmin">Super Admin</option>}
+                    <option value="Admin">Platform Admin</option>
                     <option value="MembershipApprover">Membership Approver</option>
                   </select>
                 </div>

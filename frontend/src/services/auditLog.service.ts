@@ -1,8 +1,8 @@
 import { apiClient } from "./apiClient";
-import { AuditLogEntry, AuditLogStats } from "@/types/auditLog.types";
+import { AuditLogEntry, AuditLogStats, AuditLogQueryParams } from "@/types/auditLog.types";
 
 export const auditLogService = {
-  getAuditLogs: (params?: { page?: number; limit?: number; action?: string; resource?: string }) =>
+  getAuditLogs: (params?: AuditLogQueryParams) =>
     apiClient.get<AuditLogEntry[]>("/admin/audit-logs", { params }),
 
   getAuditLogStats: () =>

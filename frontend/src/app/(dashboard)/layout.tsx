@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
@@ -29,21 +29,39 @@ import {
   UserCheck,
   Menu,
   X,
+  RefreshCw,
+  Check,
 } from "lucide-react";
+import {
+  DashboardScopeProvider,
+  useDashboardScope,
+} from "@/context/DashboardScopeContext";
 
 export default function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  return (
+    <DashboardScopeProvider>
+      <DashboardLayoutContent>{children}</DashboardLayoutContent>
+    </DashboardScopeProvider>
+  );
+}
+
+function DashboardLayoutContent({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, loading, logout, isAdmin, isSuperAdmin } = useAuth();
+  const { user, loading, logout, isAdmin } = useAuth();
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // Strict Security: Role is determined strictly by the verified JWT session user
-  const activeRoleView: "Admin" | "Auditor" = (user?.role === "SuperAdmin" || user?.role === "Admin") ? "Admin" : "Auditor";
+  const activeRoleView: "Admin" | "Auditor" = user?.role === "Admin" ? "Admin" : "Auditor";
 
   // Redirect non-authenticated users to login
   useEffect(() => {
@@ -60,45 +78,33 @@ export default function DashboardLayout({
 
   const auditorNavItems = [
     { label: "Dashboard", href: "/dashboard", icon: Home, active: pathname === "/dashboard" },
-    { label: "Assessments", href: "/assessments", icon: FileCheck2, hasChevron: true },
     { label: "Organizations", href: "/organizations", icon: Building2 },
-    { label: "Framework", href: "/admin/frameworks", icon: Sliders, hasChevron: true },
-    { label: "Evidence", href: "/evidence", icon: FolderLock },
-    { label: "Findings", href: "/assessments/findings", icon: Shield },
-    { label: "Reports", href: "/reports", icon: FileText },
+    { label: "Assessments", href: "/assessments", icon: FileCheck2 },
+    { label: "Subscriptions", href: "/subscriptions", icon: CreditCard },
   ];
 
-  const auditorAdminNavItems = [
+  const auditorSettingsNavItems = [
+    { label: "Profile", href: "/settings/profile", icon: Settings },
+    { label: "Security & MFA", href: "/settings/security", icon: Shield },
+  ];
+
+  const adminNavItems = [
+    { label: "Dashboard", href: "/dashboard", icon: Home, active: pathname === "/dashboard" },
+    { label: "Users", href: "/admin/users", icon: Users },
+    { label: "Auditor Mappings", href: "/admin/auditor-mappings", icon: UserCheck },
+    { label: "Organizations", href: "/organizations", icon: Building2 },
+    { label: "Assessments", href: "/assessments", icon: FileCheck2 },
+    { label: "Framework Versions", href: "/admin/frameworks", icon: Layers },
+    { label: "API Keys", href: "/admin/api-keys", icon: Lock },
     { label: "Subscriptions", href: "/subscriptions", icon: CreditCard },
     { label: "Audit Logs", href: "/admin/audit-logs", icon: History },
-    { label: "Settings", href: "/settings/profile", icon: Settings },
   ];
 
-  // SuperAdmin sees global governance; Org Admin sees tenant items
-  const adminNavItems = isSuperAdmin
-    ? [
-        { label: "Dashboard", href: "/dashboard", icon: Home, active: pathname === "/dashboard" },
-        { label: "Organizations", href: "/organizations", icon: Building2 },
-        { label: "Users & Admins", href: "/admin/assessors", icon: Users },
-        { label: "Assessments", href: "/assessments", icon: FileCheck2 },
-        { label: "Framework Versions", href: "/admin/frameworks", icon: Layers },
-        { label: "Auditor Mappings", href: "/admin/auditor-mappings", icon: SlidersHorizontal },
-        { label: "Evidence", href: "/evidence", icon: FolderLock },
-        { label: "Reports", href: "/reports", icon: FileText },
-        { label: "Subscriptions", href: "/subscriptions", icon: CreditCard },
-        { label: "Audit Logs", href: "/admin/audit-logs", icon: History },
-        { label: "System Settings", href: "/settings/security", icon: Settings },
-      ]
-    : [
-        { label: "Dashboard", href: "/dashboard", icon: Home, active: pathname === "/dashboard" },
-        { label: "Organization", href: "/organizations", icon: Building2 },
-        { label: "Assessors / Team", href: "/admin/assessors", icon: Users },
-        { label: "Assessments", href: "/assessments", icon: FileCheck2 },
-        { label: "Evidence", href: "/evidence", icon: FolderLock },
-        { label: "Reports", href: "/reports", icon: FileText },
-        { label: "Audit Logs", href: "/admin/audit-logs", icon: History },
-        { label: "Settings", href: "/settings/profile", icon: Settings },
-      ];
+  const adminSettingsNavItems = [
+    { label: "Profile", href: "/settings/profile", icon: Settings },
+    { label: "Security & MFA", href: "/settings/security", icon: Shield },
+    { label: "Webhooks", href: "/settings/webhooks", icon: SlidersHorizontal },
+  ];
 
   return (
     <div className="h-screen w-screen overflow-hidden bg-[#f8fafc] flex">
@@ -138,7 +144,7 @@ export default function DashboardLayout({
               <nav className="space-y-0.5">
                 {auditorNavItems.map((item) => {
                   const Icon = item.icon;
-                  const isActive = item.active || pathname === item.href;
+                  const isActive = item.active || pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href));
                   return (
                     <Link
                       key={item.label}
@@ -154,9 +160,6 @@ export default function DashboardLayout({
                         <Icon className="h-[18px] w-[18px] shrink-0 text-white" strokeWidth={1.85} />
                         <span className="tracking-wide">{item.label}</span>
                       </div>
-                      {item.hasChevron && (
-                        <ChevronRight className="h-3.5 w-3.5 text-slate-300 group-hover:text-white transition-colors" />
-                      )}
                     </Link>
                   );
                 })}
@@ -164,15 +167,12 @@ export default function DashboardLayout({
 
               <div className="pt-2">
                 <div className="px-3 mb-1.5 text-[10.5px] font-bold text-slate-400 uppercase tracking-wider">
-                  Administration
+                  Settings
                 </div>
                 <nav className="space-y-0.5">
-                  {auditorAdminNavItems.map((item) => {
+                  {auditorSettingsNavItems.map((item) => {
                     const Icon = item.icon;
-                    const isActive =
-                      pathname === item.href ||
-                      (item.label === "Users" &&
-                        (pathname.startsWith("/admin/assessors") || pathname.startsWith("/admin/users")));
+                    const isActive = pathname === item.href;
                     return (
                       <Link
                         key={item.label}
@@ -191,34 +191,62 @@ export default function DashboardLayout({
                   })}
                 </nav>
               </div>
-
             </>
           ) : (
-            <nav className="space-y-0.5">
-              {adminNavItems.map((item) => {
-                const Icon = item.icon;
-                const isActive =
-                  item.active ||
-                  pathname === item.href ||
-                  (item.label === "Users" &&
-                    (pathname.startsWith("/admin/assessors") || pathname.startsWith("/admin/users")));
-                return (
-                  <Link
-                    key={item.label}
-                    href={item.href}
-                    onClick={() => setMobileMenuOpen(false)}
-                    className={`group flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13.5px] font-medium transition-all duration-150 ${
-                      isActive
-                        ? "bg-gradient-to-r from-teal-500 via-cyan-600 to-blue-600 text-white font-semibold shadow-md shadow-cyan-900/30"
-                        : "text-slate-100 hover:text-white hover:bg-white/10"
-                    }`}
-                  >
-                    <Icon className="h-[18px] w-[18px] shrink-0 text-white" strokeWidth={1.85} />
-                    <span className="tracking-wide">{item.label}</span>
-                  </Link>
-                );
-              })}
-            </nav>
+            <>
+              <nav className="space-y-0.5">
+                {adminNavItems.map((item) => {
+                  const Icon = item.icon;
+                  const isActive =
+                    item.active ||
+                    pathname === item.href ||
+                    (item.href !== "/dashboard" && pathname.startsWith(item.href)) ||
+                    (item.label === "Users" && (pathname.startsWith("/admin/users") || pathname.startsWith("/admin/assessors")));
+                  return (
+                    <Link
+                      key={item.label}
+                      href={item.href}
+                      onClick={() => setMobileMenuOpen(false)}
+                      className={`group flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13.5px] font-medium transition-all duration-150 ${
+                        isActive
+                          ? "bg-gradient-to-r from-teal-500 via-cyan-600 to-blue-600 text-white font-semibold shadow-md shadow-cyan-900/30"
+                          : "text-slate-100 hover:text-white hover:bg-white/10"
+                      }`}
+                    >
+                      <Icon className="h-[18px] w-[18px] shrink-0 text-white" strokeWidth={1.85} />
+                      <span className="tracking-wide">{item.label}</span>
+                    </Link>
+                  );
+                })}
+              </nav>
+
+              <div className="pt-2">
+                <div className="px-3 mb-1.5 text-[10.5px] font-bold text-slate-400 uppercase tracking-wider">
+                  Administration
+                </div>
+                <nav className="space-y-0.5">
+                  {adminSettingsNavItems.map((item) => {
+                    const Icon = item.icon;
+                    const isActive = pathname === item.href;
+                    return (
+                      <Link
+                        key={item.label}
+                        href={item.href}
+                        onClick={() => setMobileMenuOpen(false)}
+                        className={`group flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13.5px] font-medium transition-all duration-150 ${
+                          isActive
+                            ? "bg-gradient-to-r from-teal-500 via-cyan-600 to-blue-600 text-white font-semibold shadow-md shadow-cyan-900/30"
+                            : "text-slate-100 hover:text-white hover:bg-white/10"
+                        }`}
+                      >
+                        <Icon className="h-[18px] w-[18px] shrink-0 text-white" strokeWidth={1.85} />
+                        <span className="tracking-wide">{item.label}</span>
+                      </Link>
+                    );
+                  })}
+                </nav>
+              </div>
+            </>
           )}
         </div>
       </aside>
@@ -227,7 +255,7 @@ export default function DashboardLayout({
       <div className="flex-1 flex flex-col h-screen min-w-0 overflow-hidden">
         {/* Top Navbar - Fixed at top, never scrolls */}
         <header className="h-16 bg-white border-b border-slate-200/80 px-4 sm:px-6 lg:px-8 flex items-center justify-between shrink-0 z-30">
-          <div className="flex items-center gap-3 flex-1 min-w-0">
+          <div className="flex items-center gap-3 flex-1 min-w-0 mr-4">
             {/* Hamburger Button for Mobile */}
             <button
               type="button"
@@ -238,30 +266,17 @@ export default function DashboardLayout({
               <Menu className="h-5 w-5" />
             </button>
 
-            {/* Search Box */}
-            <div className="relative w-full max-w-xs sm:max-w-sm md:max-w-md hidden sm:block">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-              <input
-                type="text"
-                placeholder={
-                  activeRoleView === "Admin"
-                    ? "Search users, organizations, assessments, controls..."
-                    : "Search organizations, assessments, controls..."
-                }
-                className="w-full pl-10 pr-4 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition"
-              />
-            </div>
+            {/* Scope Selection with Search (Visible strictly on Dashboard) */}
+            {pathname === "/dashboard" && (
+              <SearchableScopeSelector activeRoleView={activeRoleView} />
+            )}
           </div>
 
           {/* Right Action Icons & User Profile */}
           <div className="flex items-center gap-2 sm:gap-4 shrink-0">
-
-            {/* Notification Bell with Red Badge */}
+            {/* Notification Bell */}
             <button className="relative p-2 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-full transition">
               <Bell className="h-5 w-5" />
-              <span className="absolute top-1.5 right-1.5 h-4 w-4 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center leading-none">
-                3
-              </span>
             </button>
 
             {/* Help Icon - hidden on very small screens */}
@@ -275,14 +290,12 @@ export default function DashboardLayout({
                 onClick={() => setShowProfileMenu(!showProfileMenu)}
                 className="flex items-center gap-2 sm:gap-3 pl-1 sm:pl-2 pr-1 py-1 rounded-lg hover:bg-slate-100 transition text-left"
               >
-                <img
-                  src="/avatar.jpg"
-                  alt="Piyush Napit"
-                  className="h-8 w-8 sm:h-9 sm:w-9 rounded-full object-cover border border-slate-200"
-                />
+                <div className="h-8 w-8 sm:h-9 sm:w-9 rounded-full bg-gradient-to-tr from-slate-700 to-slate-900 text-white font-semibold flex items-center justify-center text-xs sm:text-sm border border-slate-200 shrink-0">
+                  {user?.name ? user.name.slice(0, 2).toUpperCase() : "U"}
+                </div>
                 <div className="hidden md:block">
                   <div className="text-sm font-semibold text-slate-900 leading-tight">
-                    {user?.name || "Piyush Napit"}
+                    {user?.name || "User"}
                   </div>
                   <div className="text-xs text-slate-500 leading-tight">
                     {activeRoleView === "Admin" ? "Super Admin" : "Auditor"}
@@ -296,7 +309,7 @@ export default function DashboardLayout({
                   <div className="px-4 py-2 border-b border-slate-100">
                     <p className="text-xs font-medium text-slate-500">Signed in as</p>
                     <p className="text-sm font-semibold text-slate-900 truncate">
-                      {user?.email || "auditor@graice.io"}
+                      {user?.email || "user@graice.io"}
                     </p>
                   </div>
                   <Link
@@ -340,6 +353,215 @@ export default function DashboardLayout({
           {children}
         </main>
       </div>
+    </div>
+  );
+}
+
+function SearchableScopeSelector({ activeRoleView }: { activeRoleView: "Admin" | "Auditor" }) {
+  const { selectedOrgFilter, setSelectedOrgFilter, organizations, triggerRefresh } =
+    useDashboardScope();
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const containerRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Close on outside click
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+    if (isOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+      setTimeout(() => searchInputRef.current?.focus(), 50);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isOpen]);
+
+  // Find currently selected organization
+  const selectedOrg = organizations.find((o) => o._id === selectedOrgFilter);
+
+  // Filter organizations by search term (both name and domain/industry)
+  const filteredOrgs = organizations.filter((org) => {
+    if (!searchTerm.trim()) return true;
+    const q = searchTerm.toLowerCase();
+    const nameMatch = (org.name || "").toLowerCase().includes(q);
+    const domainMatch = (org.domain || "").toLowerCase().includes(q);
+    const industryMatch = (org.industry || "").toLowerCase().includes(q);
+    return nameMatch || domainMatch || industryMatch;
+  });
+
+  return (
+    <div ref={containerRef} className="relative flex items-center gap-2">
+      {/* Combobox Trigger Button */}
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border transition-all text-xs font-semibold shadow-2xs select-none ${
+          isOpen
+            ? "bg-white border-blue-500 ring-2 ring-blue-100 text-slate-900"
+            : selectedOrgFilter !== "all"
+            ? "bg-blue-50/80 border-blue-200 text-blue-900 hover:bg-blue-100/70"
+            : "bg-slate-50 border-slate-200/90 text-slate-800 hover:bg-slate-100/80"
+        }`}
+      >
+        <Building2
+          className={`h-4 w-4 shrink-0 ${
+            selectedOrgFilter !== "all" ? "text-blue-600" : "text-slate-500"
+          }`}
+        />
+        <span className="text-slate-500 font-normal hidden sm:inline">Scope:</span>
+        <span className="truncate max-w-[150px] sm:max-w-[220px]">
+          {selectedOrg ? selectedOrg.name : `All Organizations (${organizations.length})`}
+        </span>
+        <ChevronDown
+          className={`h-3.5 w-3.5 text-slate-400 shrink-0 transition-transform duration-200 ${
+            isOpen ? "rotate-180" : ""
+          }`}
+        />
+      </button>
+
+      {/* Clear Scope Button if specific org is selected */}
+      {selectedOrgFilter !== "all" && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setSelectedOrgFilter("all");
+          }}
+          title="Reset to All Organizations"
+          className="p-1 rounded-lg hover:bg-slate-200/80 text-slate-400 hover:text-slate-600 transition"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      )}
+
+      {/* Refresh Trigger Button */}
+      <button
+        type="button"
+        onClick={triggerRefresh}
+        title="Refresh Telemetry Data"
+        className="p-1.5 sm:p-2 rounded-xl border border-slate-200 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition shadow-2xs shrink-0"
+      >
+        <RefreshCw className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+      </button>
+
+      {/* Popover Dropdown Panel */}
+      {isOpen && (
+        <div className="absolute left-0 top-full mt-2 w-72 sm:w-80 md:w-96 bg-white rounded-2xl shadow-xl border border-slate-200/90 py-2.5 z-50 animate-in fade-in zoom-in-95">
+          {/* Search Box Header */}
+          <div className="px-3 pb-2 border-b border-slate-100">
+            <div className="relative flex items-center">
+              <Search className="absolute left-2.5 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+              <input
+                ref={searchInputRef}
+                type="text"
+                placeholder="Search organizations by name or domain..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") setIsOpen(false);
+                }}
+                className="w-full pl-8 pr-7 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:bg-white transition"
+              />
+              {searchTerm && (
+                <button
+                  type="button"
+                  onClick={() => setSearchTerm("")}
+                  className="absolute right-2 p-0.5 text-slate-400 hover:text-slate-600 rounded"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Organizations List */}
+          <div className="max-h-64 overflow-y-auto px-1.5 pt-1.5 space-y-0.5">
+            {/* Option: All Organizations */}
+            <div
+              onClick={() => {
+                setSelectedOrgFilter("all");
+                setIsOpen(false);
+                setSearchTerm("");
+              }}
+              className={`flex items-center justify-between px-2.5 py-2 rounded-xl cursor-pointer text-xs transition ${
+                selectedOrgFilter === "all"
+                  ? "bg-blue-50 text-blue-900 font-bold"
+                  : "hover:bg-slate-50 text-slate-700"
+              }`}
+            >
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="h-6 w-6 rounded-lg bg-slate-900 text-white font-bold text-[9px] flex items-center justify-center shrink-0">
+                  ALL
+                </div>
+                <div>
+                  <div className="font-semibold text-slate-900">All Organizations</div>
+                  <div className="text-[10px] text-slate-400">Global tenant assurance view</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600">
+                  {organizations.length}
+                </span>
+                {selectedOrgFilter === "all" && <Check className="h-4 w-4 text-blue-600" />}
+              </div>
+            </div>
+
+            {/* List of Individual Organizations */}
+            {filteredOrgs.length > 0 ? (
+              filteredOrgs.map((org) => {
+                const isSelected = selectedOrgFilter === org._id;
+                return (
+                  <div
+                    key={org._id}
+                    onClick={() => {
+                      setSelectedOrgFilter(org._id);
+                      setIsOpen(false);
+                      setSearchTerm("");
+                    }}
+                    className={`flex items-center justify-between px-2.5 py-2 rounded-xl cursor-pointer text-xs transition ${
+                      isSelected
+                        ? "bg-blue-50 text-blue-900 font-bold"
+                        : "hover:bg-slate-50 text-slate-700"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="h-6 w-6 rounded-lg bg-slate-800 text-white font-bold text-[9px] flex items-center justify-center shrink-0">
+                        {org.name.slice(0, 2).toUpperCase()}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="font-semibold text-slate-900 truncate max-w-[160px] sm:max-w-[210px]">
+                          {org.name}
+                        </div>
+                        <div className="text-[10px] text-slate-400 truncate max-w-[160px] sm:max-w-[210px]">
+                          {org.domain || org.industry || "Enterprise Client"}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      {org.activePlan && (
+                        <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                          {org.activePlan}
+                        </span>
+                      )}
+                      {isSelected && <Check className="h-4 w-4 text-blue-600" />}
+                    </div>
+                  </div>
+                );
+              })
+            ) : (
+              <div className="py-6 text-center text-xs text-slate-400">
+                No organizations found matching &ldquo;{searchTerm}&rdquo;
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

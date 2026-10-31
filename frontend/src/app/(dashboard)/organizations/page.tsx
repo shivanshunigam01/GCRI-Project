@@ -199,7 +199,7 @@ export default function OrganizationsPage() {
         let dataList = res.data;
         // Client-side filter for DNS verification status if specified
         if (verificationFilter !== "all") {
-          dataList = dataList.filter((c) => c.dnsVerificationStatus === verificationFilter);
+          dataList = dataList.filter((c) => c.verificationStatus === verificationFilter);
         }
 
         setCompanies(dataList);
@@ -334,17 +334,32 @@ export default function OrganizationsPage() {
   // Handle Onboard Organization Form Submit
   const handleSubmitOnboard = async (e: React.FormEvent) => {
     e.preventDefault();
-    setOnboardLoading(true);
     setOnboardError(null);
+
+    // Clean domain: remove protocols and trailing slashes
+    let cleanDomain = onboardForm.domain.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+
+    if (cleanDomain.includes("@")) {
+      setOnboardError("Primary domain must be a web domain name (e.g. acme-ai.com or company.org), not an email address.");
+      return;
+    }
+
+    const domainRegex = /^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/;
+    if (!domainRegex.test(cleanDomain)) {
+      setOnboardError("Please provide a valid domain name (e.g. acme-ai.com or globalcorp.org).");
+      return;
+    }
+
+    setOnboardLoading(true);
 
     try {
       await companyService.createCompany({
         name: onboardForm.name.trim(),
-        domain: onboardForm.domain.trim().toLowerCase(),
+        domain: cleanDomain,
         registrationNumber: onboardForm.registrationNumber.trim() || undefined,
         country: onboardForm.country.trim() || undefined,
         industry: onboardForm.industry.trim() || undefined,
-        subscriptionTier: onboardForm.subscriptionTier,
+        activePlan: onboardForm.subscriptionTier,
       });
 
       setOnboardModalOpen(false);
@@ -444,8 +459,8 @@ export default function OrganizationsPage() {
   // Live Metric Counts
   const totalCount = paginationMeta.total;
   const activeCount = companies.filter((c) => c.status === "Active").length;
-  const verifiedCount = companies.filter((c) => c.dnsVerificationStatus === "Verified").length;
-  const goldCount = companies.filter((c) => c.subscriptionTier === "Gold").length;
+  const verifiedCount = companies.filter((c) => c.verificationStatus === "Verified").length;
+  const goldCount = companies.filter((c) => c.activePlan === "Gold").length;
 
   return (
     <div className="flex-1 flex flex-col h-full min-h-0 space-y-3 overflow-hidden">
@@ -783,13 +798,13 @@ export default function OrganizationsPage() {
                           <span>{c.domain}</span>
                         </div>
                         <div className="mt-0.5 pl-4">
-                          {getDnsBadge(c.dnsVerificationStatus)}
+                          {getDnsBadge(c.verificationStatus)}
                         </div>
                       </td>
 
                       {/* Plan Tier */}
                       <td className="py-2.5 px-3">
-                        {getTierBadge(c.subscriptionTier)}
+                        {getTierBadge(c.activePlan)}
                       </td>
 
                       {/* Industry & Country */}
@@ -1015,9 +1030,12 @@ export default function OrganizationsPage() {
                   required
                   value={onboardForm.domain}
                   onChange={(e) => setOnboardForm({ ...onboardForm, domain: e.target.value })}
-                  placeholder="e.g. acme-ai.com"
+                  placeholder="e.g. acme-ai.com or company.org"
                   className="w-full text-xs py-2 px-3 bg-white border border-slate-300 rounded-lg font-mono focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 transition"
                 />
+                <p className="text-[11px] text-slate-500 mt-1">
+                  Enter web domain (e.g. <span className="font-mono text-slate-700 font-semibold">acme.com</span>). Do <span className="font-semibold text-rose-600">not</span> enter an email address or @ symbol.
+                </p>
               </div>
 
               <div className="grid grid-cols-2 gap-3">

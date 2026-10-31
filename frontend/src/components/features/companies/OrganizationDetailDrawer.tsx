@@ -80,7 +80,7 @@ export default function OrganizationDetailDrawer({
         country: initialCompany.country || "",
         size: initialCompany.size || "500 - 1,000 employees",
         registrationNumber: initialCompany.registrationNumber || "",
-        subscriptionTier: initialCompany.subscriptionTier || initialCompany.activePlan || "Gold",
+        subscriptionTier: initialCompany.activePlan || "Gold",
       });
       if (initialCompany._id) {
         fetchFreshCompany(initialCompany._id);
@@ -100,7 +100,7 @@ export default function OrganizationDetailDrawer({
     country: initialCompany?.country || "",
     size: initialCompany?.size || "500 - 1,000 employees",
     registrationNumber: initialCompany?.registrationNumber || "",
-    subscriptionTier: initialCompany?.subscriptionTier || initialCompany?.activePlan || "Gold",
+    subscriptionTier: initialCompany?.activePlan || "Gold",
   });
 
   // Reusable Confirmation Dialog Modal State
@@ -152,8 +152,9 @@ export default function OrganizationDetailDrawer({
     }
   }, [company?._id]);
 
-  // Fetch All Assessors (for assignment dropdown)
+  // Fetch All Assessors (for assignment dropdown - Admin only)
   const fetchAvailableAssessors = useCallback(async () => {
+    if (!isAdmin) return;
     try {
       const res = await userService.getUsers({ limit: 100, role: "Assessor" });
       if (res?.data) {
@@ -162,7 +163,7 @@ export default function OrganizationDetailDrawer({
     } catch (err) {
       console.error("Failed to fetch assessors:", err);
     }
-  }, []);
+  }, [isAdmin]);
 
   // Fetch Company Assessments
   const fetchCompanyAssessments = useCallback(async () => {
@@ -206,12 +207,9 @@ export default function OrganizationDetailDrawer({
     try {
       const updatedRes = await companyService.updateCompany(company._id, {
         name: editForm.name.trim(),
-        domain: editForm.domain.trim().toLowerCase(),
         industry: editForm.industry.trim() || undefined,
         country: editForm.country.trim() || undefined,
-        size: editForm.size.trim() || undefined,
         registrationNumber: editForm.registrationNumber.trim() || undefined,
-        subscriptionTier: editForm.subscriptionTier,
       });
 
       if (updatedRes?.data) {
@@ -231,7 +229,7 @@ export default function OrganizationDetailDrawer({
                 country: editForm.country.trim() || undefined,
                 size: editForm.size.trim() || undefined,
                 registrationNumber: editForm.registrationNumber.trim() || undefined,
-                subscriptionTier: editForm.subscriptionTier,
+                activePlan: editForm.subscriptionTier as any,
               }
             : null
         );
@@ -262,7 +260,7 @@ export default function OrganizationDetailDrawer({
       country: company.country || "",
       size: company.size || "500 - 1,000 employees",
       registrationNumber: company.registrationNumber || "",
-      subscriptionTier: company.subscriptionTier || company.activePlan || "Gold",
+      subscriptionTier: company.activePlan || "Gold",
     });
     setEditError(null);
     setIsEditing(false);
@@ -332,8 +330,8 @@ export default function OrganizationDetailDrawer({
   };
 
   // Assessment Metrics
-  const completedCount = assessments.filter((a) => a.status === "Completed").length;
-  const inProgressCount = assessments.filter((a) => a.status === "InProgress" || a.status === "Submitted").length;
+  const completedCount = assessments.filter((a) => a.status === "Submitted").length;
+  const inProgressCount = assessments.filter((a) => a.status === "InProgress").length;
   const latestAssessment = assessments[0] || null;
 
   return (
@@ -688,7 +686,7 @@ export default function OrganizationDetailDrawer({
                   <div className="flex items-center justify-between py-0.5 border-b border-slate-100">
                     <span className="text-slate-500 font-medium">Subscription Tier</span>
                     <span className="font-bold text-amber-700">
-                      {company.activePlan || company.subscriptionTier || "Standard"}
+                      {company.activePlan || "Standard"}
                     </span>
                   </div>
 
@@ -696,7 +694,7 @@ export default function OrganizationDetailDrawer({
                     <span className="text-slate-500 font-medium">DNS Verification</span>
                     <span className="inline-flex items-center gap-1 text-emerald-700 font-semibold">
                       <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
-                      {(company.verificationStatus || company.dnsVerificationStatus) === "Verified"
+                      {company.verificationStatus === "Verified"
                         ? "Verified Domain"
                         : "Pending Check"}
                     </span>
@@ -739,9 +737,9 @@ export default function OrganizationDetailDrawer({
                 </div>
                 <div className="bg-slate-50 rounded-xl p-2.5 border border-slate-200/80 text-center">
                   <div className="text-lg font-black text-slate-400">
-                    {assessments.filter((a) => a.status === "Draft").length}
+                    {assessments.filter((a) => a.status === "Archived").length}
                   </div>
-                  <div className="text-[10px] text-slate-400 font-medium">Not Started</div>
+                  <div className="text-[10px] text-slate-400 font-medium">Archived</div>
                 </div>
               </div>
             </div>
@@ -765,12 +763,12 @@ export default function OrganizationDetailDrawer({
                   </div>
                   <span
                     className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                      latestAssessment.status === "Completed"
+                      latestAssessment.status === "Submitted"
                         ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
                         : "bg-blue-50 text-blue-700 border border-blue-200"
                     }`}
                   >
-                    {latestAssessment.status === "Completed" ? "Completed" : "In Progress"}
+                    {latestAssessment.status === "Submitted" ? "Completed" : "In Progress"}
                   </span>
                 </div>
 
@@ -779,13 +777,13 @@ export default function OrganizationDetailDrawer({
                   <div className="flex items-center justify-between text-[11px] mb-1">
                     <span className="text-slate-500 font-medium">Progress</span>
                     <span className="font-bold text-teal-700">
-                      {latestAssessment.status === "Completed" ? "100%" : "68%"}
+                      {latestAssessment.status === "Submitted" ? "100%" : "68%"}
                     </span>
                   </div>
                   <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
                     <div
                       className="bg-gradient-to-r from-teal-500 to-blue-600 h-1.5 rounded-full"
-                      style={{ width: latestAssessment.status === "Completed" ? "100%" : "68%" }}
+                      style={{ width: latestAssessment.status === "Submitted" ? "100%" : "68%" }}
                     />
                   </div>
                 </div>
@@ -823,18 +821,43 @@ export default function OrganizationDetailDrawer({
                 </p>
               </div>
 
-              {!showAssignForm && (
-                <button
-                  onClick={() => setShowAssignForm(true)}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold bg-teal-50 text-teal-700 hover:bg-teal-100 border border-teal-200 rounded-lg transition"
-                >
-                  <Plus className="h-3 w-3" /> Assign Auditor
-                </button>
+              {isAdmin ? (
+                !showAssignForm && (
+                  <button
+                    onClick={() => setShowAssignForm(true)}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold bg-teal-50 text-teal-700 hover:bg-teal-100 border border-teal-200 rounded-lg transition"
+                  >
+                    <Plus className="h-3 w-3" /> Assign Auditor
+                  </button>
+                )
+              ) : (
+                <span className="px-2.5 py-1 rounded-md text-[10.5px] font-semibold bg-slate-100 text-slate-600 border border-slate-200">
+                  Managed by Platform Admin
+                </span>
               )}
             </div>
 
-            {/* Inline Assign Auditor Form */}
-            {showAssignForm && (
+            {/* Access Role & Evaluation Scope Guide Banner */}
+            <div className="p-3 bg-slate-50 border border-slate-200/90 rounded-xl space-y-1.5 text-xs text-slate-600">
+              <div className="flex items-center gap-1.5 font-bold text-slate-800 text-[11px]">
+                <ShieldCheck className="h-3.5 w-3.5 text-teal-600 shrink-0" />
+                <span>Auditor Access &amp; Evaluation Privileges</span>
+              </div>
+              <ul className="space-y-1 text-[10.5px] text-slate-500 leading-tight">
+                <li>
+                  <strong className="text-slate-700">Owner (Full Edit Access):</strong> Initiates assessments, evaluates controls, and uploads evidence.
+                </li>
+                <li>
+                  <strong className="text-slate-700">Auditor (Review Access):</strong> Authorized co-auditor permitted to review working papers.
+                </li>
+                <li>
+                  <strong className="text-slate-700">Submitted Assessments:</strong> Formally locked to Read-Only / View Only for all parties.
+                </li>
+              </ul>
+            </div>
+
+            {/* Inline Assign Auditor Form (Admin Only) */}
+            {isAdmin && showAssignForm && (
               <form
                 onSubmit={handleAssignAuditor}
                 className="bg-slate-50/90 border border-slate-200 p-3 rounded-xl space-y-2.5 animate-in fade-in"
@@ -910,9 +933,9 @@ export default function OrganizationDetailDrawer({
                 <Users className="h-6 w-6 text-slate-300 mx-auto" />
                 <p className="font-semibold text-slate-700 text-xs">No Auditors Assigned Yet</p>
                 <p className="text-[11px] text-slate-400">
-                  Assign a certified assessor so they can inspect this organization.
+                  Certified assessors mapped with privileges to audit this organization.
                 </p>
-                {!showAssignForm && (
+                {isAdmin && !showAssignForm && (
                   <button
                     onClick={() => setShowAssignForm(true)}
                     className="mt-2 px-3 py-1 bg-white border border-slate-200 hover:bg-slate-100 text-teal-700 font-semibold text-[11px] rounded-lg transition"
@@ -923,10 +946,12 @@ export default function OrganizationDetailDrawer({
               </div>
             ) : (
               <div className="space-y-2">
-                {auditors.map((item) => {
+                {auditors.map((item, idx) => {
                   const a = item.auditor;
                   const initial = a?.name?.charAt(0)?.toUpperCase() || "A";
                   const isUnassigning = unassigningId === item.mappingId;
+                  const isLeadOwner = idx === 0 || (assessments.length > 0 && a?._id === assessments[0]?.conductedByUserId);
+                  const isSubmitted = assessments.length > 0 && assessments[0]?.status === "Submitted";
 
                   return (
                     <div
@@ -942,27 +967,54 @@ export default function OrganizationDetailDrawer({
                             {a?.name || "Assessor"}
                           </div>
                           <div className="text-[10.5px] text-slate-500 truncate">{a?.email}</div>
+                          
+                          {/* Access-based Role Badge */}
+                          <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                            <span
+                              className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9.5px] font-semibold border ${
+                                isLeadOwner
+                                  ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                                  : "bg-blue-50 text-blue-800 border-blue-200"
+                              }`}
+                            >
+                              <span
+                                className={`h-1.5 w-1.5 rounded-full ${
+                                  isLeadOwner ? "bg-emerald-500" : "bg-blue-500"
+                                }`}
+                              />
+                              {isLeadOwner ? "Owner (Full Edit Access)" : "Auditor (Review Access)"}
+                            </span>
+
+                            {isSubmitted && (
+                              <span className="px-1.5 py-0.5 rounded text-[9.5px] font-medium bg-slate-100 text-slate-600 border border-slate-200">
+                                Submitted (View Only)
+                              </span>
+                            )}
+                          </div>
+
                           {item.assignedAt && (
-                            <div className="text-[9.5px] text-slate-400 mt-0.5">
+                            <div className="text-[9.5px] text-slate-400 mt-1">
                               Assigned {new Date(item.assignedAt).toLocaleDateString()}
                             </div>
                           )}
                         </div>
                       </div>
 
-                      {/* Unassign Button with Confirmation Dialog */}
-                      <button
-                        onClick={() => handleUnassignAuditor(item.mappingId, a?.name || "Assessor")}
-                        disabled={isUnassigning}
-                        title="Unassign auditor"
-                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition shrink-0 disabled:opacity-40"
-                      >
-                        {isUnassigning ? (
-                          <RefreshCw className="h-3.5 w-3.5 animate-spin text-rose-500" />
-                        ) : (
-                          <Trash2 className="h-3.5 w-3.5" />
-                        )}
-                      </button>
+                      {/* Unassign Button (Admin Only) */}
+                      {isAdmin && (
+                        <button
+                          onClick={() => handleUnassignAuditor(item.mappingId, a?.name || "Assessor")}
+                          disabled={isUnassigning}
+                          title="Unassign auditor"
+                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition shrink-0 disabled:opacity-40"
+                        >
+                          {isUnassigning ? (
+                            <RefreshCw className="h-3.5 w-3.5 animate-spin text-rose-500" />
+                          ) : (
+                            <Trash2 className="h-3.5 w-3.5" />
+                          )}
+                        </button>
+                      )}
                     </div>
                   );
                 })}

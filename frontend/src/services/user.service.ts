@@ -36,6 +36,12 @@ export const userService = {
   getCurrentUser: () =>
     apiClient.get<User>("/users/me"),
 
+  updateProfile: (payload: { name?: string; phone?: string }) =>
+    apiClient.patch<{ userId: string; email: string; name: string; phone?: string; role: string }>(
+      "/users/me",
+      payload
+    ),
+
   getUsers: (params?: {
     page?: number;
     limit?: number;
@@ -81,4 +87,3 @@ export const userService = {
   adminResetPassword: (id: string) =>
     apiClient.post<AdminResetPasswordResponse>(`/users/${id}/reset-password`),
 };
-

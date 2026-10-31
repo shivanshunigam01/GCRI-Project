@@ -1,11 +1,22 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import { dashboardService } from "@/services/dashboard.service";
+import { assessmentService } from "@/services/assessment.service";
+import { companyService } from "@/services/company.service";
 import { StatCard } from "@/components/shared/StatCard";
 import { AnimatedNumber } from "@/components/ui/AnimatedNumber";
+import {
+  AuditorDashboardSummary,
+  AdminDashboardSummary,
+  AdminAssessmentItem,
+  AuditorAssessmentsItem,
+  AuditorOrganizationItem,
+  AuditorPillarPerformance,
+} from "@/types/dashboard.types";
+import { useDashboardScope } from "@/context/DashboardScopeContext";
 import {
   FileCheck2,
   Clock,
@@ -16,8 +27,6 @@ import {
   TrendingUp,
   FileText,
   Calendar,
-  MoreHorizontal,
-  ChevronDown,
   Users,
   UserCheck,
   ShieldCheck,
@@ -32,852 +41,1484 @@ import {
   LayoutGrid,
   Settings,
   Shield,
+  RefreshCw,
+  PlusCircle,
+  Search,
+  ExternalLink,
+  ChevronRight,
+  Activity,
+  BarChart3,
+  Radar,
+  Sparkles,
+  Filter,
+  CheckCircle,
+  Compass,
+  X,
 } from "lucide-react";
+
+/* -------------------------------------------------------------------------- */
+/*                               MAIN COMPONENT                               */
+/* -------------------------------------------------------------------------- */
 
 export default function DashboardPage() {
   const { user } = useAuth();
+  const { setOrganizations, refreshTrigger } = useDashboardScope();
   const roleView: "Admin" | "Auditor" = user?.role === "Admin" ? "Admin" : "Auditor";
-  const [loading, setLoading] = useState(false);
-  const [auditorData, setAuditorData] = useState<any>(null);
-  const [adminData, setAdminData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
+  // Auditor state
+  const [auditorSummary, setAuditorSummary] = useState<AuditorDashboardSummary | null>(null);
+  const [auditorAssessments, setAuditorAssessments] = useState<AuditorAssessmentsItem[]>([]);
+  const [auditorOrgs, setAuditorOrgs] = useState<AuditorOrganizationItem[]>([]);
 
-  // Fetch live dashboard API data
-  useEffect(() => {
-    async function fetchDashboard() {
-      setLoading(true);
-      try {
-        if (roleView === "Admin") {
-          const res = await dashboardService.getAdminSummary();
-          if (res?.data) setAdminData(res.data);
-        } else {
-          const res = await dashboardService.getAuditorSummary();
-          if (res?.data) setAuditorData(res.data);
+  // Admin state
+  const [adminSummary, setAdminSummary] = useState<AdminDashboardSummary | null>(null);
+  const [adminAssessments, setAdminAssessments] = useState<AdminAssessmentItem[]>([]);
+
+  const fetchDashboard = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      if (roleView === "Admin") {
+        const [sumRes, assessRes, compRes] = await Promise.all([
+          dashboardService.getAdminSummary(),
+          dashboardService.getAdminAssessments({ limit: 100 }),
+          companyService.getCompanies({ limit: 200 }).catch(() => null),
+        ]);
+        if (sumRes?.data) {
+          setAdminSummary(sumRes.data);
         }
-      } catch (err) {
-        // Fallback silently if unauthenticated or error; UI maintains exact presentation
-      } finally {
-        setLoading(false);
+        if (compRes?.data && Array.isArray(compRes.data)) {
+          setOrganizations(
+            compRes.data.map((c: any) => ({
+              _id: c._id,
+              name: c.name,
+              domain: c.domain,
+              industry: c.industry,
+              status: c.status,
+              activePlan: c.activePlan || c.subscription?.plan || "Bronze",
+            }))
+          );
+        } else if (sumRes?.data?.recentOrganizations) {
+          setOrganizations(sumRes.data.recentOrganizations);
+        }
+        if (assessRes?.data?.assessments) setAdminAssessments(assessRes.data.assessments);
+      } else {
+        const [sumRes, assessRes, orgsRes, directAssessRes] = await Promise.all([
+          dashboardService.getAuditorSummary().catch(() => null),
+          dashboardService.getAuditorAssessments({ limit: 50 }).catch(() => null),
+          dashboardService.getAuditorOrganizations().catch(() => null),
+          assessmentService.getAssessments({ limit: 50 }).catch(() => null),
+        ]);
+        if (sumRes?.data) setAuditorSummary(sumRes.data);
+
+        let list: any[] = [];
+        if (assessRes?.data?.assessments && Array.isArray(assessRes.data.assessments)) {
+          list = assessRes.data.assessments;
+        } else if (Array.isArray(assessRes?.data)) {
+          list = assessRes.data as any;
+        }
+
+        if (Array.isArray(directAssessRes?.data) && directAssessRes.data.length > 0) {
+          if (list.length === 0) {
+            list = directAssessRes.data;
+          } else {
+            list = list.map((item) => {
+              if (item.scoreSnapshot?.pillarScores?.length) return item;
+              const match = directAssessRes.data.find(
+                (d: any) => d._id?.toString() === item._id?.toString()
+              );
+              if (match?.scoreSnapshot) {
+                return { ...item, scoreSnapshot: match.scoreSnapshot };
+              }
+              return item;
+            });
+          }
+        }
+
+        setAuditorAssessments(list);
+
+        if (orgsRes?.data?.organizations) {
+          setAuditorOrgs(orgsRes.data.organizations);
+          setOrganizations(orgsRes.data.organizations);
+        }
       }
+    } catch (err: any) {
+      setError(
+        err?.response?.data?.error?.message ||
+          err?.message ||
+          "Failed to load real-time dashboard data"
+      );
+    } finally {
+      setLoading(false);
     }
+  };
+
+  useEffect(() => {
     fetchDashboard();
-  }, [roleView]);
+  }, [roleView, refreshTrigger]);
+
+  if (loading) {
+    return <DashboardSkeleton roleView={roleView} />;
+  }
+
+  if (error) {
+    return (
+      <div className="p-8 bg-white rounded-xl border border-red-200 text-center space-y-4 shadow-xs">
+        <div className="inline-flex p-3 rounded-full bg-red-50 text-red-600">
+          <AlertTriangle className="h-6 w-6" />
+        </div>
+        <div>
+          <h2 className="text-lg font-bold text-slate-900">Failed to load dashboard</h2>
+          <p className="text-sm text-slate-500 mt-1">{error}</p>
+        </div>
+        <button
+          onClick={fetchDashboard}
+          className="inline-flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-lg text-sm font-semibold hover:bg-slate-800 transition"
+        >
+          <RefreshCw className="h-4 w-4" /> Retry
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
       {roleView === "Auditor" ? (
-        <AuditorDashboardContent data={auditorData} userName={user?.name || "Piyush"} />
+        <AuditorDashboardContent
+          summary={auditorSummary}
+          assessments={auditorAssessments}
+          organizations={auditorOrgs}
+          userName={user?.name || "Auditor"}
+          onRefresh={fetchDashboard}
+        />
       ) : (
-        <AdminDashboardContent data={adminData} />
+        <AdminDashboardContent
+          summary={adminSummary}
+          assessments={adminAssessments}
+          onRefresh={fetchDashboard}
+        />
       )}
     </div>
   );
 }
 
 /* -------------------------------------------------------------------------- */
-/*                        SCREEN 1: AUDITOR DASHBOARD                         */
+/*                               LOADING SKELETON                             */
 /* -------------------------------------------------------------------------- */
 
-function AuditorDashboardContent({ data, userName }: { data: any; userName: string }) {
+function DashboardSkeleton({ roleView }: { roleView: "Admin" | "Auditor" }) {
+  return (
+    <div className="space-y-6 animate-pulse">
+      <div className="flex justify-between items-center">
+        <div className="h-9 bg-slate-200 rounded-lg w-1/3" />
+        <div className="h-9 bg-slate-200 rounded-lg w-40" />
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {[...Array(4)].map((_, i) => (
+          <div key={i} className="h-28 bg-white rounded-xl border border-slate-200 p-5 space-y-3">
+            <div className="h-4 bg-slate-200 rounded w-1/2" />
+            <div className="h-8 bg-slate-200 rounded w-1/3" />
+          </div>
+        ))}
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+        <div className="lg:col-span-5 h-80 bg-white rounded-xl border border-slate-200" />
+        <div className="lg:col-span-4 h-80 bg-white rounded-xl border border-slate-200" />
+        <div className="lg:col-span-3 h-80 bg-white rounded-xl border border-slate-200" />
+      </div>
+    </div>
+  );
+}
+
+interface DonutSegmentInput {
+  key: string;
+  label: string;
+  count: number;
+  color: string;
+}
+
+interface CalculatedDonutSegment extends DonutSegmentInput {
+  ratio: number;
+  percentage: number;
+  rawLength: number;
+  dashLength: number;
+  offset: number;
+  circumference: number;
+}
+
+function calculateDonutSegments(
+  segments: DonutSegmentInput[],
+  total: number,
+  radius: number = 38
+): CalculatedDonutSegment[] {
+  const circumference = 2 * Math.PI * radius; // ~238.761
+  const activeSegments = segments.filter((s) => s.count > 0);
+  const hasMultiple = activeSegments.length > 1;
+  const gap = hasMultiple ? 2.5 : 0; // 2.5px micro-gap between segments if multiple
+
+  let accumulatedOffset = 0;
+
+  return activeSegments.map((seg) => {
+    const ratio = total > 0 ? seg.count / total : 0;
+    const rawLength = ratio * circumference;
+    const dashLength = Math.max(1, rawLength - gap);
+    // Center the gap symmetrically on the boundary
+    const offset = accumulatedOffset - (hasMultiple ? gap / 2 : 0);
+    accumulatedOffset -= rawLength;
+
+    return {
+      ...seg,
+      ratio,
+      percentage: Math.round(ratio * 100),
+      rawLength,
+      dashLength,
+      offset,
+      circumference,
+    };
+  });
+}
+
+/* -------------------------------------------------------------------------- */
+/*                       SCREEN 1: AUDITOR DASHBOARD                          */
+/* -------------------------------------------------------------------------- */
+
+function AuditorDashboardContent({
+  summary,
+  assessments,
+  organizations,
+  userName,
+  onRefresh,
+}: {
+  summary: AuditorDashboardSummary | null;
+  assessments: AuditorAssessmentsItem[];
+  organizations: AuditorOrganizationItem[];
+  userName: string;
+  onRefresh: () => void;
+}) {
   const [isMounted, setIsMounted] = useState(false);
+  const { selectedOrgFilter, setSelectedOrgFilter } = useDashboardScope();
+  const [pipelineFilter, setPipelineFilter] = useState<
+    "All" | "InProgress" | "Submitted" | "Light" | "Full"
+  >("All");
+  const [pipelineSearch, setPipelineSearch] = useState("");
+  const [hoveredPillarIndex, setHoveredPillarIndex] = useState<number | null>(null);
+  const [lifecycleHover, setLifecycleHover] = useState<"Completed" | "InProgress" | "NotStarted" | null>(null);
+  const [frameworkHover, setFrameworkHover] = useState<"Full" | "Light" | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setIsMounted(true), 60);
     return () => clearTimeout(t);
   }, []);
 
-  // Integrate live data with design spec constants
-  const totalAssessments = data?.stats?.totalAssessments || 12;
-  const inProgress = data?.stats?.inProgressAssessments || 5;
-  const completed = data?.stats?.completedAssessments || 6;
-  const findingsCount = data?.stats?.totalFindings || 3;
-  const organizationsCount = data?.stats?.assignedOrganizations || 8;
-  const overallCompletion = data?.overallCompletionPercentage || 64;
-
-  const overviewBars = [
-    {
-      month: "Apr",
-      x1: 50,
-      x2: 68,
-      centerX: 67,
-      compHeight: 30,
-      compY: 110,
-      progHeight: 45,
-      progY: 95,
-      progFill: "#94a3b8",
-      progOpacity: 0.6,
-      lineY: 88,
-    },
-    {
-      month: "May",
-      x1: 100,
-      x2: 118,
-      centerX: 117,
-      compHeight: 10,
-      compY: 130,
-      progHeight: 60,
-      progY: 80,
-      progFill: "#3b82f6",
-      progOpacity: 1,
-      lineY: 74,
-    },
-    {
-      month: "Jun",
-      x1: 150,
-      x2: 168,
-      centerX: 167,
-      compHeight: 25,
-      compY: 115,
-      progHeight: 65,
-      progY: 75,
-      progFill: "#94a3b8",
-      progOpacity: 0.6,
-      lineY: 68,
-    },
-    {
-      month: "Jul",
-      x1: 200,
-      x2: 218,
-      centerX: 217,
-      compHeight: 15,
-      compY: 125,
-      progHeight: 50,
-      progY: 90,
-      progFill: "#3b82f6",
-      progOpacity: 1,
-      lineY: 84,
-    },
-    {
-      month: "Aug",
-      x1: 250,
-      x2: 268,
-      centerX: 267,
-      compHeight: 25,
-      compY: 115,
-      progHeight: 75,
-      progY: 65,
-      progFill: "#94a3b8",
-      progOpacity: 0.6,
-      lineY: 58,
-    },
-    {
-      month: "Sep",
-      x1: 300,
-      x2: 318,
-      centerX: 317,
-      compHeight: 55,
-      compY: 85,
-      progHeight: 70,
-      progY: 70,
-      progFill: "#3b82f6",
-      progOpacity: 1,
-      lineY: 62,
-    },
+  // Standard 7 GRAICE Pillars Definition
+  const STANDARD_PILLARS = [
+    { pillarId: "ethical-leadership", pillarNumber: 1, name: "Ethical Leadership" },
+    { pillarId: "data-governance-integrity", pillarNumber: 2, name: "Data Governance & Integrity" },
+    { pillarId: "purpose-driven-innovation", pillarNumber: 3, name: "Purpose-Driven Innovation" },
+    { pillarId: "human-centric-use", pillarNumber: 4, name: "Human-Centric Use" },
+    { pillarId: "responsible-implementation", pillarNumber: 5, name: "Responsible Implementation" },
+    { pillarId: "ai-literacy-workforce-readiness", pillarNumber: 6, name: "AI Literacy & Workforce Readiness" },
+    { pillarId: "transparency-auditability", pillarNumber: 7, name: "Transparency & Auditability" },
   ];
 
-  const pillarPerformance = [
-    { name: "Ethical Leadership", percentage: 78 },
-    { name: "Data Governance & Integrity", percentage: 62 },
-    { name: "Purpose-Driven Innovation", percentage: 54 },
-    { name: "Human-Centric Use", percentage: 48 },
-    { name: "Responsible Implementation", percentage: 71 },
-    { name: "AI Literacy & Workforce Readiness", percentage: 40 },
-    { name: "Transparency & Auditability", percentage: 66 },
-  ];
+  // Filter assessments based on selected client organization scope
+  const scopedAssessments = useMemo(() => {
+    if (selectedOrgFilter === "all") return assessments;
+    return assessments.filter((a) => {
+      const orgId =
+        (a.organization as any)?._id?.toString() ||
+        (a.organization as any)?.toString() ||
+        (a as any).companyId?._id?.toString() ||
+        (a as any).companyId?.toString();
+      return orgId === selectedOrgFilter;
+    });
+  }, [assessments, selectedOrgFilter]);
 
-  const recentActivity = [
-    {
-      icon: "file",
-      color: "bg-blue-50 text-blue-600",
-      title: "Evidence uploaded",
-      subtitle: "ABC Corporation - Control GCRAI-001",
-      time: "2 hours ago",
-    },
-    {
-      icon: "edit",
-      color: "bg-orange-50 text-orange-600",
-      title: "Assessment updated",
-      subtitle: "TechNova Solutions - Pillar 3",
-      time: "4 hours ago",
-    },
-    {
-      icon: "alert",
-      color: "bg-rose-50 text-rose-600",
-      title: "Finding created",
-      subtitle: "Global Retail Ltd - Data Governance",
-      time: "1 day ago",
-    },
-    {
-      icon: "report",
-      color: "bg-cyan-50 text-cyan-600",
-      title: "Report generated",
-      subtitle: "GreenTech Industries - Full Assessment",
-      time: "1 day ago",
-    },
-    {
-      icon: "new",
-      color: "bg-emerald-50 text-emerald-600",
-      title: "New assessment created",
-      subtitle: "HealthAI Systems - Light Assessment",
-      time: "2 days ago",
-    },
-  ];
+  // Derive Pillar Scores accurately from live scoreSnapshots
+  const derivedPillarData = useMemo(() => {
+    const scopedPool = scopedAssessments.filter(
+      (a) => a.scoreSnapshot?.pillarScores && a.scoreSnapshot.pillarScores.length > 0
+    );
+    const scoredScoped = scopedPool.filter((s) =>
+      s.scoreSnapshot?.pillarScores?.some((p) => (p.percentage ?? 0) > 0 || (p.scoreEarned ?? 0) > 0)
+    );
+    const allScored = assessments.filter((s) =>
+      s.scoreSnapshot?.pillarScores?.some((p) => (p.percentage ?? 0) > 0 || (p.scoreEarned ?? 0) > 0)
+    );
 
-  const upcomingTasks = [
-    {
-      date: "OCT 04",
-      title: "Complete evidence review",
-      subtitle: "TechNova Solutions - Control GCRAI-023",
-      priority: "High",
-      badgeColor: "bg-rose-50 text-rose-700 border-rose-200",
-      pillColor: "bg-rose-50 text-rose-600",
-    },
-    {
-      date: "OCT 06",
-      title: "Client meeting",
-      subtitle: "Global Retail Ltd - Assessment Review",
-      priority: "Medium",
-      badgeColor: "bg-orange-50 text-orange-700 border-orange-200",
-      pillColor: "bg-amber-50 text-amber-700",
-    },
-    {
-      date: "OCT 08",
-      title: "Upload pending evidence",
-      subtitle: "ABC Corporation - 5 controls",
-      priority: "Medium",
-      badgeColor: "bg-orange-50 text-orange-700 border-orange-200",
-      pillColor: "bg-amber-50 text-amber-700",
-    },
-    {
-      date: "OCT 10",
-      title: "Prepare draft report",
-      subtitle: "HealthAI Systems - Full Assessment",
-      priority: "Low",
-      badgeColor: "bg-blue-50 text-blue-700 border-blue-200",
-      pillColor: "bg-blue-50 text-blue-700",
-    },
-  ];
+    const sessionsToUse =
+      scoredScoped.length > 0
+        ? scoredScoped
+        : scopedPool.length > 0
+        ? scopedPool
+        : allScored.length > 0
+        ? allScored
+        : assessments.filter((a) => a.scoreSnapshot?.pillarScores?.length);
 
-  const myOrganizations = [
-    { code: "ABC", name: "ABC Corporation", industry: "Technology", count: 2, status: "In Progress" },
-    { code: "TS", name: "TechNova Solutions", industry: "IT Services", count: 1, status: "In Progress" },
-    { code: "GR", name: "Global Retail Ltd", industry: "Retail", count: 2, status: "Completed" },
-    { code: "HS", name: "HealthAI Systems", industry: "Healthcare", count: 1, status: "Not Started" },
-    { code: "GT", name: "GreenTech Industries", industry: "Manufacturing", count: 1, status: "In Progress" },
-  ];
+    if (sessionsToUse.length > 0) {
+      const results = STANDARD_PILLARS.map((std) => {
+        let totalPct = 0;
+        let totalEarned = 0;
+        let totalMax = 0;
+        let matches = 0;
 
-  const latestFindings = [
-    { id: "FND-2026-001", org: "Global Retail Ltd", severity: "High", status: "Open" },
-    { id: "FND-2026-002", org: "TechNova Solutions", severity: "Medium", status: "In Review" },
-    { id: "FND-2026-003", org: "ABC Corporation", severity: "Medium", status: "Open" },
-    { id: "FND-2026-004", org: "GreenTech Industries", severity: "Low", status: "Resolved" },
-  ];
+        sessionsToUse.forEach((s) => {
+          const match = s.scoreSnapshot?.pillarScores.find((ps) => {
+            const normPsId = (ps.pillarId || "").toLowerCase().replace(/[^a-z]/g, "");
+            const normPsName = (ps.pillarName || "").toLowerCase().replace(/[^a-z]/g, "");
+            const normStdId = std.pillarId.toLowerCase().replace(/[^a-z]/g, "");
+            const normStdName = std.name.toLowerCase().replace(/[^a-z]/g, "");
+            return (
+              normPsId === normStdId ||
+              normPsName === normStdName ||
+              (ps.pillarNumber && ps.pillarNumber === std.pillarNumber)
+            );
+          });
+          if (match) {
+            totalPct += match.percentage ?? 0;
+            totalEarned += match.scoreEarned ?? 0;
+            totalMax += match.scoreMax ?? 0;
+            matches++;
+          }
+        });
+
+        const avgPct = matches > 0 ? Math.round((totalPct / matches) * 10) / 10 : 0;
+        const avgEarned = matches > 0 ? Math.round(totalEarned / matches) : 0;
+        const avgMax = matches > 0 ? Math.round(totalMax / matches) : 16;
+
+        return {
+          pillarId: std.pillarId,
+          pillarNumber: std.pillarNumber,
+          name: std.name,
+          completionPercentage: avgPct,
+          scoreEarned: avgEarned,
+          scoreMax: avgMax,
+        };
+      });
+
+      const avgSum = results.reduce((acc, p) => acc + p.completionPercentage, 0);
+      const overallAvg = results.length > 0 ? Math.round((avgSum / results.length) * 10) / 10 : 0;
+
+      let tierName = "Tier 1: Initial";
+      if (overallAvg >= 75) tierName = "Tier 4: Advanced";
+      else if (overallAvg >= 50) tierName = "Tier 3: Established";
+      else if (overallAvg >= 25) tierName = "Tier 2: Emerging";
+
+      return {
+        pillars: results,
+        overallAvgScore: overallAvg,
+        maturityTier: tierName,
+        evaluatedSessionsCount: sessionsToUse.length,
+      };
+    }
+
+    // Fallback to summary.pillarPerformance if available with non-zero values
+    const backendPillars = summary?.pillarPerformance || [];
+    const hasBackendValues = backendPillars.some((p) => p.completionPercentage > 0);
+
+    if (hasBackendValues) {
+      const results = backendPillars.map((p, idx) => ({
+        pillarId: p.pillarId || STANDARD_PILLARS[idx]?.pillarId || `P${idx + 1}`,
+        pillarNumber: p.pillarNumber || idx + 1,
+        name: p.name || STANDARD_PILLARS[idx]?.name || `Pillar ${idx + 1}`,
+        completionPercentage: p.completionPercentage,
+        scoreEarned: Math.round((p.completionPercentage / 100) * 16),
+        scoreMax: 16,
+      }));
+      const sum = results.reduce((acc, p) => acc + p.completionPercentage, 0);
+      const avg = Math.round(sum / results.length);
+      return {
+        pillars: results,
+        overallAvgScore: avg,
+        maturityTier:
+          avg >= 75
+            ? "Tier 4: Advanced"
+            : avg >= 50
+            ? "Tier 3: Established"
+            : avg >= 25
+            ? "Tier 2: Emerging"
+            : "Tier 1: Initial",
+        evaluatedSessionsCount: 0,
+      };
+    }
+
+    // Default 0 placeholder
+    return {
+      pillars: STANDARD_PILLARS.map((std) => ({
+        ...std,
+        completionPercentage: 0,
+        scoreEarned: 0,
+        scoreMax: 16,
+      })),
+      overallAvgScore: 0,
+      maturityTier: "Tier 1: Initial",
+      evaluatedSessionsCount: 0,
+    };
+  }, [scopedAssessments, summary]);
+
+  // Derived metrics for Scoped View
+  const totalAssessments = scopedAssessments.length;
+  const inProgressAssessments = scopedAssessments.filter((a) => a.status === "InProgress");
+  const completedAssessments = scopedAssessments.filter((a) => a.status === "Submitted");
+  const inProgressCount = inProgressAssessments.length;
+  const completedCount = completedAssessments.length;
+  const notStartedCount = Math.max(0, totalAssessments - completedCount - inProgressCount);
+
+  const completedRatio = totalAssessments > 0 ? completedCount / totalAssessments : 0;
+  const inProgressRatio = totalAssessments > 0 ? inProgressCount / totalAssessments : 0;
+  const overallCompletion =
+    totalAssessments > 0 ? Math.round((completedCount / totalAssessments) * 100) : 0;
+
+  // Framework type split
+  const lightCount = scopedAssessments.filter((a) => a.assessmentType === "Light").length;
+  const fullCount = scopedAssessments.filter((a) => a.assessmentType === "Full").length;
+  const lightPct = totalAssessments > 0 ? Math.round((lightCount / totalAssessments) * 100) : 0;
+  const fullPct = totalAssessments > 0 ? Math.round((fullCount / totalAssessments) * 100) : 0;
+
+  // Memoized segmented donut calculations for Assessment Lifecycle
+  const lifecycleSegments = useMemo(() => {
+    const rawSegments: DonutSegmentInput[] = [
+      { key: "Completed", label: "Completed", count: completedCount, color: "#10b981" },
+      { key: "InProgress", label: "In Progress", count: inProgressCount, color: "#3b82f6" },
+      { key: "NotStarted", label: "Not Started", count: notStartedCount, color: "#94a3b8" },
+    ];
+    return calculateDonutSegments(rawSegments, totalAssessments);
+  }, [completedCount, inProgressCount, notStartedCount, totalAssessments]);
+
+  // Memoized segmented donut calculations for Framework Mix
+  const frameworkSegments = useMemo(() => {
+    const rawSegments: DonutSegmentInput[] = [
+      { key: "Full", label: "Full Assessment", count: fullCount, color: "#1e40af" },
+      { key: "Light", label: "Light Assessment", count: lightCount, color: "#0284c7" },
+    ];
+    return calculateDonutSegments(rawSegments, totalAssessments);
+  }, [fullCount, lightCount, totalAssessments]);
+
+  // Maturity classification breakdown across scoped assessments
+  const maturityDistribution = useMemo(() => {
+    const counts = { Initial: 0, Emerging: 0, Established: 0, Advanced: 0 };
+    completedAssessments.forEach((a) => {
+      const lvl = a.scoreSnapshot?.maturityLevel;
+      if (lvl && lvl in counts) {
+        counts[lvl as keyof typeof counts]++;
+      } else {
+        counts.Initial++;
+      }
+    });
+    return counts;
+  }, [completedAssessments]);
+
+  // Findings list and count
+  const findingsCount = summary?.stats?.totalFindings ?? 0;
+  const latestFindings = summary?.latestFindings ?? [];
+
+  // Filtered assessment pipeline table
+  const filteredPipeline = useMemo(() => {
+    return scopedAssessments.filter((a) => {
+      // Status/Type filter
+      if (pipelineFilter === "InProgress" && a.status !== "InProgress") return false;
+      if (pipelineFilter === "Submitted" && a.status !== "Submitted") return false;
+      if (pipelineFilter === "Light" && a.assessmentType !== "Light") return false;
+      if (pipelineFilter === "Full" && a.assessmentType !== "Full") return false;
+
+      // Search query
+      if (pipelineSearch.trim()) {
+        const query = pipelineSearch.toLowerCase();
+        const orgName = ((a.organization as any)?.name || "").toLowerCase();
+        const type = (a.assessmentType || "").toLowerCase();
+        const status = (a.status || "").toLowerCase();
+        if (!orgName.includes(query) && !type.includes(query) && !status.includes(query)) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [scopedAssessments, pipelineFilter, pipelineSearch]);
 
   return (
     <div className="space-y-6">
-      {/* Greeting Header */}
+      {/* -------------------------------------------------------------------- */}
+      {/* GREETING HEADER                                                      */}
+      {/* -------------------------------------------------------------------- */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 font-editorial">
-            Good Morning, {userName} 👋
-          </h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 font-editorial">
+              Good Morning, {userName} 👋
+            </h1>
+            <span className="hidden sm:inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" /> Live Telemetry
+            </span>
+          </div>
           <p className="text-xs sm:text-sm text-slate-500 mt-1">
-            Here&apos;s an overview of your assessments and activities.
+            Real-time GRAICE AI assurance, 7-pillar telemetry, and audit lifecycle management.
           </p>
         </div>
-        <div className="text-left md:text-right">
-          <div className="text-xs text-slate-500 font-medium">Friday, 3 October 2026</div>
+
+        <div className="text-left md:text-right hidden sm:block">
+          <div className="text-xs text-slate-500 font-medium">
+            {new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
+          </div>
           <div className="text-xs text-slate-600 italic font-serif mt-0.5">
             &ldquo;Responsible AI today, a more trustworthy tomorrow.&rdquo;
           </div>
         </div>
       </div>
 
-      {/* Top 5 Metric Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+      {/* -------------------------------------------------------------------- */}
+      {/* 4 TOP INTERACTIVE METRIC CARDS (4 ONLY, SEPARATE METRICS)            */}
+      {/* -------------------------------------------------------------------- */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
-          label="Total Assessments"
+          label="Assessments Pipeline"
           value={totalAssessments}
-          trend="▲ +2 this month"
+          trend={`${completedCount} Completed • ${inProgressCount} Active`}
           trendType="up"
           icon={FileCheck2}
           theme="blue"
           delay={0}
+          onClick={() => setPipelineFilter("All")}
         />
         <StatCard
-          label="In Progress"
-          value={inProgress}
-          trend="↑ +1 this week"
+          label="My Organizations"
+          value={organizations.length || summary?.stats?.assignedOrganizations || 0}
+          trend="Assigned Client Tenants"
           trendType="neutral"
-          icon={Clock}
-          theme="sky"
+          icon={Building2}
+          theme="purple"
           delay={70}
         />
         <StatCard
-          label="Completed"
-          value={completed}
-          trend="↑ +3 this month"
+          label="Governance Assurance"
+          value={derivedPillarData.overallAvgScore}
+          suffix="%"
+          trend={derivedPillarData.maturityTier}
           trendType="up"
-          icon={CheckCircle2}
+          icon={Award}
           theme="emerald"
           delay={140}
         />
         <StatCard
-          label="Findings"
+          label="Compliance Findings"
           value={findingsCount}
-          trend="⚑ Needs Attention"
-          trendType="down"
+          trend={findingsCount > 0 ? `${findingsCount} Action Required` : "Audit Compliant"}
+          trendType={findingsCount > 0 ? "warning" : "up"}
           icon={AlertTriangle}
-          theme="rose"
+          theme={findingsCount > 0 ? "rose" : "teal"}
           delay={210}
         />
-        <StatCard
-          label="Organizations"
-          value={organizationsCount}
-          trend="Active Clients"
-          icon={Building2}
-          theme="purple"
-          delay={280}
-        />
       </div>
 
-      {/* Middle Row (3 Cards) */}
+      {/* -------------------------------------------------------------------- */}
+      {/* ROW 2: 7 GRAICE PILLARS RADAR + PILLAR BREAKDOWN (SAME ROW, 2 CARDS) */}
+      {/* -------------------------------------------------------------------- */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-        {/* Card 1: Assessment Progress */}
-        <div className="lg:col-span-4 group relative overflow-hidden bg-white rounded-xl border border-slate-200/90 p-5 shadow-xs transition-all duration-300 ease-out hover:-translate-y-0.5 hover:shadow-md hover:border-slate-300 flex flex-col justify-between">
-          <div className="absolute top-0 inset-x-0 h-0.5 bg-gradient-to-r from-transparent via-emerald-500/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
-          <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-            <h3 className="text-sm font-bold text-slate-900">Assessment Progress</h3>
-            <button className="text-xs text-slate-500 flex items-center gap-1 border border-slate-200 px-2 py-1 rounded-md bg-slate-50 hover:bg-slate-100 transition-colors">
-              Last 6 Months <ChevronDown className="h-3 w-3" />
-            </button>
-          </div>
+        {/* CARD 1: 7 GRAICE Pillars Assurance (Interactive Radar Spider Graph) */}
+        <div className="lg:col-span-5 bg-white rounded-2xl border border-slate-200/90 p-4 sm:p-5 shadow-xs hover:shadow-md hover:border-slate-300 transition-all duration-300 group flex flex-col justify-between relative overflow-hidden">
+          {/* Ambient Corner Glow */}
+          <div className="pointer-events-none absolute -top-16 -right-16 w-44 h-44 bg-blue-500/5 rounded-full blur-2xl group-hover:bg-blue-500/10 transition-all duration-500" />
 
-          <div className="py-4 flex items-center justify-around">
-            {/* SVG Donut with Circle Sweep Animation */}
-            <div className="relative w-36 h-36 flex items-center justify-center group/donut">
-              <svg className="w-full h-full -rotate-90 transition-transform duration-500 group-hover/donut:scale-105" viewBox="0 0 100 100">
-                {/* Background Ring */}
-                <circle cx="50" cy="50" r="38" fill="none" stroke="#f1f5f9" strokeWidth="12" />
-                {/* Completed Arc (Green) */}
-                <circle
-                  cx="50"
-                  cy="50"
-                  r="38"
-                  fill="none"
-                  stroke="#10b981"
-                  strokeWidth="12"
-                  strokeDasharray="238.7"
-                  strokeDashoffset={isMounted ? 238.7 * (1 - 6 / 12) : 238.7}
-                  strokeLinecap="round"
-                  style={{
-                    transition: "stroke-dashoffset 1.3s cubic-bezier(0.16, 1, 0.3, 1) 0.15s",
-                  }}
-                  className="hover:stroke-[#059669] transition-colors"
-                />
-                {/* In Progress Arc (Blue) */}
-                <circle
-                  cx="50"
-                  cy="50"
-                  r="38"
-                  fill="none"
-                  stroke="#3b82f6"
-                  strokeWidth="12"
-                  strokeDasharray="238.7"
-                  strokeDashoffset={isMounted ? 238.7 * (1 - 5 / 12) : 238.7}
-                  strokeLinecap="round"
-                  className="opacity-80 hover:opacity-100 hover:stroke-[#2563eb] transition-all"
-                  style={{
-                    transition: "stroke-dashoffset 1.3s cubic-bezier(0.16, 1, 0.3, 1) 0.3s",
-                  }}
-                />
-              </svg>
-              <div className="absolute inset-0 flex flex-col items-center justify-center text-center transition-transform duration-300 group-hover/donut:scale-105">
-                <span className="text-2xl font-extrabold text-slate-900">
-                  <AnimatedNumber value={overallCompletion} suffix="%" delay={150} />
+          <div className="flex items-center justify-between pb-2.5 border-b border-slate-100 relative z-10">
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-bold text-slate-900">7 GRAICE Pillars Assurance</h3>
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border transition-colors ${
+                  derivedPillarData.overallAvgScore >= 75
+                    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                    : derivedPillarData.overallAvgScore >= 50
+                    ? "bg-blue-50 text-blue-700 border-blue-200"
+                    : derivedPillarData.overallAvgScore >= 25
+                    ? "bg-amber-50 text-amber-700 border-amber-200"
+                    : "bg-blue-50 text-blue-700 border-blue-200"
+                }`}>
+                  {derivedPillarData.maturityTier}
                 </span>
-                <span className="text-[10px] text-slate-500 font-medium">Overall Completion</span>
               </div>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Evaluated average: <strong className="text-slate-800">{derivedPillarData.overallAvgScore}%</strong> across 7 core governance pillars.
+              </p>
             </div>
-
-            {/* Legend */}
-            <div className="space-y-2.5 text-xs">
-              <div className="flex items-center justify-between gap-6 group/legend cursor-default">
-                <div className="flex items-center gap-2">
-                  <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 group-hover/legend:scale-125 transition-transform" />
-                  <span className="text-slate-600 group-hover/legend:text-slate-900 transition-colors">Completed</span>
-                </div>
-                <span className="font-bold text-slate-900 tabular-nums">
-                  <AnimatedNumber value={6} delay={200} />
-                </span>
-              </div>
-              <div className="flex items-center justify-between gap-6 group/legend cursor-default">
-                <div className="flex items-center gap-2">
-                  <span className="h-2.5 w-2.5 rounded-full bg-blue-500 group-hover/legend:scale-125 transition-transform" />
-                  <span className="text-slate-600 group-hover/legend:text-slate-900 transition-colors">In Progress</span>
-                </div>
-                <span className="font-bold text-slate-900 tabular-nums">
-                  <AnimatedNumber value={5} delay={250} />
-                </span>
-              </div>
-              <div className="flex items-center justify-between gap-6 group/legend cursor-default">
-                <div className="flex items-center gap-2">
-                  <span className="h-2.5 w-2.5 rounded-full bg-slate-300 group-hover/legend:scale-125 transition-transform" />
-                  <span className="text-slate-600 group-hover/legend:text-slate-900 transition-colors">Not Started</span>
-                </div>
-                <span className="font-bold text-slate-900 tabular-nums">
-                  <AnimatedNumber value={1} delay={300} />
-                </span>
-              </div>
+            <div className="p-1.5 rounded-xl bg-blue-50 text-blue-600 border border-blue-100 shrink-0 group-hover:bg-blue-100 transition-colors">
+              <Radar className="h-4 w-4" />
             </div>
           </div>
-        </div>
 
-        {/* Card 2: Pillar Performance */}
-        <div className="lg:col-span-4 group relative overflow-hidden bg-white rounded-xl border border-slate-200/90 p-5 shadow-xs transition-all duration-300 ease-out hover:-translate-y-0.5 hover:shadow-md hover:border-slate-300 flex flex-col justify-between">
-          <div className="absolute top-0 inset-x-0 h-0.5 bg-gradient-to-r from-transparent via-blue-500/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
-          <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-            <h3 className="text-sm font-bold text-slate-900">Pillar Performance</h3>
-            <Link href="/admin/frameworks" className="text-xs font-semibold text-blue-600 hover:underline flex items-center gap-0.5 group-hover:translate-x-0.5 transition-transform">
-              View Details →
-            </Link>
-          </div>
-
-          <div className="py-2 space-y-2.5">
-            {pillarPerformance.map((p, idx) => (
-              <div key={p.name} className="space-y-1 group/pillar cursor-default">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-slate-700 font-medium truncate max-w-[200px] group-hover/pillar:text-slate-950 transition-colors">{p.name}</span>
-                  <span className="font-bold text-slate-900 text-[11px] tabular-nums">
-                    <AnimatedNumber value={p.percentage} suffix="%" delay={100 + idx * 40} />
+          {/* Radar Chart Display Area */}
+          <div className="py-1 flex-1 flex flex-col items-center justify-center relative z-10">
+            <SevenPillarRadarChart
+              pillars={derivedPillarData.pillars}
+              isMounted={isMounted}
+              hoveredIndex={hoveredPillarIndex}
+              onHoverIndex={setHoveredPillarIndex}
+              size={215}
+            />
+            {/* Active Hover Detail Tooltip Pill */}
+            <div className="mt-1.5 min-h-[26px] w-full text-center">
+              {hoveredPillarIndex !== null && derivedPillarData.pillars[hoveredPillarIndex] ? (
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-900 text-white text-[11px] font-medium shadow-md animate-in fade-in zoom-in-95">
+                  <span className="font-bold text-sky-400">
+                    P{derivedPillarData.pillars[hoveredPillarIndex].pillarNumber}: {derivedPillarData.pillars[hoveredPillarIndex].name}
+                  </span>
+                  <span>•</span>
+                  <span className="font-extrabold text-emerald-400">
+                    {derivedPillarData.pillars[hoveredPillarIndex].completionPercentage}%
+                  </span>
+                  <span className="text-[10px] text-slate-300">
+                    ({derivedPillarData.pillars[hoveredPillarIndex].scoreEarned} / {derivedPillarData.pillars[hoveredPillarIndex].scoreMax} pts)
                   </span>
                 </div>
-                <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden p-0.25">
-                  <div
-                    className="h-full bg-gradient-to-r from-blue-600 to-indigo-500 rounded-full transition-all duration-1000 ease-out group-hover/pillar:brightness-110"
-                    style={{
-                      width: isMounted ? `${p.percentage}%` : "0%",
-                      transitionDelay: `${120 + idx * 60}ms`,
-                    }}
-                  />
-                </div>
-              </div>
-            ))}
+              ) : (
+                <span className="text-[10.5px] text-slate-400 italic">
+                  Hover over any pillar vertex or bar to inspect score and weight.
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
-        {/* Card 3: Recent Activity */}
-        <div className="lg:col-span-4 group relative overflow-hidden bg-white rounded-xl border border-slate-200/90 p-5 shadow-xs transition-all duration-300 ease-out hover:-translate-y-0.5 hover:shadow-md hover:border-slate-300 flex flex-col justify-between">
-          <div className="absolute top-0 inset-x-0 h-0.5 bg-gradient-to-r from-transparent via-cyan-500/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
-          <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-            <h3 className="text-sm font-bold text-slate-900">Recent Activity</h3>
-            <Link href="/admin/audit-logs" className="text-xs font-semibold text-blue-600 hover:underline">
-              View All →
-            </Link>
+        {/* CARD 2: Governance Pillars Breakdown (Progress Bars) */}
+        <div className="lg:col-span-7 bg-white rounded-2xl border border-slate-200/90 p-4 sm:p-5 shadow-xs hover:shadow-md hover:border-slate-300 transition-all duration-300 group flex flex-col justify-between relative overflow-hidden">
+          {/* Ambient Corner Glow */}
+          <div className="pointer-events-none absolute -top-16 -right-16 w-44 h-44 bg-indigo-500/5 rounded-full blur-2xl group-hover:bg-indigo-500/10 transition-all duration-500" />
+
+          <div className="flex items-center justify-between pb-2.5 border-b border-slate-100 relative z-10">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900">Governance Pillar Breakdown</h3>
+              <p className="text-[11px] text-slate-500 mt-0.5">Assurance score and weighted points by pillar</p>
+            </div>
+            <span className="text-xs text-slate-500 font-medium bg-slate-100 px-2.5 py-0.5 rounded-full">
+              7 Pillars
+            </span>
           </div>
 
-          <div className="py-1 divide-y divide-slate-100 space-y-1.5">
-            {recentActivity.map((act, i) => (
-              <div key={i} className="pt-2 first:pt-0 flex items-start justify-between gap-3 text-xs -mx-1.5 px-1.5 py-1 rounded-lg hover:bg-slate-50/90 transition-colors cursor-pointer">
-                <div className="flex items-start gap-2.5">
-                  <div className={`p-1.5 rounded-lg shrink-0 ${act.color}`}>
-                    <FileText className="h-3.5 w-3.5" />
+          <div className="py-1 flex-1 flex flex-col justify-between space-y-1.5 relative z-10">
+            {derivedPillarData.pillars.map((p, idx) => {
+              const isHovered = hoveredPillarIndex === idx;
+              return (
+                <div
+                  key={p.pillarId}
+                  onMouseEnter={() => setHoveredPillarIndex(idx)}
+                  onMouseLeave={() => setHoveredPillarIndex(null)}
+                  className={`group/pillar cursor-pointer px-2.5 py-1.5 rounded-xl border transition-all duration-200 ${
+                    isHovered
+                      ? "bg-gradient-to-r from-blue-50/90 via-indigo-50/70 to-sky-50/80 border-blue-200 shadow-xs -translate-y-0.5 ring-1 ring-blue-400/30"
+                      : "bg-slate-50/70 hover:bg-slate-50/90 border-slate-100"
+                  }`}
+                >
+                  <div className="flex items-center justify-between text-xs mb-1">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`h-4.5 w-4.5 rounded-md font-bold text-[9.5px] flex items-center justify-center shrink-0 transition-colors ${
+                          isHovered ? "bg-blue-600 text-white shadow-2xs" : "bg-blue-100 text-blue-700"
+                        }`}
+                      >
+                        P{p.pillarNumber}
+                      </span>
+                      <span
+                        className={`font-semibold text-xs transition-colors ${
+                          isHovered ? "text-blue-950 font-bold" : "text-slate-800"
+                        }`}
+                      >
+                        {p.name}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-slate-400 tabular-nums">
+                        {p.scoreEarned}/{p.scoreMax} pts
+                      </span>
+                      <span
+                        className={`font-bold text-[11px] tabular-nums px-1.5 py-0.5 rounded-md border shadow-2xs transition-all ${
+                          isHovered
+                            ? "bg-white text-blue-700 border-blue-200 scale-105"
+                            : "bg-white text-slate-900 border-slate-200/80"
+                        }`}
+                      >
+                        <AnimatedNumber value={p.completionPercentage} suffix="%" delay={idx * 30} />
+                      </span>
+                    </div>
                   </div>
-                  <div>
-                    <div className="font-semibold text-slate-900">{act.title}</div>
-                    <div className="text-slate-500 text-[11px] truncate max-w-[170px]">{act.subtitle}</div>
+                  <div className="h-1.5 w-full bg-slate-200/70 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-blue-600 via-indigo-500 to-sky-400 rounded-full transition-all duration-1000 ease-out"
+                      style={{
+                        width: isMounted ? `${p.completionPercentage}%` : "0%",
+                        transitionDelay: `${idx * 40}ms`,
+                        filter: isHovered ? "drop-shadow(0 0 6px rgba(59, 130, 246, 0.7))" : "none",
+                      }}
+                    />
                   </div>
                 </div>
-                <div className="text-[10px] text-slate-400 shrink-0 whitespace-nowrap pt-0.5">{act.time}</div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>
 
-      {/* Lower Middle Row (3 Cards) */}
+      {/* -------------------------------------------------------------------- */}
+      {/* ROW 3: ASSESSMENT LIFECYCLE & FRAMEWORK MIX (SHIFTED JUST BELOW)     */}
+      {/* -------------------------------------------------------------------- */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-        {/* Card 1: Assessments Overview (Stacked Bar Chart + Animated Trend Line) */}
-        <div className="lg:col-span-5 group relative overflow-hidden bg-white rounded-xl border border-slate-200/90 p-5 shadow-xs transition-all duration-300 ease-out hover:-translate-y-0.5 hover:shadow-md hover:border-slate-300 flex flex-col justify-between">
-          <div className="absolute top-0 inset-x-0 h-0.5 bg-gradient-to-r from-transparent via-blue-500/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
-          <div className="flex items-center justify-between pb-2">
-            <h3 className="text-sm font-bold text-slate-900">Assessments Overview</h3>
-            <button className="text-xs text-slate-500 flex items-center gap-1 border border-slate-200 px-2 py-1 rounded-md bg-slate-50 hover:bg-slate-100 transition-colors">
-              Last 6 Months <ChevronDown className="h-3 w-3" />
-            </button>
+        {/* CARD 1: Assessment Lifecycle (Span 6) */}
+        <div className="lg:col-span-6 bg-white rounded-2xl border border-slate-200/90 p-4 sm:p-5 shadow-xs hover:shadow-sm transition-all duration-300 flex flex-col justify-between relative overflow-hidden">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900">Assessment Lifecycle</h3>
+              <p className="text-[11px] text-slate-500 mt-0.5">Audit completion ratio</p>
+            </div>
+            <span className="text-xs text-slate-600 font-semibold bg-slate-100 px-2.5 py-0.5 rounded-full border border-slate-200/70">
+              {totalAssessments} Total
+            </span>
           </div>
 
-          {/* Legend */}
-          <div className="flex items-center gap-3.5 text-xs mb-3 flex-wrap">
-            <div className="flex items-center gap-1.5">
-              <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
-              <span className="text-slate-600 text-[11px]">Completed</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="h-2.5 w-2.5 rounded-full bg-blue-500" />
-              <span className="text-slate-600 text-[11px]">In Progress</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="h-2.5 w-2.5 rounded-full bg-slate-300" />
-              <span className="text-slate-600 text-[11px]">Not Started</span>
-            </div>
-            <div className="flex items-center gap-1.5 ml-auto">
-              <span className="h-0.75 w-3.5 rounded-full bg-blue-600" />
-              <span className="text-slate-600 text-[11px] font-medium">Trend</span>
-            </div>
-          </div>
+          <div className="py-3 flex flex-col sm:flex-row items-center justify-around flex-1 gap-4">
+            {/* SVG Donut with Mathematically Perfect Chained Arcs */}
+            <div className="relative w-36 h-36 flex items-center justify-center shrink-0">
+              <svg className="w-full h-full -rotate-90 origin-center" viewBox="0 0 100 100">
+                {/* Full 360-degree Background Base Track */}
+                <circle cx="50" cy="50" r="38" fill="none" stroke="#f1f5f9" strokeWidth="8.5" />
 
-          {/* SVG Stacked Bar Chart with Animated Bars & Line */}
-          <div className="h-44 w-full relative">
-            <svg viewBox="0 0 350 160" className="w-full h-full overflow-visible">
-              <defs>
-                <linearGradient id="trendAreaGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.18" />
-                  <stop offset="100%" stopColor="#3b82f6" stopOpacity="0.0" />
-                </linearGradient>
-              </defs>
+                {/* Chained Segments */}
+                {lifecycleSegments.map((seg) => {
+                  const isHovered = lifecycleHover === seg.key;
+                  const isOtherHovered = lifecycleHover !== null && !isHovered;
 
-              {/* Horizontal Grid lines */}
-              <line x1="25" y1="20" x2="340" y2="20" stroke="#f1f5f9" strokeWidth="1" />
-              <text x="12" y="23" fontSize="9" fill="#94a3b8">8</text>
-              <line x1="25" y1="50" x2="340" y2="50" stroke="#f1f5f9" strokeWidth="1" />
-              <text x="12" y="53" fontSize="9" fill="#94a3b8">6</text>
-              <line x1="25" y1="80" x2="340" y2="80" stroke="#f1f5f9" strokeWidth="1" />
-              <text x="12" y="83" fontSize="9" fill="#94a3b8">4</text>
-              <line x1="25" y1="110" x2="340" y2="110" stroke="#f1f5f9" strokeWidth="1" />
-              <text x="12" y="113" fontSize="9" fill="#94a3b8">2</text>
-              <line x1="25" y1="140" x2="340" y2="140" stroke="#e2e8f0" strokeWidth="1" />
-              <text x="12" y="143" fontSize="9" fill="#94a3b8">0</text>
-
-              {/* Area fill under trend line */}
-              <path
-                d="M 67 88 C 92 88, 92 74, 117 74 C 142 74, 142 68, 167 68 C 192 68, 192 84, 217 84 C 242 84, 242 58, 267 58 C 292 58, 292 62, 317 62 L 317 140 L 67 140 Z"
-                fill="url(#trendAreaGrad)"
-                style={{
-                  opacity: isMounted ? 1 : 0,
-                  transition: "opacity 1.5s ease-out 0.4s",
-                }}
-              />
-
-              {/* Month Bars with growth animation from baseline */}
-              {overviewBars.map((b, idx) => (
-                <g key={b.month} className="group/bar cursor-pointer">
-                  {/* Completed Green Bar */}
-                  <rect
-                    x={b.x1}
-                    y={isMounted ? b.compY : 140}
-                    width="16"
-                    height={isMounted ? b.compHeight : 0}
-                    fill="#10b981"
-                    rx="2"
-                    className="transition-all duration-300 group-hover/bar:brightness-110"
-                    style={{
-                      transition: "height 0.85s cubic-bezier(0.16, 1, 0.3, 1), y 0.85s cubic-bezier(0.16, 1, 0.3, 1)",
-                      transitionDelay: `${idx * 80}ms`,
-                    }}
-                  />
-                  {/* Secondary Bar (Blue / Grey) */}
-                  <rect
-                    x={b.x2}
-                    y={isMounted ? b.progY : 140}
-                    width="16"
-                    height={isMounted ? b.progHeight : 0}
-                    fill={b.progFill}
-                    opacity={b.progOpacity}
-                    rx="2"
-                    className="transition-all duration-300 group-hover/bar:brightness-110"
-                    style={{
-                      transition: "height 0.85s cubic-bezier(0.16, 1, 0.3, 1), y 0.85s cubic-bezier(0.16, 1, 0.3, 1)",
-                      transitionDelay: `${idx * 80 + 40}ms`,
-                    }}
-                  />
-                  {/* Month Label */}
-                  <text
-                    x={b.centerX}
-                    y="153"
-                    fontSize="10"
-                    fill="#64748b"
-                    textAnchor="middle"
-                    className="group-hover/bar:fill-slate-900 group-hover/bar:font-semibold transition-colors"
-                  >
-                    {b.month}
-                  </text>
-                </g>
-              ))}
-
-              {/* Animated Trend Line */}
-              <path
-                d="M 67 88 C 92 88, 92 74, 117 74 C 142 74, 142 68, 167 68 C 192 68, 192 84, 217 84 C 242 84, 242 58, 267 58 C 292 58, 292 62, 317 62"
-                fill="none"
-                stroke="#2563eb"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeDasharray="400"
-                strokeDashoffset={isMounted ? 0 : 400}
-                style={{
-                  transition: "stroke-dashoffset 1.6s cubic-bezier(0.16, 1, 0.3, 1) 0.3s",
-                }}
-              />
-
-              {/* Interactive Trend Dots */}
-              {overviewBars.map((b, idx) => (
-                <circle
-                  key={`dot-${b.month}`}
-                  cx={b.centerX}
-                  cy={b.lineY}
-                  r={isMounted ? 3.5 : 0}
-                  fill="#ffffff"
-                  stroke="#2563eb"
-                  strokeWidth="2.5"
-                  className="transition-all duration-300 hover:scale-150 cursor-pointer drop-shadow-xs hover:fill-blue-600"
-                  style={{
-                    transition: "r 0.5s cubic-bezier(0.16, 1, 0.3, 1), transform 0.2s ease-out",
-                    transitionDelay: `${700 + idx * 80}ms`,
-                  }}
-                />
-              ))}
-            </svg>
-          </div>
-        </div>
-
-        {/* Card 2: Assessment Types (Donut with Circle Sweep) */}
-        <div className="lg:col-span-3 group relative overflow-hidden bg-white rounded-xl border border-slate-200/90 p-5 shadow-xs transition-all duration-300 ease-out hover:-translate-y-0.5 hover:shadow-md hover:border-slate-300 flex flex-col justify-between">
-          <div className="absolute top-0 inset-x-0 h-0.5 bg-gradient-to-r from-transparent via-sky-500/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
-          <div className="pb-2 border-b border-slate-100">
-            <h3 className="text-sm font-bold text-slate-900">Assessment Types</h3>
-          </div>
-
-          <div className="py-2 flex flex-col items-center justify-center">
-            {/* SVG Donut */}
-            <div className="relative w-32 h-32 flex items-center justify-center group/donut">
-              <svg className="w-full h-full -rotate-90 transition-transform duration-500 group-hover/donut:scale-105" viewBox="0 0 100 100">
-                <circle cx="50" cy="50" r="38" fill="none" stroke="#f1f5f9" strokeWidth="14" />
-                {/* Full (Navy) 58% */}
-                <circle
-                  cx="50"
-                  cy="50"
-                  r="38"
-                  fill="none"
-                  stroke="#1e3a8a"
-                  strokeWidth="14"
-                  strokeDasharray="238.7"
-                  strokeDashoffset={isMounted ? 238.7 * (1 - 0.58) : 238.7}
-                  strokeLinecap="round"
-                  style={{
-                    transition: "stroke-dashoffset 1.3s cubic-bezier(0.16, 1, 0.3, 1) 0.2s",
-                  }}
-                />
-                {/* Light (Sky Blue) 42% */}
-                <circle
-                  cx="50"
-                  cy="50"
-                  r="38"
-                  fill="none"
-                  stroke="#38bdf8"
-                  strokeWidth="14"
-                  strokeDasharray="238.7"
-                  strokeDashoffset={isMounted ? 238.7 * (1 - 0.42) : 238.7}
-                  strokeLinecap="round"
-                  className="rotate-180 origin-center"
-                  style={{
-                    transition: "stroke-dashoffset 1.3s cubic-bezier(0.16, 1, 0.3, 1) 0.35s",
-                  }}
-                />
+                  return (
+                    <circle
+                      key={seg.key}
+                      cx="50"
+                      cy="50"
+                      r="38"
+                      fill="none"
+                      stroke={seg.color}
+                      strokeWidth={isHovered ? 10.5 : 8.5}
+                      strokeDasharray={`${isMounted ? seg.dashLength : 0} ${seg.circumference}`}
+                      strokeDashoffset={seg.offset}
+                      strokeLinecap="butt"
+                      className="cursor-pointer"
+                      style={{
+                        transition:
+                          "stroke-dasharray 0.9s cubic-bezier(0.16, 1, 0.3, 1), stroke-width 0.2s ease, opacity 0.25s ease",
+                        opacity: isOtherHovered ? 0.3 : 1,
+                      }}
+                      onMouseEnter={() => setLifecycleHover(seg.key as any)}
+                      onMouseLeave={() => setLifecycleHover(null)}
+                      onClick={() => {
+                        if (seg.key === "Completed") setPipelineFilter("Submitted");
+                        if (seg.key === "InProgress") setPipelineFilter("InProgress");
+                      }}
+                    />
+                  );
+                })}
               </svg>
-              <div className="absolute inset-0 flex flex-col items-center justify-center text-center transition-transform duration-300 group-hover/donut:scale-105">
-                <span className="text-2xl font-extrabold text-slate-900">
-                  <AnimatedNumber value={12} delay={250} />
-                </span>
-                <span className="text-[10px] text-slate-500 font-medium">Total Assessments</span>
+
+              {/* Center Metrics (Crisp, High-Contrast Typography) */}
+              <div className="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none select-none">
+                {lifecycleHover === "Completed" ? (
+                  <div className="animate-in fade-in zoom-in-95 flex flex-col items-center">
+                    <span className="text-2xl font-black text-emerald-600 leading-none">{completedCount}</span>
+                    <span className="text-[10px] text-emerald-600 font-bold uppercase tracking-wider mt-1">
+                      {Math.round(completedRatio * 100)}% Done
+                    </span>
+                  </div>
+                ) : lifecycleHover === "InProgress" ? (
+                  <div className="animate-in fade-in zoom-in-95 flex flex-col items-center">
+                    <span className="text-2xl font-black text-blue-600 leading-none">{inProgressCount}</span>
+                    <span className="text-[10px] text-blue-600 font-bold uppercase tracking-wider mt-1">
+                      {Math.round(inProgressRatio * 100)}% Active
+                    </span>
+                  </div>
+                ) : lifecycleHover === "NotStarted" ? (
+                  <div className="animate-in fade-in zoom-in-95 flex flex-col items-center">
+                    <span className="text-2xl font-black text-slate-600 leading-none">{notStartedCount}</span>
+                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-1">Pending</span>
+                  </div>
+                ) : (
+                  <>
+                    <span className="text-2xl font-black text-slate-900 leading-none">
+                      <AnimatedNumber value={overallCompletion} suffix="%" delay={150} />
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-medium uppercase tracking-wider mt-1">Completion</span>
+                  </>
+                )}
               </div>
             </div>
 
-            <div className="mt-4 space-y-2 text-xs w-full">
-              <div className="flex items-center justify-between">
+            {/* Modern Legend Tiles */}
+            <div className="space-y-1.5 text-xs w-full sm:max-w-[210px]">
+              <div
+                onClick={() => setPipelineFilter("Submitted")}
+                onMouseEnter={() => setLifecycleHover("Completed")}
+                onMouseLeave={() => setLifecycleHover(null)}
+                className={`flex items-center justify-between p-2 rounded-xl border transition-all duration-200 cursor-pointer ${
+                  lifecycleHover === "Completed"
+                    ? "bg-emerald-50/70 border-emerald-200 shadow-2xs"
+                    : "bg-slate-50/60 border-slate-100 hover:bg-slate-50"
+                }`}
+              >
                 <div className="flex items-center gap-2">
-                  <span className="h-2.5 w-2.5 rounded-full bg-[#1e3a8a]" />
-                  <span className="text-slate-600 text-[11px]">Full Assessment</span>
+                  <span className="h-2 w-2 rounded-full bg-emerald-500 shrink-0" />
+                  <span className="text-slate-700 font-medium text-xs">Completed</span>
                 </div>
-                <span className="font-semibold text-slate-900 text-[11px]">7 (58%)</span>
+                <span className="font-bold text-slate-900 text-xs tabular-nums bg-white px-2 py-0.5 rounded-md border border-slate-200/80 shadow-2xs">
+                  <AnimatedNumber value={completedCount} delay={200} />
+                </span>
               </div>
-              <div className="flex items-center justify-between">
+
+              <div
+                onClick={() => setPipelineFilter("InProgress")}
+                onMouseEnter={() => setLifecycleHover("InProgress")}
+                onMouseLeave={() => setLifecycleHover(null)}
+                className={`flex items-center justify-between p-2 rounded-xl border transition-all duration-200 cursor-pointer ${
+                  lifecycleHover === "InProgress"
+                    ? "bg-blue-50/70 border-blue-200 shadow-2xs"
+                    : "bg-slate-50/60 border-slate-100 hover:bg-slate-50"
+                }`}
+              >
                 <div className="flex items-center gap-2">
-                  <span className="h-2.5 w-2.5 rounded-full bg-[#38bdf8]" />
-                  <span className="text-slate-600 text-[11px]">Light Assessment</span>
+                  <span className="h-2 w-2 rounded-full bg-blue-500 shrink-0" />
+                  <span className="text-slate-700 font-medium text-xs">In Progress</span>
                 </div>
-                <span className="font-semibold text-slate-900 text-[11px]">5 (42%)</span>
+                <span className="font-bold text-slate-900 text-xs tabular-nums bg-white px-2 py-0.5 rounded-md border border-slate-200/80 shadow-2xs">
+                  <AnimatedNumber value={inProgressCount} delay={250} />
+                </span>
+              </div>
+
+              <div
+                onMouseEnter={() => setLifecycleHover("NotStarted")}
+                onMouseLeave={() => setLifecycleHover(null)}
+                className={`flex items-center justify-between p-2 rounded-xl border transition-all duration-200 cursor-default ${
+                  lifecycleHover === "NotStarted"
+                    ? "bg-slate-100/80 border-slate-300 shadow-2xs"
+                    : "bg-slate-50/60 border-slate-100"
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-slate-300 shrink-0" />
+                  <span className="text-slate-600 font-medium text-xs">Not Started</span>
+                </div>
+                <span className="font-bold text-slate-900 text-xs tabular-nums bg-white px-2 py-0.5 rounded-md border border-slate-200/80 shadow-2xs">
+                  <AnimatedNumber value={notStartedCount} delay={300} />
+                </span>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Card 3: Upcoming Tasks */}
-        <div className="lg:col-span-4 group relative overflow-hidden bg-white rounded-xl border border-slate-200/90 p-5 shadow-xs transition-all duration-300 ease-out hover:-translate-y-0.5 hover:shadow-md hover:border-slate-300 flex flex-col justify-between">
-          <div className="absolute top-0 inset-x-0 h-0.5 bg-gradient-to-r from-transparent via-rose-500/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
-          <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-            <h3 className="text-sm font-bold text-slate-900">Upcoming Tasks</h3>
-            <Link href="/assessments" className="text-xs font-semibold text-blue-600 hover:underline">
-              View All →
-            </Link>
+        {/* CARD 2: Assessment Framework Split (Span 6) */}
+        <div className="lg:col-span-6 bg-white rounded-2xl border border-slate-200/90 p-4 sm:p-5 shadow-xs hover:shadow-sm transition-all duration-300 flex flex-col justify-between relative overflow-hidden">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900">Framework Mix</h3>
+              <p className="text-[11px] text-slate-500 mt-0.5">Light vs Full standard distribution</p>
+            </div>
+            <div className="p-1.5 rounded-lg bg-slate-100 text-slate-500">
+              <Compass className="h-4 w-4" />
+            </div>
           </div>
 
-          <div className="py-1 divide-y divide-slate-100 space-y-1.5">
-            {upcomingTasks.map((t, idx) => (
-              <div key={idx} className="pt-2 first:pt-0 flex items-center justify-between gap-3 text-xs -mx-1.5 px-1.5 py-1 rounded-lg hover:bg-slate-50/90 transition-colors cursor-pointer">
-                <div className="flex items-center gap-3">
-                  <div className={`px-2 py-1 rounded-md text-[10px] font-bold text-center uppercase tracking-tight shrink-0 border ${t.badgeColor}`}>
-                    {t.date}
+          <div className="py-3 flex flex-col sm:flex-row items-center justify-around flex-1 gap-4">
+            {/* SVG Ring Gauge with Mathematically Perfect Chained Arcs */}
+            <div className="relative w-36 h-36 flex items-center justify-center shrink-0">
+              <svg className="w-full h-full -rotate-90 origin-center" viewBox="0 0 100 100">
+                {/* Full 360-degree Background Base Track */}
+                <circle cx="50" cy="50" r="38" fill="none" stroke="#f1f5f9" strokeWidth="8.5" />
+
+                {/* Chained Segments */}
+                {frameworkSegments.map((seg) => {
+                  const isHovered = frameworkHover === seg.key;
+                  const isOtherHovered = frameworkHover !== null && !isHovered;
+
+                  return (
+                    <circle
+                      key={seg.key}
+                      cx="50"
+                      cy="50"
+                      r="38"
+                      fill="none"
+                      stroke={seg.color}
+                      strokeWidth={isHovered ? 10.5 : 8.5}
+                      strokeDasharray={`${isMounted ? seg.dashLength : 0} ${seg.circumference}`}
+                      strokeDashoffset={seg.offset}
+                      strokeLinecap="butt"
+                      className="cursor-pointer"
+                      style={{
+                        transition:
+                          "stroke-dasharray 0.9s cubic-bezier(0.16, 1, 0.3, 1), stroke-width 0.2s ease, opacity 0.25s ease",
+                        opacity: isOtherHovered ? 0.3 : 1,
+                      }}
+                      onMouseEnter={() => setFrameworkHover(seg.key as any)}
+                      onMouseLeave={() => setFrameworkHover(null)}
+                      onClick={() => {
+                        if (seg.key === "Full") setPipelineFilter("Full");
+                        if (seg.key === "Light") setPipelineFilter("Light");
+                      }}
+                    />
+                  );
+                })}
+              </svg>
+
+              {/* Center Metrics (Crisp Typography) */}
+              <div className="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none select-none">
+                {frameworkHover === "Full" ? (
+                  <div className="animate-in fade-in zoom-in-95 flex flex-col items-center">
+                    <span className="text-2xl font-black text-blue-700 leading-none">{fullCount}</span>
+                    <span className="text-[9px] text-blue-700 font-bold uppercase tracking-wider mt-1">
+                      Full ({fullPct}%)
+                    </span>
                   </div>
+                ) : frameworkHover === "Light" ? (
+                  <div className="animate-in fade-in zoom-in-95 flex flex-col items-center">
+                    <span className="text-2xl font-black text-cyan-600 leading-none">{lightCount}</span>
+                    <span className="text-[9px] text-cyan-600 font-bold uppercase tracking-wider mt-1">
+                      Light ({lightPct}%)
+                    </span>
+                  </div>
+                ) : (
+                  <>
+                    <span className="text-2xl font-black text-slate-900 leading-none">
+                      <AnimatedNumber value={totalAssessments} delay={250} />
+                    </span>
+                    <span className="text-[9px] text-slate-400 font-medium uppercase tracking-wider mt-1">Audits</span>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Consistent Legend Tiles */}
+            <div className="space-y-1.5 text-xs w-full sm:max-w-[210px]">
+              <div
+                onClick={() => setPipelineFilter("Full")}
+                onMouseEnter={() => setFrameworkHover("Full")}
+                onMouseLeave={() => setFrameworkHover(null)}
+                className={`flex items-center justify-between p-2 rounded-xl border transition-all duration-200 cursor-pointer ${
+                  frameworkHover === "Full"
+                    ? "bg-indigo-50/70 border-indigo-200 shadow-2xs"
+                    : "bg-slate-50/60 border-slate-100 hover:bg-slate-50"
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-[#1e40af] shrink-0" />
                   <div>
-                    <div className="font-semibold text-slate-900 text-xs">{t.title}</div>
-                    <div className="text-slate-500 text-[11px] truncate max-w-[170px]">{t.subtitle}</div>
+                    <span className="text-slate-700 font-medium text-xs block">Full Assessment</span>
+                    <span className="text-[10px] text-slate-400">65 Controls</span>
                   </div>
                 </div>
-                <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold shrink-0 ${t.pillColor}`}>
-                  {t.priority}
+                <span className="font-bold text-slate-900 text-xs tabular-nums bg-white px-2 py-0.5 rounded-md border border-slate-200/80 shadow-2xs">
+                  {fullCount} ({fullPct}%)
                 </span>
               </div>
-            ))}
+
+              <div
+                onClick={() => setPipelineFilter("Light")}
+                onMouseEnter={() => setFrameworkHover("Light")}
+                onMouseLeave={() => setFrameworkHover(null)}
+                className={`flex items-center justify-between p-2 rounded-xl border transition-all duration-200 cursor-pointer ${
+                  frameworkHover === "Light"
+                    ? "bg-sky-50/70 border-sky-200 shadow-2xs"
+                    : "bg-slate-50/60 border-slate-100 hover:bg-slate-50"
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-[#0284c7] shrink-0" />
+                  <div>
+                    <span className="text-slate-700 font-medium text-xs block">Light Assessment</span>
+                    <span className="text-[10px] text-slate-400">15 Controls</span>
+                  </div>
+                </div>
+                <span className="font-bold text-slate-900 text-xs tabular-nums bg-white px-2 py-0.5 rounded-md border border-slate-200/80 shadow-2xs">
+                  {lightCount} ({lightPct}%)
+                </span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Bottom Row (3 Cards) */}
+      {/* -------------------------------------------------------------------- */}
+      {/* ROW 3: MATURITY TIER GAUGE + FINDINGS EXCEPTION BREAKDOWN            */}
+      {/* -------------------------------------------------------------------- */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-        {/* Card 1: My Organizations */}
-        <div className="lg:col-span-4 bg-white rounded-xl border border-slate-200/90 p-5 shadow-xs">
+        {/* CARD 1: Governance Maturity Classification (Span 6) */}
+        <div className="lg:col-span-6 bg-white rounded-2xl border border-slate-200/90 p-5 shadow-xs flex flex-col justify-between">
           <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-            <h3 className="text-sm font-bold text-slate-900">My Organizations</h3>
-            <Link href="/organizations" className="text-xs font-semibold text-blue-600 hover:underline">
-              View All →
-            </Link>
+            <div>
+              <h3 className="text-sm font-bold text-slate-900">Governance Maturity Classification</h3>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                GRAICE 4-tier assurance rating based on audited client scores
+              </p>
+            </div>
+            <Award className="h-4 w-4 text-amber-500" />
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="text-[11px] font-semibold text-slate-400 uppercase border-b border-slate-100">
-                <tr>
-                  <th className="py-2.5">Organization</th>
-                  <th className="py-2.5">Industry</th>
-                  <th className="py-2.5 text-center">Assessments</th>
-                  <th className="py-2.5 text-right">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {myOrganizations.map((org) => (
-                  <tr key={org.name} className="hover:bg-slate-50 transition">
-                    <td className="py-2 flex items-center gap-2">
-                      <div className="h-6 w-6 rounded-full bg-slate-900 text-white font-bold text-[9px] flex items-center justify-center shrink-0">
-                        {org.code}
-                      </div>
-                      <span className="font-semibold text-slate-800 truncate max-w-[100px]">{org.name}</span>
-                    </td>
-                    <td className="py-2 text-slate-500">{org.industry}</td>
-                    <td className="py-2 text-center font-medium text-slate-700">{org.count}</td>
-                    <td className="py-2 text-right">
-                      <span
-                        className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
-                          org.status === "Completed"
-                            ? "bg-emerald-50 text-emerald-700"
-                            : org.status === "In Progress"
-                            ? "bg-blue-50 text-blue-700"
-                            : "bg-slate-100 text-slate-600"
-                        }`}
-                      >
-                        {org.status}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="py-4 space-y-4 flex-1 flex flex-col justify-center">
+            {/* 4-Tier Segmented Stepper */}
+            <div className="grid grid-cols-4 gap-2">
+              <div
+                className={`p-3 rounded-xl border text-center transition ${
+                  derivedPillarData.overallAvgScore < 25
+                    ? "bg-amber-50/70 border-amber-300 ring-2 ring-amber-100"
+                    : "bg-slate-50 border-slate-200"
+                }`}
+              >
+                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Tier 1</div>
+                <div className="text-xs font-bold text-slate-900 mt-0.5">Initial</div>
+                <div className="text-[10px] text-slate-400 mt-0.5">0 - 25%</div>
+                <div className="mt-2 text-xs font-bold text-slate-700 bg-white/80 py-0.5 rounded">
+                  {maturityDistribution.Initial} Audits
+                </div>
+              </div>
+
+              <div
+                className={`p-3 rounded-xl border text-center transition ${
+                  derivedPillarData.overallAvgScore >= 25 && derivedPillarData.overallAvgScore < 50
+                    ? "bg-blue-50/70 border-blue-300 ring-2 ring-blue-100"
+                    : "bg-slate-50 border-slate-200"
+                }`}
+              >
+                <div className="text-[10px] font-bold uppercase tracking-wider text-blue-600">Tier 2</div>
+                <div className="text-xs font-bold text-slate-900 mt-0.5">Emerging</div>
+                <div className="text-[10px] text-slate-400 mt-0.5">26 - 50%</div>
+                <div className="mt-2 text-xs font-bold text-blue-800 bg-white/80 py-0.5 rounded">
+                  {maturityDistribution.Emerging} Audits
+                </div>
+              </div>
+
+              <div
+                className={`p-3 rounded-xl border text-center transition ${
+                  derivedPillarData.overallAvgScore >= 50 && derivedPillarData.overallAvgScore < 75
+                    ? "bg-indigo-50/70 border-indigo-300 ring-2 ring-indigo-100"
+                    : "bg-slate-50 border-slate-200"
+                }`}
+              >
+                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Tier 3</div>
+                <div className="text-xs font-bold text-slate-900 mt-0.5">Established</div>
+                <div className="text-[10px] text-slate-400 mt-0.5">51 - 75%</div>
+                <div className="mt-2 text-xs font-bold text-slate-700 bg-white/80 py-0.5 rounded">
+                  {maturityDistribution.Established} Audits
+                </div>
+              </div>
+
+              <div
+                className={`p-3 rounded-xl border text-center transition ${
+                  derivedPillarData.overallAvgScore >= 75
+                    ? "bg-emerald-50/70 border-emerald-300 ring-2 ring-emerald-100"
+                    : "bg-slate-50 border-slate-200"
+                }`}
+              >
+                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Tier 4</div>
+                <div className="text-xs font-bold text-slate-900 mt-0.5">Advanced</div>
+                <div className="text-[10px] text-slate-400 mt-0.5">76 - 100%</div>
+                <div className="mt-2 text-xs font-bold text-slate-700 bg-white/80 py-0.5 rounded">
+                  {maturityDistribution.Advanced} Audits
+                </div>
+              </div>
+            </div>
+
+            {/* Overall Score Meter Bar */}
+            <div className="space-y-1.5 pt-1">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-slate-600 font-medium">Assurance Maturity Target</span>
+                <span className="font-bold text-slate-900">
+                  {derivedPillarData.overallAvgScore}% / 100%
+                </span>
+              </div>
+              <div className="h-2.5 w-full bg-slate-100 rounded-full overflow-hidden p-0.5">
+                <div
+                  className="h-full bg-gradient-to-r from-amber-400 via-blue-500 to-emerald-500 rounded-full transition-all duration-1000 ease-out"
+                  style={{
+                    width: isMounted ? `${Math.min(100, Math.max(8, derivedPillarData.overallAvgScore))}%` : "0%",
+                  }}
+                />
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* Card 2: Latest Findings */}
-        <div className="lg:col-span-4 bg-white rounded-xl border border-slate-200/90 p-5 shadow-xs">
+        {/* CARD 2: Risk Findings & Assurance Exceptions (Span 6) */}
+        <div className="lg:col-span-6 bg-white rounded-2xl border border-slate-200/90 p-5 shadow-xs flex flex-col justify-between">
           <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-            <h3 className="text-sm font-bold text-slate-900">Latest Findings</h3>
-            <Link href="/assessments/findings" className="text-xs font-semibold text-blue-600 hover:underline">
-              View All →
+            <div>
+              <h3 className="text-sm font-bold text-slate-900">Risk Findings &amp; Exceptions</h3>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Flagged exceptions requiring remediation across audits
+              </p>
+            </div>
+            <span
+              className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                findingsCount > 0
+                  ? "bg-rose-50 text-rose-700 border border-rose-200"
+                  : "bg-emerald-50 text-emerald-700 border border-emerald-200"
+              }`}
+            >
+              {findingsCount > 0 ? `${findingsCount} Exceptions` : "100% Compliant"}
+            </span>
+          </div>
+
+          <div className="py-2 flex-1 flex flex-col justify-center">
+            {latestFindings.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="text-[10px] font-semibold text-slate-400 uppercase border-b border-slate-100">
+                    <tr>
+                      <th className="py-2">Finding</th>
+                      <th className="py-2">Organization</th>
+                      <th className="py-2 text-center">Severity</th>
+                      <th className="py-2 text-right">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {latestFindings.map((fnd, idx) => (
+                      <tr key={idx} className="hover:bg-slate-50 transition">
+                        <td className="py-2 font-mono text-[11px] text-slate-700 font-medium truncate max-w-[110px]">
+                          {fnd.findingId || fnd.controlId}
+                        </td>
+                        <td className="py-2 text-slate-600 font-medium truncate max-w-[120px]">
+                          {fnd.organizationName}
+                        </td>
+                        <td className="py-2 text-center">
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                              fnd.severity === "High"
+                                ? "bg-rose-50 text-rose-700"
+                                : fnd.severity === "Medium"
+                                ? "bg-amber-50 text-amber-700"
+                                : "bg-blue-50 text-blue-700"
+                            }`}
+                          >
+                            {fnd.severity}
+                          </span>
+                        </td>
+                        <td className="py-2 text-right">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-700">
+                            {fnd.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="py-6 flex flex-col items-center justify-center text-center space-y-2">
+                <div className="h-10 w-10 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                  <CheckCircle className="h-5 w-5" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-bold text-slate-900">Zero Critical Exceptions Flagged</h4>
+                  <p className="text-[11px] text-slate-500 max-w-sm mt-0.5">
+                    All completed evaluations meet the baseline GRAICE compliance requirements without outstanding high-severity exceptions.
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* -------------------------------------------------------------------- */}
+      {/* ROW 4: RESUME ACTIVE ASSESSMENT HERO + ASSIGNED ORGANIZATIONS        */}
+      {/* -------------------------------------------------------------------- */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+        {/* CARD 1: Resume Active Evaluation Hero (Span 5) */}
+        <div className="lg:col-span-5 bg-gradient-to-br from-slate-900 via-slate-850 to-[#0c162c] text-white rounded-2xl p-6 shadow-md flex flex-col justify-between relative overflow-hidden">
+          <div className="absolute top-0 right-0 -mr-10 -mt-10 w-44 h-44 rounded-full bg-blue-500/10 blur-2xl pointer-events-none" />
+
+          {inProgressAssessments.length > 0 ? (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/20 text-blue-300 border border-blue-400/30">
+                  Active Session
+                </span>
+                <span className="text-xs font-semibold text-slate-300">
+                  {inProgressAssessments[0].completionPercentage}% Answered
+                </span>
+              </div>
+
+              <div>
+                <h3 className="text-lg font-bold text-white">
+                  {(inProgressAssessments[0].organization as any)?.name || "Assigned Organization"}
+                </h3>
+                <p className="text-xs text-slate-300 mt-1 leading-relaxed">
+                  {inProgressAssessments[0].assessmentType} Assessment currently in progress. Resume evaluation at{" "}
+                  <strong className="text-sky-300">
+                    {inProgressAssessments[0].resumptionAid?.currentPillarId || "P1: Ethical Leadership"}
+                  </strong>.
+                </p>
+              </div>
+
+              {/* Progress bar */}
+              <div className="space-y-1">
+                <div className="h-2 w-full bg-slate-800 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-blue-500 to-sky-400 rounded-full"
+                    style={{ width: `${inProgressAssessments[0].completionPercentage}%` }}
+                  />
+                </div>
+              </div>
+
+              <div className="pt-1">
+                <Link
+                  href={`/assessments/${inProgressAssessments[0]._id}`}
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-md transition"
+                >
+                  <span>Resume Assessment</span>
+                  <ArrowUpRight className="h-4 w-4" />
+                </Link>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
+                  All Caught Up
+                </span>
+                <Sparkles className="h-4 w-4 text-emerald-400" />
+              </div>
+
+              <div>
+                <h3 className="text-lg font-bold text-white">Start New Evaluation</h3>
+                <p className="text-xs text-slate-300 mt-1 leading-relaxed">
+                  No active assessment sessions in progress. Select any assigned client organization to launch a Light or Full GRAICE assessment.
+                </p>
+              </div>
+
+              <div className="pt-2">
+                <Link
+                  href="/assessments/new"
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white text-slate-900 hover:bg-slate-100 text-xs font-semibold shadow-md transition"
+                >
+                  <span>Launch Assessment</span>
+                  <ArrowUpRight className="h-4 w-4" />
+                </Link>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* CARD 2: Assigned Client Organizations Directory (Span 7) */}
+        <div className="lg:col-span-7 bg-white rounded-2xl border border-slate-200/90 p-5 shadow-xs flex flex-col justify-between">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900">Assigned Organizations Directory</h3>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Client organizations under your assurance portfolio
+              </p>
+            </div>
+            <Link
+              href="/organizations"
+              className="text-xs font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-1"
+            >
+              <span>View Directory</span>
+              <ChevronRight className="h-3.5 w-3.5" />
             </Link>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="text-[11px] font-semibold text-slate-400 uppercase border-b border-slate-100">
-                <tr>
-                  <th className="py-2.5">Finding</th>
-                  <th className="py-2.5">Organization</th>
-                  <th className="py-2.5 text-center">Severity</th>
-                  <th className="py-2.5 text-right">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {latestFindings.map((fnd) => (
-                  <tr key={fnd.id} className="hover:bg-slate-50 transition">
-                    <td className="py-2 font-mono text-[11px] text-slate-700 font-medium">{fnd.id}</td>
-                    <td className="py-2 text-slate-600 font-medium truncate max-w-[100px]">{fnd.org}</td>
-                    <td className="py-2 text-center">
-                      <span
-                        className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
-                          fnd.severity === "High"
-                            ? "bg-rose-50 text-rose-700"
-                            : fnd.severity === "Medium"
-                            ? "bg-amber-50 text-amber-700"
-                            : "bg-blue-50 text-blue-700"
-                        }`}
-                      >
-                        {fnd.severity}
-                      </span>
-                    </td>
-                    <td className="py-2 text-right">
-                      <span
-                        className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
-                          fnd.status === "Open"
-                            ? "bg-rose-50 text-rose-700"
-                            : fnd.status === "In Review"
-                            ? "bg-blue-50 text-blue-700"
-                            : "bg-emerald-50 text-emerald-700"
-                        }`}
-                      >
-                        {fnd.status}
-                      </span>
-                    </td>
+          <div className="overflow-x-auto flex-1">
+            {organizations.length > 0 ? (
+              <table className="w-full text-left text-xs">
+                <thead className="text-[10px] font-semibold text-slate-400 uppercase border-b border-slate-100">
+                  <tr>
+                    <th className="py-2.5">Organization</th>
+                    <th className="py-2.5">Industry</th>
+                    <th className="py-2.5">Plan</th>
+                    <th className="py-2.5 text-center">Audits</th>
+                    <th className="py-2.5 text-right">Status</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {organizations.map((org) => (
+                    <tr
+                      key={org._id}
+                      onClick={() => setSelectedOrgFilter(org._id)}
+                      className={`hover:bg-slate-50 transition cursor-pointer ${
+                        selectedOrgFilter === org._id ? "bg-blue-50/50" : ""
+                      }`}
+                    >
+                      <td className="py-2.5 flex items-center gap-2.5">
+                        <div className="h-7 w-7 rounded-lg bg-slate-900 text-white font-bold text-[10px] flex items-center justify-center shrink-0">
+                          {org.name.slice(0, 2).toUpperCase()}
+                        </div>
+                        <div>
+                          <div className="font-semibold text-slate-900 truncate max-w-[130px]">{org.name}</div>
+                          <div className="text-[10px] text-slate-400">{org.domain || "Internal Org"}</div>
+                        </div>
+                      </td>
+                      <td className="py-2.5 text-slate-500 truncate max-w-[100px]">{org.industry || "General"}</td>
+                      <td className="py-2.5">
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-800 border border-amber-200">
+                          {org.activePlan || "Bronze"}
+                        </span>
+                      </td>
+                      <td className="py-2.5 text-center font-bold text-slate-800">
+                        {org.assessmentsSummary?.total ?? 0}
+                      </td>
+                      <td className="py-2.5 text-right">
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                            org.status === "Active"
+                              ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                              : "bg-amber-50 text-amber-700 border border-amber-200"
+                          }`}
+                        >
+                          {org.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <div className="py-8 text-center text-xs text-slate-400">
+                No organizations assigned to your auditor account yet.
+              </div>
+            )}
           </div>
         </div>
+      </div>
 
-        {/* Card 3: Continue Your Assessment */}
-        <div className="lg:col-span-4 relative rounded-xl overflow-hidden border border-slate-200/90 shadow-xs bg-white flex flex-col justify-between p-6">
-          <img
-            src="/building.jpg"
-            alt="Corporate Glass Building"
-            className="absolute right-0 top-0 bottom-0 w-1/2 h-full object-cover object-left opacity-90"
-          />
-          <div className="absolute inset-0 bg-gradient-to-r from-white via-white/95 to-transparent w-3/4" />
-
-          <div className="relative z-10 space-y-2 max-w-[65%]">
-            <h3 className="text-base font-bold text-slate-900 leading-snug">
-              Continue Your Assessment
-            </h3>
-            <p className="text-xs text-slate-600 leading-relaxed">
-              You have 3 pending assessments that need your attention.
+      {/* -------------------------------------------------------------------- */}
+      {/* ROW 5: INTERACTIVE ASSESSMENT PIPELINE EXPLORER & FILTERABLE TABLE    */}
+      {/* -------------------------------------------------------------------- */}
+      <div className="bg-white rounded-2xl border border-slate-200/90 p-5 shadow-xs space-y-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+          <div>
+            <h3 className="text-sm font-bold text-slate-900">Assessment Pipeline Explorer</h3>
+            <p className="text-[11px] text-slate-500 mt-0.5">
+              Filterable ledger of live evaluations, compliance scores, and reports
             </p>
           </div>
 
-          <div className="relative z-10 pt-4">
-            <Link
-              href="/assessments"
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#0c162c] hover:bg-slate-800 text-white text-xs font-semibold shadow-sm transition"
-            >
-              View Assessments <ArrowUpRight className="h-3.5 w-3.5" />
-            </Link>
+          {/* Search bar & filter pills */}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative">
+              <Search className="h-3.5 w-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                placeholder="Search audits..."
+                value={pipelineSearch}
+                onChange={(e) => setPipelineSearch(e.target.value)}
+                className="pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 w-44"
+              />
+            </div>
+
+            {/* Filter pills */}
+            <div className="flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200 text-xs">
+              {(["All", "InProgress", "Submitted", "Light", "Full"] as const).map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setPipelineFilter(tab)}
+                  className={`px-2.5 py-1 rounded-md font-medium transition ${
+                    pipelineFilter === tab
+                      ? "bg-white text-slate-900 shadow-2xs font-semibold"
+                      : "text-slate-500 hover:text-slate-900"
+                  }`}
+                >
+                  {tab === "InProgress" ? "In Progress" : tab}
+                </button>
+              ))}
+            </div>
           </div>
+        </div>
+
+        {/* Filtered Table */}
+        <div className="overflow-x-auto">
+          {filteredPipeline.length > 0 ? (
+            <table className="w-full text-left text-xs">
+              <thead className="text-[10px] font-semibold text-slate-400 uppercase border-b border-slate-100">
+                <tr>
+                  <th className="py-2.5">Organization</th>
+                  <th className="py-2.5">Framework</th>
+                  <th className="py-2.5">Status</th>
+                  <th className="py-2.5 text-center">Score &amp; Maturity</th>
+                  <th className="py-2.5">Last Updated</th>
+                  <th className="py-2.5 text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filteredPipeline.map((a) => (
+                  <tr key={a._id} className="hover:bg-slate-50 transition">
+                    <td className="py-3">
+                      <div className="font-semibold text-slate-900">
+                        {(a.organization as any)?.name || "Assigned Company"}
+                      </div>
+                      <div className="text-[10px] text-slate-400">
+                        {(a.organization as any)?.domain || (a.organization as any)?.industry || "Enterprise"}
+                      </div>
+                    </td>
+                    <td className="py-3">
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                          a.assessmentType === "Full"
+                            ? "bg-indigo-50 text-indigo-700 border border-indigo-200"
+                            : "bg-sky-50 text-sky-700 border border-sky-200"
+                        }`}
+                      >
+                        {a.assessmentType} Assessment
+                      </span>
+                    </td>
+                    <td className="py-3">
+                      <span
+                        className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                          a.status === "Submitted"
+                            ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                            : "bg-blue-50 text-blue-700 border border-blue-200"
+                        }`}
+                      >
+                        <span
+                          className={`h-1.5 w-1.5 rounded-full ${
+                            a.status === "Submitted" ? "bg-emerald-500" : "bg-blue-500 animate-pulse"
+                          }`}
+                        />
+                        {a.status === "Submitted" ? "Submitted" : "In Progress"}
+                      </span>
+                    </td>
+                    <td className="py-3 text-center">
+                      {a.scoreSnapshot ? (
+                        <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-slate-100 text-slate-800 text-[11px] font-bold">
+                          <span>{a.scoreSnapshot.overallPercentage}%</span>
+                          <span className="text-slate-400">•</span>
+                          <span className="text-[10px] font-semibold text-blue-700">
+                            {a.scoreSnapshot.maturityLevel}
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-[11px] text-slate-400 font-medium">
+                          {a.completionPercentage}% Done
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-3 text-slate-500">
+                      {new Date(a.submittedAt || a.updatedAt || a.createdAt).toLocaleDateString()}
+                    </td>
+                    <td className="py-3 text-right">
+                      <Link
+                        href={`/assessments/${a._id}`}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 text-[11px] font-semibold transition"
+                      >
+                        <span>{a.status === "Submitted" ? "View Results" : "Resume"}</span>
+                        <ArrowUpRight className="h-3 w-3" />
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <div className="py-8 text-center text-xs text-slate-400 space-y-2">
+              <p>No assessment records match the selected filter.</p>
+              <button
+                onClick={() => {
+                  setPipelineFilter("All");
+                  setPipelineSearch("");
+                }}
+                className="text-blue-600 font-semibold hover:underline"
+              >
+                Reset Filters
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -885,525 +1526,973 @@ function AuditorDashboardContent({ data, userName }: { data: any; userName: stri
 }
 
 /* -------------------------------------------------------------------------- */
-/*                         SCREEN 2: ADMIN PANEL                              */
+/*             SEVEN PILLAR SPIDER / RADAR CHART SVG COMPONENT                */
 /* -------------------------------------------------------------------------- */
 
-function AdminDashboardContent({ data }: { data: any }) {
+interface PillarChartItem {
+  pillarId: string;
+  pillarNumber: number;
+  name: string;
+  completionPercentage: number;
+  scoreEarned: number;
+  scoreMax: number;
+}
+
+function SevenPillarRadarChart({
+  pillars,
+  isMounted,
+  hoveredIndex,
+  onHoverIndex,
+  size = 230,
+}: {
+  pillars: PillarChartItem[];
+  isMounted: boolean;
+  hoveredIndex: number | null;
+  onHoverIndex: (idx: number | null) => void;
+  size?: number;
+}) {
+  const centerX = size / 2;
+  const centerY = size / 2 - 2;
+  const maxRadius = Math.round(size * 0.33);
+  const numPillars = 7;
+
+  // Concentric heptagon levels (20%, 40%, 60%, 80%, 100%)
+  const gridLevels = [0.2, 0.4, 0.6, 0.8, 1.0];
+
+  // Calculate heptagon vertices for any given radius
+  const getPolygonPoints = (radius: number) => {
+    return Array.from({ length: numPillars })
+      .map((_, i) => {
+        const angle = -Math.PI / 2 + (i * 2 * Math.PI) / numPillars;
+        const x = centerX + radius * Math.cos(angle);
+        const y = centerY + radius * Math.sin(angle);
+        return `${x.toFixed(2)},${y.toFixed(2)}`;
+      })
+      .join(" ");
+  };
+
+  // Calculate actual data polygon points based on completion percentages
+  const dataPoints = pillars.map((p, i) => {
+    const angle = -Math.PI / 2 + (i * 2 * Math.PI) / numPillars;
+    const normalizedVal = isMounted ? Math.min(100, Math.max(8, p.completionPercentage)) / 100 : 0.08;
+    const r = maxRadius * normalizedVal;
+    return {
+      x: centerX + r * Math.cos(angle),
+      y: centerY + r * Math.sin(angle),
+      angle,
+      rawPercentage: p.completionPercentage,
+    };
+  });
+
+  const dataPolygonString = dataPoints.map((pt) => `${pt.x.toFixed(2)},${pt.y.toFixed(2)}`).join(" ");
+
+  return (
+    <div className="relative flex items-center justify-center">
+      <svg
+        width={size}
+        height={size}
+        viewBox={`0 0 ${size} ${size}`}
+        className="overflow-visible select-none"
+      >
+        <defs>
+          <radialGradient id="radarRadialGradient" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.5" />
+            <stop offset="70%" stopColor="#2563eb" stopOpacity="0.3" />
+            <stop offset="100%" stopColor="#1d4ed8" stopOpacity="0.15" />
+          </radialGradient>
+        </defs>
+
+        {/* Concentric Heptagonal Reference Grid */}
+        {gridLevels.map((lvl, idx) => (
+          <polygon
+            key={idx}
+            points={getPolygonPoints(maxRadius * lvl)}
+            fill="none"
+            stroke="#e2e8f0"
+            strokeWidth={idx === gridLevels.length - 1 ? 1.5 : 1}
+            strokeDasharray={idx < gridLevels.length - 1 ? "3 3" : undefined}
+          />
+        ))}
+
+        {/* 7 Radial Axis Spokes */}
+        {Array.from({ length: numPillars }).map((_, i) => {
+          const angle = -Math.PI / 2 + (i * 2 * Math.PI) / numPillars;
+          const endX = centerX + maxRadius * Math.cos(angle);
+          const endY = centerY + maxRadius * Math.sin(angle);
+          return (
+            <line
+              key={i}
+              x1={centerX}
+              y1={centerY}
+              x2={endX}
+              y2={endY}
+              stroke="#cbd5e1"
+              strokeWidth={1}
+            />
+          );
+        })}
+
+        {/* Shaded Data Polygon with Smooth Animation */}
+        <polygon
+          points={dataPolygonString}
+          fill="url(#radarRadialGradient)"
+          stroke="#2563eb"
+          strokeWidth={2.5}
+          strokeLinejoin="round"
+          className="transition-all duration-1000 ease-out"
+        />
+
+        {/* Axis Labels (P1 to P7) */}
+        {pillars.map((p, i) => {
+          const angle = -Math.PI / 2 + (i * 2 * Math.PI) / numPillars;
+          const labelRadius = maxRadius + 14;
+          const labelX = centerX + labelRadius * Math.cos(angle);
+          const labelY = centerY + labelRadius * Math.sin(angle) + 3;
+          const isHovered = hoveredIndex === i;
+
+          return (
+            <text
+              key={i}
+              x={labelX}
+              y={labelY}
+              textAnchor="middle"
+              className={`text-[10px] font-bold cursor-pointer transition-all duration-200 ${
+                isHovered ? "fill-blue-600 font-extrabold scale-110" : "fill-slate-600"
+              }`}
+              onMouseEnter={() => onHoverIndex(i)}
+              onMouseLeave={() => onHoverIndex(null)}
+            >
+              P{p.pillarNumber}
+            </text>
+          );
+        })}
+
+        {/* Interactive Vertex Dots */}
+        {dataPoints.map((pt, i) => {
+          const isHovered = hoveredIndex === i;
+          return (
+            <g key={i}>
+              <circle
+                cx={pt.x}
+                cy={pt.y}
+                r={isHovered ? 8 : 4.5}
+                fill={isHovered ? "#2563eb" : "#ffffff"}
+                stroke="#2563eb"
+                strokeWidth={isHovered ? 3 : 2}
+                className="cursor-pointer transition-all duration-300"
+                onMouseEnter={() => onHoverIndex(i)}
+                onMouseLeave={() => onHoverIndex(null)}
+              />
+              {/* Invisible larger hit target */}
+              <circle
+                cx={pt.x}
+                cy={pt.y}
+                r={16}
+                fill="transparent"
+                className="cursor-pointer"
+                onMouseEnter={() => onHoverIndex(i)}
+                onMouseLeave={() => onHoverIndex(null)}
+              />
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/*                         SCREEN 7: ADMIN PANEL                              */
+/* -------------------------------------------------------------------------- */
+
+function AdminDashboardContent({
+  summary,
+  assessments,
+  onRefresh,
+}: {
+  summary: AdminDashboardSummary | null;
+  assessments: AdminAssessmentItem[];
+  onRefresh: () => void;
+}) {
   const [isMounted, setIsMounted] = useState(false);
+  const { selectedOrgFilter, setSelectedOrgFilter, organizations } = useDashboardScope();
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("All");
+  const [adminStatusHover, setAdminStatusHover] = useState<string | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setIsMounted(true), 60);
     return () => clearTimeout(t);
   }, []);
 
-  const adminMonthlyBars = [
-    {
-      month: "Apr",
-      x: 40,
-      centerX: 47,
-      lineY: 65,
-      bars: [
-        { y: 90, h: 45, fill: "#3b82f6", rx: 1.5 },
-        { y: 80, h: 10, fill: "#38bdf8", rx: 0 },
-        { y: 70, h: 10, fill: "#facc15", rx: 0 },
-        { y: 65, h: 5, fill: "#ef4444", rx: 1.5 },
-      ],
-    },
-    {
-      month: "May",
-      x: 85,
-      centerX: 92,
-      lineY: 52,
-      bars: [
-        { y: 80, h: 55, fill: "#3b82f6", rx: 1.5 },
-        { y: 68, h: 12, fill: "#38bdf8", rx: 0 },
-        { y: 58, h: 10, fill: "#facc15", rx: 0 },
-        { y: 52, h: 6, fill: "#ef4444", rx: 1.5 },
-      ],
-    },
-    {
-      month: "Jun",
-      x: 130,
-      centerX: 137,
-      lineY: 42,
-      bars: [
-        { y: 70, h: 65, fill: "#3b82f6", rx: 1.5 },
-        { y: 58, h: 12, fill: "#38bdf8", rx: 0 },
-        { y: 48, h: 10, fill: "#facc15", rx: 0 },
-        { y: 42, h: 6, fill: "#ef4444", rx: 1.5 },
-      ],
-    },
-    {
-      month: "Jul",
-      x: 175,
-      centerX: 182,
-      lineY: 37,
-      bars: [
-        { y: 65, h: 70, fill: "#3b82f6", rx: 1.5 },
-        { y: 52, h: 13, fill: "#38bdf8", rx: 0 },
-        { y: 42, h: 10, fill: "#facc15", rx: 0 },
-        { y: 37, h: 5, fill: "#ef4444", rx: 1.5 },
-      ],
-    },
-    {
-      month: "Aug",
-      x: 220,
-      centerX: 227,
-      lineY: 30,
-      bars: [
-        { y: 60, h: 75, fill: "#3b82f6", rx: 1.5 },
-        { y: 48, h: 12, fill: "#38bdf8", rx: 0 },
-        { y: 38, h: 10, fill: "#facc15", rx: 0 },
-        { y: 30, h: 8, fill: "#ef4444", rx: 1.5 },
-      ],
-    },
-    {
-      month: "Sep",
-      x: 265,
-      centerX: 272,
-      lineY: 20,
-      bars: [
-        { y: 50, h: 85, fill: "#3b82f6", rx: 1.5 },
-        { y: 38, h: 12, fill: "#38bdf8", rx: 0 },
-        { y: 28, h: 10, fill: "#facc15", rx: 0 },
-        { y: 20, h: 8, fill: "#ef4444", rx: 1.5 },
-      ],
-    },
-  ];
+  const isScoped = selectedOrgFilter !== "all";
+  const scopedOrg = useMemo(() => {
+    if (!isScoped) return null;
+    return organizations.find((o) => o._id === selectedOrgFilter) || null;
+  }, [isScoped, organizations, selectedOrgFilter]);
 
-  const adminStats = [
-    { label: "Total Users", value: "156", trend: "↑ 12%", icon: Users, color: "bg-blue-100 text-blue-600" },
-    { label: "Auditors", value: "24", trend: "↑ 9%", icon: UserCheck, color: "bg-emerald-100 text-emerald-600" },
-    { label: "Organizations", value: "48", trend: "↑ 18%", icon: Building2, color: "bg-purple-100 text-purple-600" },
-    { label: "Assessments", value: "62", trend: "↑ 15%", icon: FileCheck2, color: "bg-orange-100 text-orange-600" },
-    { label: "Framework Versions", value: "8", trend: "↑ 0%", icon: BookOpen, color: "bg-rose-100 text-rose-600" },
-    { label: "Pillars", value: "7", trend: "↑ 0%", icon: LayoutGrid, color: "bg-sky-100 text-sky-600" },
-    { label: "Controls", value: "86", trend: "↑ 11%", icon: Settings, color: "bg-amber-100 text-amber-600" },
-    { label: "Questions", value: "245", trend: "↑ 20%", icon: HelpCircle, color: "bg-purple-100 text-purple-600" },
-    { label: "Evidence Items", value: "320", trend: "↑ 25%", icon: FolderLock, color: "bg-emerald-100 text-emerald-600" },
-    { label: "Reports", value: "42", trend: "↑ 17%", icon: FileText, color: "bg-rose-100 text-rose-600" },
-    { label: "Active Subscriptions", value: "86", trend: "↑ 13%", icon: Crown, color: "bg-teal-100 text-teal-600" },
-    { label: "Permission Roles", value: "6", trend: "↑ 0%", icon: Shield, color: "bg-blue-100 text-blue-600" },
-  ];
+  // Scoped assessments based on header scope filter
+  const scopedAssessments = useMemo(() => {
+    if (!isScoped) return assessments;
+    return assessments.filter((a) => {
+      const orgId =
+        (a.organization as any)?._id?.toString() ||
+        (a.organization as any)?.toString() ||
+        (a as any).companyId?._id?.toString() ||
+        (a as any).companyId?.toString();
+      return orgId === selectedOrgFilter;
+    });
+  }, [assessments, isScoped, selectedOrgFilter]);
 
-  const recentOrganizations = [
-    { id: 1, name: "ABC Corporation", plan: "Gold", planColor: "bg-amber-50 text-amber-800 border-amber-200", assessments: 12, users: 8, status: "Active", date: "10 Sep 2026" },
-    { id: 2, name: "TechNova Ltd", plan: "Silver", planColor: "bg-slate-100 text-slate-800 border-slate-300", assessments: 8, users: 4, status: "Active", date: "05 Sep 2026" },
-    { id: 3, name: "Sigma AI", plan: "Bronze", planColor: "bg-orange-50 text-orange-800 border-orange-200", assessments: 6, users: 3, status: "Active", date: "28 Aug 2026" },
-    { id: 4, name: "Global Analytics", plan: "Gold", planColor: "bg-amber-50 text-amber-800 border-amber-200", assessments: 10, users: 6, status: "Active", date: "15 Aug 2026" },
-    { id: 5, name: "NextGen Solutions", plan: "Silver", planColor: "bg-slate-100 text-slate-800 border-slate-300", assessments: 4, users: 2, status: "Active", date: "01 Aug 2026" },
-  ];
+  // Assessments by status (scoped or global)
+  const byStatus = useMemo(() => {
+    if (!isScoped) {
+      return (
+        summary?.assessmentsByStatus ?? {
+          total: assessments.length,
+          completed: assessments.filter((a) => a.status === "Submitted").length,
+          inProgress: assessments.filter((a) => a.status === "InProgress").length,
+          notStarted: assessments.filter((a) => (a.status as string) === "NotStarted" || (a.status as string) === "Draft").length,
+          overdue: 0,
+        }
+      );
+    }
+    const completed = scopedAssessments.filter((a) => a.status === "Submitted").length;
+    const inProgress = scopedAssessments.filter((a) => a.status === "InProgress").length;
+    const notStarted = scopedAssessments.filter((a) => (a.status as string) === "NotStarted" || (a.status as string) === "Draft").length;
+    return {
+      total: scopedAssessments.length,
+      completed,
+      inProgress,
+      notStarted,
+      overdue: 0,
+    };
+  }, [isScoped, scopedAssessments, summary?.assessmentsByStatus, assessments]);
 
-  const recentAdminActivity = [
-    {
-      title: "New user registered",
-      desc: "Rohan Mehta joined the platform",
-      time: "2 minutes ago",
-      icon: Users,
-      color: "bg-blue-100 text-blue-600",
-    },
-    {
-      title: "Assessment created",
-      desc: "ABC Corporation - AI Governance",
-      time: "15 minutes ago",
-      icon: FileCheck2,
-      color: "bg-orange-100 text-orange-600",
-    },
-    {
-      title: "Evidence uploaded",
-      desc: "Policy document uploaded",
-      time: "1 hour ago",
-      icon: FolderLock,
-      color: "bg-emerald-100 text-emerald-600",
-    },
-    {
-      title: "Subscription upgraded",
-      desc: "TechNova Ltd upgraded to Silver",
-      time: "2 hours ago",
-      icon: Crown,
-      color: "bg-purple-100 text-purple-600",
-    },
-    {
-      title: "Framework version updated",
-      desc: "GCRAI v0.8 published",
-      time: "4 hours ago",
-      icon: SlidersHorizontal,
-      color: "bg-slate-100 text-slate-700",
-    },
-  ];
+  const subDist = summary?.subscriptionDistribution ?? { total: 0, bronze: 0, silver: 0, gold: 0 };
+  const recentOrgs = summary?.recentOrganizations ?? [];
+  const recentActivity = summary?.recentActivity ?? [];
+
+  // Segmented Donut: Assessments by Status
+  const adminStatusSegments = useMemo(() => {
+    const rawSegments: DonutSegmentInput[] = [
+      { key: "Completed", label: "Completed", count: byStatus.completed, color: "#10b981" },
+      { key: "InProgress", label: "In Progress", count: byStatus.inProgress, color: "#3b82f6" },
+      { key: "NotStarted", label: "Not Started", count: byStatus.notStarted, color: "#94a3b8" },
+    ];
+    return calculateDonutSegments(rawSegments, byStatus.total);
+  }, [byStatus.completed, byStatus.inProgress, byStatus.notStarted, byStatus.total]);
+
+  // Filtered assessments list (scoped + local status/search filter)
+  const filteredAssessments = scopedAssessments.filter((a) => {
+    if (statusFilter !== "All" && a.status !== statusFilter) return false;
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      const orgName = ((a.organization as any)?.name || "").toLowerCase();
+      const auditorName = ((a.auditor as any)?.name || "").toLowerCase();
+      if (!orgName.includes(q) && !auditorName.includes(q)) return false;
+    }
+    return true;
+  });
+
+  const completedPct = byStatus.total > 0 ? Math.round((byStatus.completed / byStatus.total) * 100) : 0;
+  const inProgressPct = byStatus.total > 0 ? Math.round((byStatus.inProgress / byStatus.total) * 100) : 0;
+  const notStartedPct = byStatus.total > 0 ? Math.round((byStatus.notStarted / byStatus.total) * 100) : 0;
+
+  const bronzePct = subDist.total > 0 ? Math.round((subDist.bronze / subDist.total) * 100) : 0;
+  const silverPct = subDist.total > 0 ? Math.round((subDist.silver / subDist.total) * 100) : 0;
+  const goldPct = subDist.total > 0 ? Math.round((subDist.gold / subDist.total) * 100) : 0;
 
   return (
     <div className="space-y-6">
-      {/* 12 Stat Cards (4x3 Grid) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-        {adminStats.map((st, idx) => {
-          const Icon = st.icon;
-          return (
-            <div
-              key={st.label}
-              className="group relative overflow-hidden bg-white rounded-xl border border-slate-200/90 p-4 sm:p-5 shadow-xs transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-[0_12px_24px_-6px_rgba(15,23,42,0.08),0_4px_8px_-2px_rgba(15,23,42,0.03)] hover:border-slate-300 select-none flex items-center justify-between gap-3"
-            >
-              <div className="flex items-center gap-3.5 min-w-0">
-                <div
-                  className={`h-12 w-12 rounded-2xl flex items-center justify-center shrink-0 ${st.color} shadow-2xs transition-all duration-300 ease-out group-hover:scale-105 group-hover:ring-4 group-hover:ring-slate-100`}
-                >
-                  <Icon className="h-6 w-6 shrink-0 transition-transform duration-300 ease-out" strokeWidth={1.85} />
-                </div>
-                <div className="min-w-0">
-                  <div className="text-2xl font-extrabold text-slate-900 leading-tight tracking-tight group-hover:text-slate-950 transition-colors">
-                    <AnimatedNumber value={st.value} delay={idx * 35} />
-                  </div>
-                  <div className="text-xs font-medium text-slate-500 truncate mt-0.5 group-hover:text-slate-600 transition-colors">
-                    {st.label}
-                  </div>
-                </div>
-              </div>
-              <div className="text-xs font-semibold text-emerald-600 shrink-0 self-start pt-0.5 flex items-center gap-0.5">
-                <span>{st.trend}</span>
-              </div>
-            </div>
-          );
-        })}
+      {/* -------------------------------------------------------------------- */}
+      {/* HEADER: EXECUTIVE OPERATIONS & GOVERNANCE                            */}
+      {/* -------------------------------------------------------------------- */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200/90 shadow-xs">
+        <div>
+          <div className="flex items-center gap-2.5">
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 font-editorial">
+              Platform Operations &amp; Governance
+            </h1>
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/80">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              Live Telemetry
+            </span>
+          </div>
+          <p className="text-xs sm:text-sm text-slate-500 mt-1">
+            Global multi-tenant governance, auditor accreditation, compliance frameworks, and security audit logs.
+          </p>
+        </div>
       </div>
 
-      {/* Middle Row (3 Charts) */}
+      {/* -------------------------------------------------------------------- */}
+      {/* FILTERED SCOPE BANNER (VISIBLE WHEN HEADER SCOPE IS SELECTED)        */}
+      {/* -------------------------------------------------------------------- */}
+      {isScoped && scopedOrg && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 py-3 bg-gradient-to-r from-blue-50 via-indigo-50/50 to-blue-50 border border-blue-200/90 rounded-2xl shadow-2xs animate-in fade-in">
+          <div className="flex items-center gap-3">
+            <div className="h-9 w-9 rounded-xl bg-blue-600 text-white font-bold flex items-center justify-center shrink-0 text-sm shadow-xs">
+              {scopedOrg.name.slice(0, 2).toUpperCase()}
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-blue-900">Filtered Tenant Scope:</span>
+                <span className="text-sm font-bold text-slate-900">{scopedOrg.name}</span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-200">
+                  {scopedOrg.activePlan || "Bronze"}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500">
+                {scopedOrg.domain || scopedOrg.industry || "Enterprise Tenant"} • {scopedAssessments.length} Audits in Scope • Metrics &amp; tables dynamically filtered
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setSelectedOrgFilter("all")}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl transition shadow-2xs self-start sm:self-auto cursor-pointer"
+          >
+            <X className="h-3.5 w-3.5 text-slate-400" />
+            Reset Global Scope
+          </button>
+        </div>
+      )}
+
+      {/* -------------------------------------------------------------------- */}
+      {/* ROW 1 & 2: 8 DISTINCT EXECUTIVE OPERATIONAL STAT CARDS (MAX 4/ROW)   */}
+      {/* -------------------------------------------------------------------- */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Card 1: Users */}
+        <StatCard
+          label={isScoped ? "Tenant Registered Users" : "Total Platform Users"}
+          value={isScoped ? (scopedAssessments[0]?.clientContact ? 1 : 1) : (summary?.stats?.totalUsers ?? 0)}
+          trend={isScoped ? `${scopedOrg?.name} Assured` : `${summary?.stats?.totalAuditors ?? 0} Accredited Auditors`}
+          trendType="neutral"
+          icon={Users}
+          theme="blue"
+          delay={0}
+        />
+
+        {/* Card 2: Auditors */}
+        <StatCard
+          label={isScoped ? "Assigned Assessor" : "Accredited Auditors"}
+          value={isScoped ? (scopedAssessments.find((a) => a.auditor)?.auditor?.name ? 1 : 0) : (summary?.stats?.totalAuditors ?? 0)}
+          trend={isScoped ? (scopedAssessments.find((a) => a.auditor)?.auditor?.name || "Assessor Active") : "Certified Assessors Active"}
+          trendType="neutral"
+          icon={UserCheck}
+          theme="emerald"
+          delay={25}
+        />
+
+        {/* Card 3: Client Organizations */}
+        <StatCard
+          label={isScoped ? "Scoped Enterprise Tenant" : "Client Organizations"}
+          value={isScoped ? 1 : (summary?.stats?.totalOrganizations ?? 0)}
+          trend={isScoped ? `${scopedOrg?.domain || "Isolated Tenant"}` : "Active Multi-Tenant Directory"}
+          trendType="neutral"
+          icon={Building2}
+          theme="purple"
+          delay={50}
+        />
+
+        {/* Card 4: Evaluation Criteria (Distinct from Subscriptions, eliminates redundancy) */}
+        <StatCard
+          label="Evaluation Criteria"
+          value={summary?.stats?.questionsCount ?? 95}
+          trend="Standardized Control Questions"
+          trendType="neutral"
+          icon={BookOpen}
+          theme="amber"
+          delay={75}
+        />
+
+        {/* Card 5: Assessments Pipeline */}
+        <StatCard
+          label="Assessments Pipeline"
+          value={byStatus.total}
+          trend={`${byStatus.completed} Submitted (${completedPct}%)`}
+          trendType="up"
+          icon={FileCheck2}
+          theme="teal"
+          delay={100}
+          onClick={() => setStatusFilter("All")}
+        />
+
+        {/* Card 6: Compliance Framework */}
+        <StatCard
+          label="Compliance Framework"
+          value={summary?.stats?.frameworkVersions ?? 1}
+          prefix="v"
+          trend={`${summary?.stats?.controlsCount ?? 65} Controls • 7 Pillars`}
+          trendType="neutral"
+          icon={Layers}
+          theme="sky"
+          delay={125}
+        />
+
+        {/* Card 7: Evidence Vault */}
+        <StatCard
+          label="Audit Evidence Vault"
+          value={isScoped ? (scopedAssessments.length > 0 ? 1 : 0) : (summary?.stats?.evidenceItemsCount ?? 0)}
+          trend="Cryptographic Proofs Locked"
+          trendType="neutral"
+          icon={FolderLock}
+          theme="rose"
+          delay={150}
+        />
+
+        {/* Card 8: Reports & Security Logs */}
+        <StatCard
+          label="Reports & Security Logs"
+          value={isScoped ? scopedAssessments.filter((a) => a.status === "Submitted").length : (summary?.stats?.reportsCount ?? 0)}
+          trend={`${recentActivity.length} Recent Security Events`}
+          trendType="neutral"
+          icon={ShieldCheck}
+          theme="slate"
+          delay={175}
+        />
+      </div>
+
+      {/* -------------------------------------------------------------------- */}
+      {/* ROW 2: 2 DISTINCT ANALYTICS CARDS (1 DONUT + 1 SAAS MATRIX)          */}
+      {/* -------------------------------------------------------------------- */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-        {/* Card 1: Assessments by Status */}
-        <div className="lg:col-span-4 group relative overflow-hidden bg-white rounded-xl border border-slate-200/90 p-5 shadow-xs transition-all duration-300 ease-out hover:-translate-y-0.5 hover:shadow-md hover:border-slate-300 flex flex-col justify-between">
-          <div className="absolute top-0 inset-x-0 h-0.5 bg-gradient-to-r from-transparent via-emerald-500/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
-          <div className="pb-2 border-b border-slate-100">
-            <h3 className="text-sm font-bold text-slate-900">Assessments by Status</h3>
-          </div>
-
-          <div className="py-2 flex items-center justify-around">
-            {/* SVG Donut with Circle Sweep */}
-            <div className="relative w-32 h-32 flex items-center justify-center group/donut">
-              <svg className="w-full h-full -rotate-90 transition-transform duration-500 group-hover/donut:scale-105" viewBox="0 0 100 100">
-                <circle cx="50" cy="50" r="38" fill="none" stroke="#f1f5f9" strokeWidth="12" />
-                {/* Completed (Green) 39% */}
-                <circle
-                  cx="50"
-                  cy="50"
-                  r="38"
-                  fill="none"
-                  stroke="#10b981"
-                  strokeWidth="12"
-                  strokeDasharray="238.7"
-                  strokeDashoffset={isMounted ? 238.7 * (1 - 0.39) : 238.7}
-                  strokeLinecap="round"
-                  style={{
-                    transition: "stroke-dashoffset 1.3s cubic-bezier(0.16, 1, 0.3, 1) 0.15s",
-                  }}
-                />
-                {/* In Progress (Blue) 29% */}
-                <circle
-                  cx="50"
-                  cy="50"
-                  r="38"
-                  fill="none"
-                  stroke="#3b82f6"
-                  strokeWidth="12"
-                  strokeDasharray="238.7"
-                  strokeDashoffset={isMounted ? 238.7 * (1 - 0.29) : 238.7}
-                  strokeLinecap="round"
-                  className="rotate-90 origin-center"
-                  style={{
-                    transition: "stroke-dashoffset 1.3s cubic-bezier(0.16, 1, 0.3, 1) 0.3s",
-                  }}
-                />
-              </svg>
-              <div className="absolute inset-0 flex flex-col items-center justify-center text-center transition-transform duration-300 group-hover/donut:scale-105">
-                <span className="text-xl font-bold text-slate-900 tabular-nums">
-                  <AnimatedNumber value={62} delay={200} />
-                </span>
-                <span className="text-[10px] text-slate-500 font-medium">Total</span>
-              </div>
+        {/* CARD 1: Assessments by Status (Donut Chart) */}
+        <div className="lg:col-span-6 bg-white rounded-2xl border border-slate-200/90 p-4 sm:p-5 shadow-xs hover:shadow-sm transition-all duration-300 flex flex-col justify-between relative overflow-hidden">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900">
+                {isScoped ? `${scopedOrg?.name} Assessments` : "Platform Assessments by Status"}
+              </h3>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                {isScoped ? "Filtered lifecycle breakdown for this tenant" : "Global audit pipeline distribution"}
+              </p>
             </div>
-
-            <div className="space-y-1.5 text-xs">
-              <div className="flex items-center justify-between gap-4 group/item cursor-default">
-                <div className="flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-full bg-emerald-500 group-hover/item:scale-125 transition-transform" />
-                  <span className="text-slate-600 group-hover/item:text-slate-900 transition-colors text-[11px]">Completed</span>
-                </div>
-                <span className="font-semibold text-slate-900 text-[11px]">24 (39%)</span>
-              </div>
-              <div className="flex items-center justify-between gap-4 group/item cursor-default">
-                <div className="flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-full bg-blue-500 group-hover/item:scale-125 transition-transform" />
-                  <span className="text-slate-600 group-hover/item:text-slate-900 transition-colors text-[11px]">In Progress</span>
-                </div>
-                <span className="font-semibold text-slate-900 text-[11px]">18 (29%)</span>
-              </div>
-              <div className="flex items-center justify-between gap-4 group/item cursor-default">
-                <div className="flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-full bg-amber-500 group-hover/item:scale-125 transition-transform" />
-                  <span className="text-slate-600 group-hover/item:text-slate-900 transition-colors text-[11px]">Not Started</span>
-                </div>
-                <span className="font-semibold text-slate-900 text-[11px]">16 (26%)</span>
-              </div>
-              <div className="flex items-center justify-between gap-4 group/item cursor-default">
-                <div className="flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-full bg-red-500 group-hover/item:scale-125 transition-transform" />
-                  <span className="text-slate-600 group-hover/item:text-slate-900 transition-colors text-[11px]">Overdue</span>
-                </div>
-                <span className="font-semibold text-slate-900 text-[11px]">4 (6%)</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Card 2: Subscription Plan Distribution */}
-        <div className="lg:col-span-4 group relative overflow-hidden bg-white rounded-xl border border-slate-200/90 p-5 shadow-xs transition-all duration-300 ease-out hover:-translate-y-0.5 hover:shadow-md hover:border-slate-300 flex flex-col justify-between">
-          <div className="absolute top-0 inset-x-0 h-0.5 bg-gradient-to-r from-transparent via-amber-500/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
-          <div className="pb-2 border-b border-slate-100">
-            <h3 className="text-sm font-bold text-slate-900">Subscription Plan Distribution</h3>
+            <span className="text-xs text-slate-600 font-semibold bg-slate-100 px-2.5 py-0.5 rounded-full border border-slate-200/70">
+              {byStatus.total} Total
+            </span>
           </div>
 
-          <div className="py-2 flex items-center justify-around">
-            {/* SVG Donut with Circle Sweep */}
-            <div className="relative w-32 h-32 flex items-center justify-center group/donut">
-              <svg className="w-full h-full -rotate-90 transition-transform duration-500 group-hover/donut:scale-105" viewBox="0 0 100 100">
-                <circle cx="50" cy="50" r="38" fill="none" stroke="#f1f5f9" strokeWidth="12" />
-                {/* Bronze (Amber/Brown) 33% */}
-                <circle
-                  cx="50"
-                  cy="50"
-                  r="38"
-                  fill="none"
-                  stroke="#b45309"
-                  strokeWidth="12"
-                  strokeDasharray="238.7"
-                  strokeDashoffset={isMounted ? 238.7 * (1 - 0.33) : 238.7}
-                  strokeLinecap="round"
-                  style={{
-                    transition: "stroke-dashoffset 1.3s cubic-bezier(0.16, 1, 0.3, 1) 0.15s",
-                  }}
-                />
-                {/* Silver (Slate) 42% */}
-                <circle
-                  cx="50"
-                  cy="50"
-                  r="38"
-                  fill="none"
-                  stroke="#64748b"
-                  strokeWidth="12"
-                  strokeDasharray="238.7"
-                  strokeDashoffset={isMounted ? 238.7 * (1 - 0.42) : 238.7}
-                  strokeLinecap="round"
-                  className="rotate-120 origin-center"
-                  style={{
-                    transition: "stroke-dashoffset 1.3s cubic-bezier(0.16, 1, 0.3, 1) 0.3s",
-                  }}
-                />
-              </svg>
-              <div className="absolute inset-0 flex flex-col items-center justify-center text-center transition-transform duration-300 group-hover/donut:scale-105">
-                <span className="text-xl font-bold text-slate-900 tabular-nums">
-                  <AnimatedNumber value={86} delay={200} />
-                </span>
-                <span className="text-[10px] text-slate-500 font-medium">Total</span>
-              </div>
-            </div>
+          <div className="py-3 flex flex-col sm:flex-row items-center justify-around flex-1 gap-4">
+            {/* SVG Donut with Mathematically Perfect Chained Arcs */}
+            <div className="relative w-36 h-36 flex items-center justify-center shrink-0">
+              <svg className="w-full h-full -rotate-90 origin-center" viewBox="0 0 100 100">
+                {/* Full 360-degree Background Base Track */}
+                <circle cx="50" cy="50" r="38" fill="none" stroke="#f1f5f9" strokeWidth="8.5" />
 
-            <div className="space-y-2 text-xs">
-              <div className="flex items-center justify-between gap-6 group/item cursor-default">
-                <div className="flex items-center gap-1.5">
-                  <span className="h-2.5 w-2.5 rounded-full bg-amber-700 group-hover/item:scale-125 transition-transform" />
-                  <span className="text-slate-600 group-hover/item:text-slate-900 transition-colors text-[11px]">Bronze</span>
-                </div>
-                <span className="font-semibold text-slate-900 text-[11px]">28 (33%)</span>
-              </div>
-              <div className="flex items-center justify-between gap-6 group/item cursor-default">
-                <div className="flex items-center gap-1.5">
-                  <span className="h-2.5 w-2.5 rounded-full bg-slate-500 group-hover/item:scale-125 transition-transform" />
-                  <span className="text-slate-600 group-hover/item:text-slate-900 transition-colors text-[11px]">Silver</span>
-                </div>
-                <span className="font-semibold text-slate-900 text-[11px]">36 (42%)</span>
-              </div>
-              <div className="flex items-center justify-between gap-6 group/item cursor-default">
-                <div className="flex items-center gap-1.5">
-                  <span className="h-2.5 w-2.5 rounded-full bg-amber-400 group-hover/item:scale-125 transition-transform" />
-                  <span className="text-slate-600 group-hover/item:text-slate-900 transition-colors text-[11px]">Gold</span>
-                </div>
-                <span className="font-semibold text-slate-900 text-[11px]">22 (26%)</span>
-              </div>
-            </div>
-          </div>
-        </div>
+                {/* Chained Segments */}
+                {adminStatusSegments.map((seg) => {
+                  const isHovered = adminStatusHover === seg.key;
+                  const isOtherHovered = adminStatusHover !== null && !isHovered;
 
-        {/* Card 3: Assessments Created (Last 6 Months) with Animated Stacked Bars & Trend Line */}
-        <div className="lg:col-span-4 group relative overflow-hidden bg-white rounded-xl border border-slate-200/90 p-5 shadow-xs transition-all duration-300 ease-out hover:-translate-y-0.5 hover:shadow-md hover:border-slate-300 flex flex-col justify-between">
-          <div className="absolute top-0 inset-x-0 h-0.5 bg-gradient-to-r from-transparent via-blue-500/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
-          <div className="pb-2 border-b border-slate-100">
-            <h3 className="text-sm font-bold text-slate-900">Assessments Created (Last 6 Months)</h3>
-          </div>
-
-          <div className="h-40 w-full mt-2 relative">
-            <svg viewBox="0 0 320 150" className="w-full h-full overflow-visible">
-              <line x1="20" y1="20" x2="310" y2="20" stroke="#f1f5f9" strokeWidth="1" />
-              <text x="5" y="23" fontSize="8" fill="#94a3b8">20</text>
-              <line x1="20" y1="50" x2="310" y2="50" stroke="#f1f5f9" strokeWidth="1" />
-              <text x="5" y="53" fontSize="8" fill="#94a3b8">15</text>
-              <line x1="20" y1="80" x2="310" y2="80" stroke="#f1f5f9" strokeWidth="1" />
-              <text x="5" y="83" fontSize="8" fill="#94a3b8">10</text>
-              <line x1="20" y1="110" x2="310" y2="110" stroke="#f1f5f9" strokeWidth="1" />
-              <text x="5" y="113" fontSize="8" fill="#94a3b8">5</text>
-              <line x1="20" y1="135" x2="310" y2="135" stroke="#e2e8f0" strokeWidth="1" />
-              <text x="5" y="138" fontSize="8" fill="#94a3b8">0</text>
-
-              {/* Stacked bars for 6 months with animated growth */}
-              {adminMonthlyBars.map((m, idx) => (
-                <g key={m.month} className="group/adminbar cursor-pointer">
-                  {m.bars.map((b, bIdx) => (
-                    <rect
-                      key={bIdx}
-                      x={m.x}
-                      y={isMounted ? b.y : 135}
-                      width={14}
-                      height={isMounted ? b.h : 0}
-                      fill={b.fill}
-                      rx={b.rx}
-                      className="transition-all duration-300 group-hover/adminbar:brightness-110"
+                  return (
+                    <circle
+                      key={seg.key}
+                      cx="50"
+                      cy="50"
+                      r="38"
+                      fill="none"
+                      stroke={seg.color}
+                      strokeWidth={isHovered ? 10.5 : 8.5}
+                      strokeDasharray={`${isMounted ? seg.dashLength : 0} ${seg.circumference}`}
+                      strokeDashoffset={seg.offset}
+                      strokeLinecap="butt"
+                      className="cursor-pointer"
                       style={{
-                        transition: "height 0.85s cubic-bezier(0.16, 1, 0.3, 1), y 0.85s cubic-bezier(0.16, 1, 0.3, 1)",
-                        transitionDelay: `${idx * 75 + bIdx * 20}ms`,
+                        transition:
+                          "stroke-dasharray 0.9s cubic-bezier(0.16, 1, 0.3, 1), stroke-width 0.2s ease, opacity 0.25s ease",
+                        opacity: isOtherHovered ? 0.3 : 1,
+                      }}
+                      onMouseEnter={() => setAdminStatusHover(seg.key)}
+                      onMouseLeave={() => setAdminStatusHover(null)}
+                      onClick={() => {
+                        if (seg.key === "Completed") setStatusFilter("Submitted");
+                        if (seg.key === "InProgress") setStatusFilter("InProgress");
                       }}
                     />
-                  ))}
-                  <text
-                    x={m.centerX}
-                    y="146"
-                    fontSize="9"
-                    fill="#64748b"
-                    textAnchor="middle"
-                    className="group-hover/adminbar:fill-slate-900 group-hover/adminbar:font-semibold transition-colors"
-                  >
-                    {m.month}
-                  </text>
-                </g>
-              ))}
+                  );
+                })}
+              </svg>
 
-              {/* Animated Trend Line across peak points */}
-              <path
-                d="M 47 65 C 69 65, 69 52, 92 52 C 114 52, 114 42, 137 42 C 159 42, 159 37, 182 37 C 204 37, 204 30, 227 30 C 249 30, 249 20, 272 20"
-                fill="none"
-                stroke="#2563eb"
-                strokeWidth="2.2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeDasharray="350"
-                strokeDashoffset={isMounted ? 0 : 350}
-                style={{
-                  transition: "stroke-dashoffset 1.5s cubic-bezier(0.16, 1, 0.3, 1) 0.3s",
-                }}
-              />
+              {/* Center Typography */}
+              <div className="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none select-none">
+                {adminStatusHover === "Completed" ? (
+                  <div className="animate-in fade-in zoom-in-95 flex flex-col items-center">
+                    <span className="text-2xl font-black text-emerald-600 leading-none">{byStatus.completed}</span>
+                    <span className="text-[10px] text-emerald-600 font-bold uppercase tracking-wider mt-1">
+                      {completedPct}% Done
+                    </span>
+                  </div>
+                ) : adminStatusHover === "InProgress" ? (
+                  <div className="animate-in fade-in zoom-in-95 flex flex-col items-center">
+                    <span className="text-2xl font-black text-blue-600 leading-none">{byStatus.inProgress}</span>
+                    <span className="text-[10px] text-blue-600 font-bold uppercase tracking-wider mt-1">
+                      {inProgressPct}% Active
+                    </span>
+                  </div>
+                ) : adminStatusHover === "NotStarted" ? (
+                  <div className="animate-in fade-in zoom-in-95 flex flex-col items-center">
+                    <span className="text-2xl font-black text-slate-600 leading-none">{byStatus.notStarted}</span>
+                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-1">Pending</span>
+                  </div>
+                ) : (
+                  <>
+                    <span className="text-2xl font-black text-slate-900 leading-none">
+                      <AnimatedNumber value={byStatus.total} delay={150} />
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-medium uppercase tracking-wider mt-1">Audits</span>
+                  </>
+                )}
+              </div>
+            </div>
 
-              {/* Interactive Trend Dots */}
-              {adminMonthlyBars.map((m, idx) => (
-                <circle
-                  key={`adot-${m.month}`}
-                  cx={m.centerX}
-                  cy={m.lineY}
-                  r={isMounted ? 3 : 0}
-                  fill="#ffffff"
-                  stroke="#2563eb"
-                  strokeWidth="2"
-                  className="transition-all duration-300 hover:scale-150 cursor-pointer drop-shadow-xs"
-                  style={{
-                    transition: "r 0.5s cubic-bezier(0.16, 1, 0.3, 1), transform 0.2s ease-out",
-                    transitionDelay: `${650 + idx * 75}ms`,
-                  }}
+            {/* Modern Legend Tiles */}
+            <div className="space-y-1.5 text-xs w-full sm:max-w-[210px]">
+              <div
+                onClick={() => setStatusFilter("Submitted")}
+                onMouseEnter={() => setAdminStatusHover("Completed")}
+                onMouseLeave={() => setAdminStatusHover(null)}
+                className={`flex items-center justify-between p-2 rounded-xl border transition-all duration-200 cursor-pointer ${
+                  adminStatusHover === "Completed"
+                    ? "bg-emerald-50/70 border-emerald-200 shadow-2xs"
+                    : "bg-slate-50/60 border-slate-100 hover:bg-slate-50"
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-emerald-500 shrink-0" />
+                  <span className="text-slate-700 font-medium text-xs">Completed</span>
+                </div>
+                <span className="font-bold text-slate-900 text-xs tabular-nums bg-white px-2 py-0.5 rounded-md border border-slate-200/80 shadow-2xs">
+                  {byStatus.completed} ({completedPct}%)
+                </span>
+              </div>
+
+              <div
+                onClick={() => setStatusFilter("InProgress")}
+                onMouseEnter={() => setAdminStatusHover("InProgress")}
+                onMouseLeave={() => setAdminStatusHover(null)}
+                className={`flex items-center justify-between p-2 rounded-xl border transition-all duration-200 cursor-pointer ${
+                  adminStatusHover === "InProgress"
+                    ? "bg-blue-50/70 border-blue-200 shadow-2xs"
+                    : "bg-slate-50/60 border-slate-100 hover:bg-slate-50"
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-blue-500 shrink-0" />
+                  <span className="text-slate-700 font-medium text-xs">In Progress</span>
+                </div>
+                <span className="font-bold text-slate-900 text-xs tabular-nums bg-white px-2 py-0.5 rounded-md border border-slate-200/80 shadow-2xs">
+                  {byStatus.inProgress} ({inProgressPct}%)
+                </span>
+              </div>
+
+              <div
+                onMouseEnter={() => setAdminStatusHover("NotStarted")}
+                onMouseLeave={() => setAdminStatusHover(null)}
+                className={`flex items-center justify-between p-2 rounded-xl border transition-all duration-200 cursor-default ${
+                  adminStatusHover === "NotStarted"
+                    ? "bg-slate-100/80 border-slate-300 shadow-2xs"
+                    : "bg-slate-50/60 border-slate-100"
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-slate-300 shrink-0" />
+                  <span className="text-slate-600 font-medium text-xs">Not Started</span>
+                </div>
+                <span className="font-bold text-slate-900 text-xs tabular-nums bg-white px-2 py-0.5 rounded-md border border-slate-200/80 shadow-2xs">
+                  {byStatus.notStarted} ({notStartedPct}%)
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* CARD 2: SaaS Licensing & Tenant Architecture Matrix (Completely distinct layout, NOT a duplicate donut) */}
+        <div className="lg:col-span-6 bg-white rounded-2xl border border-slate-200/90 p-4 sm:p-5 shadow-xs hover:shadow-sm transition-all duration-300 flex flex-col justify-between relative overflow-hidden">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900">SaaS Licensing &amp; Plan Matrix</h3>
+              <p className="text-[11px] text-slate-500 mt-0.5">Tier distribution, tenant features &amp; SLA allocation</p>
+            </div>
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-50 text-amber-800 border border-amber-200/80 text-xs font-bold shadow-2xs">
+              <Crown className="h-3.5 w-3.5 text-amber-600" />
+              <span>{subDist.total} Active Plans</span>
+            </div>
+          </div>
+
+          <div className="py-2.5 space-y-3.5 flex-1">
+            {/* Visual Proportional Horizontal Track */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="font-medium text-slate-600">Plan Allocation Progress</span>
+                <span className="font-bold text-slate-900">{bronzePct}% Bronze • {silverPct}% Silver • {goldPct}% Gold</span>
+              </div>
+              <div className="h-3 w-full bg-slate-100 rounded-full overflow-hidden flex p-0.5 shadow-inner">
+                <div
+                  className="h-full bg-gradient-to-r from-amber-600 to-amber-700 rounded-full transition-all duration-1000"
+                  style={{ width: `${Math.max(bronzePct, 5)}%` }}
+                  title={`Bronze: ${subDist.bronze} (${bronzePct}%)`}
                 />
-              ))}
-            </svg>
+                {silverPct > 0 && (
+                  <div
+                    className="h-full bg-slate-500 rounded-full transition-all duration-1000"
+                    style={{ width: `${silverPct}%` }}
+                    title={`Silver: ${subDist.silver} (${silverPct}%)`}
+                  />
+                )}
+                {goldPct > 0 && (
+                  <div
+                    className="h-full bg-amber-400 rounded-full transition-all duration-1000"
+                    style={{ width: `${goldPct}%` }}
+                    title={`Gold: ${subDist.gold} (${goldPct}%)`}
+                  />
+                )}
+              </div>
+            </div>
+
+            {/* 3 Tier Specification Cards */}
+            <div className="grid grid-cols-1 gap-2 text-xs">
+              {/* Bronze Tier Card */}
+              <div className="flex items-center justify-between p-2.5 rounded-xl border border-amber-200/90 bg-amber-50/40 hover:bg-amber-50/80 transition shadow-2xs">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="h-7 w-7 rounded-lg bg-[#b45309] text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-2xs">
+                    B
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-slate-900">Bronze Starter</span>
+                      <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-100 text-amber-900 border border-amber-200">
+                        Primary SaaS
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-slate-500 truncate">Core AI Governance • Baseline Controls • Standard Reports</p>
+                  </div>
+                </div>
+                <div className="text-right shrink-0 pl-2">
+                  <div className="font-black text-slate-900 text-xs tabular-nums">{subDist.bronze} Tenants</div>
+                  <div className="text-[10px] text-emerald-600 font-semibold">{bronzePct}% active</div>
+                </div>
+              </div>
+
+              {/* Silver Tier Card */}
+              <div className="flex items-center justify-between p-2.5 rounded-xl border border-slate-200/80 bg-slate-50/50 hover:bg-slate-100/60 transition shadow-2xs">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="h-7 w-7 rounded-lg bg-slate-600 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-2xs">
+                    S
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-slate-900">Silver Scale</span>
+                      <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                        Mid-Market
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-slate-500 truncate">Multi-Assessor Team • Evidence Ingestion • API Access</p>
+                  </div>
+                </div>
+                <div className="text-right shrink-0 pl-2">
+                  <div className="font-black text-slate-900 text-xs tabular-nums">{subDist.silver} Tenants</div>
+                  <div className="text-[10px] text-slate-400 font-semibold">{silverPct}% active</div>
+                </div>
+              </div>
+
+              {/* Gold Tier Card */}
+              <div className="flex items-center justify-between p-2.5 rounded-xl border border-amber-300/80 bg-amber-50/30 hover:bg-amber-50/70 transition shadow-2xs">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="h-7 w-7 rounded-lg bg-[#f59e0b] text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-2xs">
+                    G
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-slate-900">Gold Enterprise</span>
+                      <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-100 text-amber-900 border border-amber-200">
+                        Enterprise SLA
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-slate-500 truncate">Continuous Telemetry • Custom Frameworks • 99.9% SLA</p>
+                  </div>
+                </div>
+                <div className="text-right shrink-0 pl-2">
+                  <div className="font-black text-slate-900 text-xs tabular-nums">{subDist.gold} Tenants</div>
+                  <div className="text-[10px] text-slate-400 font-semibold">{goldPct}% active</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Footer Navigation */}
+          <div className="pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs">
+            <span className="text-[11px] text-slate-400">Multi-tenant isolation &amp; RBAC enforced</span>
+            <Link
+              href="/subscriptions"
+              className="text-xs font-semibold text-blue-600 hover:text-blue-800 transition inline-flex items-center gap-1"
+            >
+              Manage Subscriptions &rarr;
+            </Link>
           </div>
         </div>
       </div>
 
-      {/* Bottom Row (2 Cards) */}
+      {/* -------------------------------------------------------------------- */}
+      {/* ROW 3: RECENT ORGANIZATIONS & RECENT SECURITY AUDIT EVENTS           */}
+      {/* -------------------------------------------------------------------- */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-        {/* Card 1: Recent Organizations (60%) */}
-        <div className="lg:col-span-8 bg-white rounded-xl border border-slate-200/90 p-5 shadow-xs">
+        {/* Card 1: Recent Organizations */}
+        <div className="lg:col-span-8 bg-white rounded-2xl border border-slate-200/90 p-5 shadow-xs">
           <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-            <h3 className="text-sm font-bold text-slate-900">Recent Organizations</h3>
+            <div>
+              <h3 className="text-sm font-bold text-slate-900">Recent Client Organizations</h3>
+              <p className="text-[11px] text-slate-500">Live directory of onboarded tenant companies</p>
+            </div>
             <Link href="/organizations" className="text-xs font-semibold text-blue-600 hover:underline">
-              View All →
+              View All Directory →
             </Link>
           </div>
 
           <div className="overflow-x-auto">
+            {recentOrgs.length > 0 ? (
+              <table className="w-full text-left text-xs">
+                <thead className="text-[11px] font-semibold text-slate-400 uppercase border-b border-slate-100">
+                  <tr>
+                    <th className="py-2.5">Organization</th>
+                    <th className="py-2.5">Active Plan</th>
+                    <th className="py-2.5 text-center">Audits</th>
+                    <th className="py-2.5 text-center">Users</th>
+                    <th className="py-2.5">Status</th>
+                    <th className="py-2.5 text-right">Created</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {recentOrgs.map((o) => {
+                    const isSelected = isScoped && o._id === selectedOrgFilter;
+                    return (
+                      <tr
+                        key={o._id}
+                        className={`transition-colors ${
+                          isSelected ? "bg-blue-50/70" : "hover:bg-slate-50/80"
+                        }`}
+                      >
+                        <td className="py-2.5 font-semibold text-slate-800">
+                          <div className="flex items-center gap-2">
+                            <span>{o.name}</span>
+                            {isSelected && (
+                              <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-blue-100 text-blue-800 border border-blue-200">
+                                Selected Scope
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="py-2.5">
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                              o.activePlan === "Gold"
+                                ? "bg-amber-50 text-amber-800 border-amber-200"
+                                : o.activePlan === "Silver"
+                                ? "bg-slate-100 text-slate-700 border-slate-200"
+                                : "bg-amber-50/70 text-amber-900 border-amber-200/80"
+                            }`}
+                          >
+                            {o.activePlan || "Bronze"}
+                          </span>
+                        </td>
+                        <td className="py-2.5 text-center font-medium text-slate-700 tabular-nums">
+                          {o.assessmentCount}
+                        </td>
+                        <td className="py-2.5 text-center font-medium text-slate-700 tabular-nums">
+                          {o.userCount}
+                        </td>
+                        <td className="py-2.5">
+                          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                            {o.status}
+                          </span>
+                        </td>
+                        <td className="py-2.5 text-slate-500 text-right">
+                          {new Date(o.createdAt).toLocaleDateString()}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            ) : (
+              <div className="py-8 text-center text-xs text-slate-400">
+                No client organizations registered on the platform yet.
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Card 2: Recent Activity Feed */}
+        <div className="lg:col-span-4 bg-white rounded-2xl border border-slate-200/90 p-5 shadow-xs flex flex-col justify-between">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900">Security Audit Trail</h3>
+              <p className="text-[11px] text-slate-500">Immutable platform security events</p>
+            </div>
+            <Link href="/admin/audit-logs" className="text-xs font-semibold text-blue-600 hover:underline">
+              Audit Logs →
+            </Link>
+          </div>
+
+          <div className="py-1 divide-y divide-slate-100 space-y-2 flex-1">
+            {recentActivity.length > 0 ? (
+              recentActivity.map((act) => (
+                <div key={act.id} className="pt-2.5 first:pt-0 flex items-start justify-between gap-3 text-xs">
+                  <div className="flex items-start gap-2.5">
+                    <div className="p-1.5 rounded-xl shrink-0 bg-blue-50 text-blue-600 border border-blue-100">
+                      <ShieldCheck className="h-3.5 w-3.5" />
+                    </div>
+                    <div>
+                      <div className="font-semibold text-slate-900">{act.title}</div>
+                      <div className="text-slate-500 text-[11px] truncate max-w-[190px]">{act.description}</div>
+                    </div>
+                  </div>
+                  <div className="text-[10px] text-slate-400 shrink-0 whitespace-nowrap">
+                    {new Date(act.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="py-8 text-center text-xs text-slate-400">
+                No recent security events recorded in the audit trail.
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* -------------------------------------------------------------------- */}
+      {/* ROW 4: PLATFORM ASSESSMENT PIPELINE (FULL OPERATIONAL TRACKING)      */}
+      {/* -------------------------------------------------------------------- */}
+      <div className="bg-white rounded-2xl border border-slate-200/90 p-5 shadow-xs space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-bold text-slate-900">
+                {isScoped ? `${scopedOrg?.name} Assessment Pipeline` : "Platform Assessment Pipeline"}
+              </h3>
+              {filteredAssessments.length > 10 && (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                  Top 10 of {filteredAssessments.length}
+                </span>
+              )}
+            </div>
+            <p className="text-[11px] text-slate-500 mt-0.5">
+              {isScoped
+                ? `Operational assessments filtered for ${scopedOrg?.name}`
+                : "Operational lifecycle tracking across all organizations, assigned accredited auditors, and status."}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            {/* Status Filter Tabs */}
+            <div className="flex items-center bg-slate-100 p-0.5 rounded-lg text-[11px] font-semibold text-slate-600">
+              {(["All", "Submitted", "InProgress"] as const).map((st) => (
+                <button
+                  key={st}
+                  onClick={() => setStatusFilter(st)}
+                  className={`px-2.5 py-1 rounded-md transition ${
+                    statusFilter === st ? "bg-white text-slate-900 shadow-2xs" : "hover:text-slate-900"
+                  }`}
+                >
+                  {st === "Submitted" ? "Completed" : st}
+                </button>
+              ))}
+            </div>
+
+            <div className="relative">
+              <Search className="h-3.5 w-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <input
+                type="text"
+                placeholder="Search pipeline..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 w-44"
+              />
+            </div>
+            <Link href="/assessments" className="text-xs font-semibold text-blue-600 hover:underline">
+              View All ({filteredAssessments.length}) →
+            </Link>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          {filteredAssessments.length > 0 ? (
             <table className="w-full text-left text-xs">
               <thead className="text-[11px] font-semibold text-slate-400 uppercase border-b border-slate-100">
                 <tr>
-                  <th className="py-2.5">#</th>
                   <th className="py-2.5">Organization</th>
-                  <th className="py-2.5">Active Plan</th>
-                  <th className="py-2.5 text-center">Assessments</th>
-                  <th className="py-2.5 text-center">Users</th>
+                  <th className="py-2.5">Assigned Auditor</th>
+                  <th className="py-2.5">Type</th>
+                  <th className="py-2.5">Framework</th>
                   <th className="py-2.5">Status</th>
-                  <th className="py-2.5">Created Date</th>
-                  <th className="py-2.5 text-right">Actions</th>
+                  <th className="py-2.5 text-right">Created</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {recentOrganizations.map((o) => (
-                  <tr key={o.id} className="hover:bg-slate-50 transition">
-                    <td className="py-2.5 text-slate-400 font-mono">{o.id}</td>
-                    <td className="py-2.5 font-semibold text-slate-800">{o.name}</td>
+                {filteredAssessments.slice(0, 10).map((a) => (
+                  <tr key={a._id} className="hover:bg-slate-50/80 transition-colors">
+                    <td className="py-2.5 font-semibold text-slate-800">
+                      {a.organization?.name || "Client Org"}
+                    </td>
+                    <td className="py-2.5 text-slate-600">
+                      {a.auditor?.name || "Assigned Assessor"}
+                    </td>
                     <td className="py-2.5">
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${o.planColor}`}>
-                        {o.plan}
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-700">
+                        {a.assessmentType}
                       </span>
                     </td>
-                    <td className="py-2.5 text-center font-medium text-slate-700">{o.assessments}</td>
-                    <td className="py-2.5 text-center font-medium text-slate-700">{o.users}</td>
+                    <td className="py-2.5 text-slate-500">v{a.frameworkVersion}</td>
                     <td className="py-2.5">
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                        {o.status}
+                      <span
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold ${
+                          a.status === "Submitted"
+                            ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                            : a.status === "InProgress"
+                            ? "bg-blue-50 text-blue-700 border border-blue-200"
+                            : "bg-slate-100 text-slate-600 border border-slate-200"
+                        }`}
+                      >
+                        <span
+                          className={`h-1.5 w-1.5 rounded-full ${
+                            a.status === "Submitted"
+                              ? "bg-emerald-500"
+                              : a.status === "InProgress"
+                              ? "bg-blue-500 animate-pulse"
+                              : "bg-slate-400"
+                          }`}
+                        />
+                        {a.status}
                       </span>
                     </td>
-                    <td className="py-2.5 text-slate-500">{o.date}</td>
-                    <td className="py-2.5 text-right">
-                      <button className="text-slate-400 hover:text-slate-600 p-1 rounded-md hover:bg-slate-100">
-                        <MoreHorizontal className="h-4 w-4" />
-                      </button>
+                    <td className="py-2.5 text-slate-500 text-right">
+                      {new Date(a.createdAt).toLocaleDateString()}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </div>
+          ) : (
+            <div className="py-8 text-center text-xs text-slate-400">
+              {isScoped
+                ? `No assessment evaluations found matching '${scopedOrg?.name || "current scope"}'.`
+                : "No assessment evaluations match your current filter."}
+            </div>
+          )}
         </div>
 
-        {/* Card 2: Recent Activity (40%) */}
-        <div className="lg:col-span-4 bg-white rounded-xl border border-slate-200/90 p-5 shadow-xs flex flex-col justify-between">
-          <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-            <h3 className="text-sm font-bold text-slate-900">Recent Activity</h3>
-            <Link href="/admin/audit-logs" className="text-xs font-semibold text-blue-600 hover:underline">
-              View All →
+        {filteredAssessments.length > 10 && (
+          <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+            <span>Showing top 10 most recent assessments</span>
+            <Link
+              href="/assessments"
+              className="font-semibold text-blue-600 hover:text-blue-800 transition inline-flex items-center gap-1"
+            >
+              View all {filteredAssessments.length} assessments &rarr;
             </Link>
           </div>
-
-          <div className="py-1 divide-y divide-slate-100 space-y-2">
-            {recentAdminActivity.map((act, i) => {
-              const Icon = act.icon;
-              return (
-                <div key={i} className="pt-2 first:pt-0 flex items-start justify-between gap-3 text-xs">
-                  <div className="flex items-start gap-2.5">
-                    <div className={`p-1.5 rounded-full shrink-0 ${act.color}`}>
-                      <Icon className="h-3.5 w-3.5" />
-                    </div>
-                    <div>
-                      <div className="font-semibold text-slate-900">{act.title}</div>
-                      <div className="text-slate-500 text-[11px] truncate max-w-[190px]">{act.desc}</div>
-                    </div>
-                  </div>
-                  <div className="text-[10px] text-slate-400 shrink-0 whitespace-nowrap">{act.time}</div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+        )}
       </div>
     </div>
   );

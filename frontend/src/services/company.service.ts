@@ -1,25 +1,48 @@
 import { apiClient } from "./apiClient";
-import { Company, CreateCompanyPayload } from "@/types/company.types";
+import {
+  Company,
+  CreateCompanyPayload,
+  UpdateCompanyPayload,
+  VerificationStatus,
+  CompanyStatus,
+  CompanyTrendsResponse,
+} from "@/types/company.types";
 
 export const companyService = {
-  getCompanies: (params?: { page?: number; limit?: number; search?: string; status?: string; tier?: string }) =>
+  getCompanies: (params?: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    status?: string;
+    verificationStatus?: string;
+  }) =>
     apiClient.get<Company[]>("/companies", { params }),
 
   getCompanyById: (id: string) =>
     apiClient.get<Company>(`/companies/${id}`),
 
   createCompany: (payload: CreateCompanyPayload) =>
-    apiClient.post<Company>("/companies", payload),
+    apiClient.post<{ company: Company; user?: any; verification: any }>("/companies", payload),
 
-  updateCompany: (id: string, payload: Partial<CreateCompanyPayload>) =>
+  updateCompany: (id: string, payload: UpdateCompanyPayload) =>
     apiClient.patch<Company>(`/companies/${id}`, payload),
 
-  updateCompanyStatus: (id: string, status: "Active" | "Suspended") =>
-    apiClient.patch(`/companies/${id}/status`, { status }),
+  updateCompanyStatus: (id: string, payload: { status: CompanyStatus; reason?: string } | CompanyStatus) => {
+    const body = typeof payload === "string" ? { status: payload } : payload;
+    return apiClient.patch<{ message: string; company: Company }>(`/companies/${id}/status`, body);
+  },
 
-  verifyCompanyDns: (id: string, status: "Verified" | "Pending" | "Rejected") =>
-    apiClient.post(`/companies/${id}/verify`, { status }),
+  verifyCompanyDns: (
+    id: string,
+    payload: { verificationStatus: VerificationStatus; notes?: string } | VerificationStatus
+  ) => {
+    const body =
+      typeof payload === "string"
+        ? { verificationStatus: payload }
+        : payload;
+    return apiClient.post<{ message: string; company: Company }>(`/companies/${id}/verify`, body);
+  },
 
   getCompanyTrends: (id: string) =>
-    apiClient.get(`/companies/${id}/trends`),
+    apiClient.get<CompanyTrendsResponse>(`/companies/${id}/trends`),
 };

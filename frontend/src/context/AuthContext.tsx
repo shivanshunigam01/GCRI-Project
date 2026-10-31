@@ -11,7 +11,6 @@ interface AuthContextType {
   login: (token: string, user: User) => void;
   logout: () => void;
   refreshUser: () => Promise<void>;
-  isSuperAdmin: boolean;
   isAdmin: boolean;
   isAssessor: boolean;
 }
@@ -25,6 +24,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const refreshUser = useCallback(async () => {
     const token = storage.getToken();
     if (!token) {
+      storage.clear();
       setUser(null);
       setLoading(false);
       return;
@@ -35,6 +35,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (res && res.data) {
         setUser(res.data);
         storage.setUser(res.data);
+      } else {
+        storage.clear();
+        setUser(null);
       }
     } catch {
       storage.clear();
@@ -45,10 +48,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    const cachedUser = storage.getUser<User>();
-    if (cachedUser) {
-      setUser(cachedUser);
-    }
     refreshUser();
   }, [refreshUser]);
 
@@ -66,9 +65,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const isSuperAdmin = user?.role === "SuperAdmin";
-  const isAdmin = user?.role === "SuperAdmin" || user?.role === "Admin";
-  const isAssessor = user?.role === "Assessor";
+  const isAdmin = Boolean(user && user.role === "Admin" && user.status === "Active");
+  const isAssessor = Boolean(user && user.role === "Assessor" && user.status === "Active");
 
   return (
     <AuthContext.Provider
@@ -78,7 +76,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         login,
         logout,
         refreshUser,
-        isSuperAdmin,
         isAdmin,
         isAssessor,
       }}

@@ -1,5 +1,6 @@
-export type UserRole = "SuperAdmin" | "Admin" | "Assessor" | "MembershipApprover";
+export type UserRole = "Admin" | "Assessor" | "MembershipApprover";
 export type UserStatus = "Active" | "Deactivated";
+export type AuthProvider = "credentials" | "google" | "microsoft";
 
 export interface UserCompany {
   _id: string;
@@ -16,13 +17,16 @@ export interface User {
   email: string;
   phone?: string;
   role: UserRole;
-  status?: UserStatus;
+  status: UserStatus;
   isActive?: boolean;
-  mfa?: {
+  authProvider?: AuthProvider;
+  mfa: {
     enabled: boolean;
   };
   mfaEnabled?: boolean;
   companyId?: string | UserCompany | null;
+  invitationExpires?: string;
+  lockUntil?: string;
   lastLogin?: string;
   createdAt?: string;
   updatedAt?: string;
@@ -32,12 +36,23 @@ export interface LoginResponse {
   token?: string;
   user?: User;
   mfaRequired?: boolean;
+  mfaSetupRequired?: boolean;
+  tempToken?: string;
   mfaToken?: string;
+  userId?: string;
 }
 
 export interface MfaVerifyResponse {
   token: string;
   user: User;
+  recoveryCodes?: string[];
+}
+
+export interface SetupMfaResponse {
+  secret: string;
+  qrCodeUrl: string;
+  issuer: string;
+  account: string;
 }
 
 export interface InviteUserPayload {

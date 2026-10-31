@@ -64,11 +64,26 @@ export async function apiRequest<T = any>(
   }
 
   if (!response.ok) {
-    const errorMessage =
+    let errorMessage =
       data?.error?.message ||
       data?.message ||
       (typeof data?.error === "string" ? data.error : null) ||
       `HTTP error ${response.status}`;
+
+    if (data?.error?.details) {
+      if (Array.isArray(data.error.details)) {
+        const issues = data.error.details
+          .map((d: any) => d.message || (d.path ? `${d.path.join(".")}: invalid` : null))
+          .filter(Boolean)
+          .join(". ");
+        if (issues) {
+          errorMessage = `${errorMessage}: ${issues}`;
+        }
+      } else if (typeof data.error.details === "string") {
+        errorMessage = `${errorMessage}: ${data.error.details}`;
+      }
+    }
+
     const error = new Error(errorMessage) as any;
     error.status = response.status;
     error.data = data;
