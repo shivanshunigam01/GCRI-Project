@@ -8,6 +8,8 @@ import {
   forgotPassword,
   resetPassword,
   changePassword,
+  oauthGoogle,
+  oauthMicrosoft,
 } from "../controllers/auth.controller.js";
 import { authenticate } from "../middlewares/auth.js";
 import { authLimiter } from "../middlewares/rateLimiter.js";
@@ -88,11 +90,13 @@ router.post("/register", authLimiter, validateRequest(RegisterSchema), register)
  *             schema:
  *               $ref: '#/components/schemas/LoginResponse'
  *       401:
- *         description: Invalid credentials or MFA token missing/invalid
+ *         description: Invalid credentials or MFA verification required (returns intermediate tempToken with mfa_pending scope)
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
+ *               oneOf:
+ *                 - $ref: '#/components/schemas/MfaChallengeResponse'
+ *                 - $ref: '#/components/schemas/ErrorResponse'
  *       403:
  *         description: Account deactivated or Admin MFA enrollment required
  *         content:
@@ -113,6 +117,102 @@ router.post("/register", authLimiter, validateRequest(RegisterSchema), register)
  *               $ref: '#/components/schemas/ErrorResponse'
  */
 router.post("/login", authLimiter, validateRequest(LoginSchema), login);
+
+/**
+ * @openapi
+ * /api/v1/auth/oauth/google:
+ *   post:
+ *     summary: Google OAuth / OIDC ID token authentication
+ *     description: Authenticates or provisions an Assessor user using a Google OpenID Connect ID token. Automatically binds user to registered organization matching domain.
+ *     tags:
+ *       - OAuth / Single Sign-On
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/OAuthLoginRequest'
+ *     responses:
+ *       200:
+ *         description: Login successful, returns JWT bearer token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/OAuthLoginResponse'
+ *       400:
+ *         description: Missing or malformed ID token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       401:
+ *         description: Invalid or unverified Google ID token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       404:
+ *         description: Organization domain not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       501:
+ *         description: Provider not configured in environment
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
+router.post("/oauth/google", authLimiter, oauthGoogle);
+
+/**
+ * @openapi
+ * /api/v1/auth/oauth/microsoft:
+ *   post:
+ *     summary: Microsoft OAuth / OIDC ID token authentication
+ *     description: Authenticates or provisions an Assessor user using a Microsoft Entra ID OpenID Connect token. Automatically binds user to registered organization matching domain.
+ *     tags:
+ *       - OAuth / Single Sign-On
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/OAuthLoginRequest'
+ *     responses:
+ *       200:
+ *         description: Login successful, returns JWT bearer token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/OAuthLoginResponse'
+ *       400:
+ *         description: Missing or malformed ID token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       401:
+ *         description: Invalid or unverified Microsoft token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       404:
+ *         description: Organization domain not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       501:
+ *         description: Provider not configured in environment
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
+router.post("/oauth/microsoft", authLimiter, oauthMicrosoft);
 
 /**
  * @openapi

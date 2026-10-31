@@ -33,6 +33,54 @@ const options: swaggerJsdoc.Options = {
         description: "Cryptographic password reset tokens, password updates, and credential rotation",
       },
       {
+        name: "Company Management",
+        description: "Organization onboarding, automated DNS legitimacy checks, profile management, and administrative status controls",
+      },
+      {
+        name: "User Management",
+        description: "Assessor and administrator profile management, user invitations, role assignment, and account status controls",
+      },
+      {
+        name: "Dashboard - Admin",
+        description: "Administrative operational statistics, subscription distributions, and non-confidential assessment metadata table (Screen 7 Alignment)",
+      },
+      {
+        name: "Dashboard - Auditor",
+        description: "Auditor workload metrics, 7-pillar progress bars, active assessment resumption, and assigned organizations directory (Screen 1 & 2 Alignment)",
+      },
+      {
+        name: "Assessment Analytics",
+        description: "Executive maturity summaries, pillar radar breakdown, tailored remediation recommendations, and historical trend progression",
+      },
+      {
+        name: "Reports & Exports",
+        description: "Branded PDF audit report generation, download streaming, and multi-sheet Excel (.xlsx) findings export",
+      },
+      {
+        name: "Framework Administration & Versioning",
+        description: "Admin framework configuration, question/control authoring, pillar weights, maturity thresholds, and version publishing with immutability guardrails",
+      },
+      {
+        name: "Admin User Management",
+        description: "Admin password reset initiation, profile management, and account governance",
+      },
+      {
+        name: "Audit Log Explorer",
+        description: "Filterable audit trail query endpoint with searches across actors, actions, entities, and date ranges",
+      },
+      {
+        name: "OAuth / Single Sign-On",
+        description: "Google and Microsoft Azure Entra ID OpenID Connect identity federation and token exchange",
+      },
+      {
+        name: "Webhooks",
+        description: "Outbound signed webhook subscriptions (HMAC-SHA256) and event notification delivery",
+      },
+      {
+        name: "Machine-to-Machine Authentication",
+        description: "Administrative API key generation, revocation, and automated integration access",
+      },
+      {
         name: "System",
         description: "Health checks, database connectivity, and readiness monitoring probes",
       },
@@ -44,6 +92,12 @@ const options: swaggerJsdoc.Options = {
           scheme: "bearer",
           bearerFormat: "JWT",
           description: "Enter your JWT token in the format: Bearer <token>",
+        },
+        ApiKeyAuth: {
+          type: "apiKey",
+          in: "header",
+          name: "x-api-key",
+          description: "Machine-to-Machine API key prefixed with grc_",
         },
       },
       schemas: {
@@ -253,6 +307,270 @@ const options: swaggerJsdoc.Options = {
                 version: { type: "string", example: "1.0.0" },
                 database: { type: "string", example: "connected" },
                 timestamp: { type: "string", format: "date-time" },
+              },
+            },
+            timestamp: { type: "string", format: "date-time" },
+          },
+        },
+        // Milestone 6: MFA Challenge (Intermediate Token Response)
+        MfaChallengeResponse: {
+          type: "object",
+          properties: {
+            success: { type: "boolean", example: false },
+            error: {
+              type: "object",
+              properties: {
+                code: { type: "string", example: "MFA_REQUIRED" },
+                message: { type: "string", example: "Two-factor authentication code is required." },
+                tempToken: {
+                  type: "string",
+                  example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+                  description: "Short-lived intermediate JWT scoped with mfa_pending. Use as Bearer token on /api/v1/auth/mfa/verify",
+                },
+                mfaRequired: { type: "boolean", example: true },
+              },
+            },
+            timestamp: { type: "string", format: "date-time" },
+          },
+        },
+        // Milestone 6: OAuth / Single Sign-On
+        OAuthLoginRequest: {
+          type: "object",
+          required: ["idToken"],
+          properties: {
+            idToken: {
+              type: "string",
+              example: "eyJhbGciOiJSUzI1NiIsImtpZCI6Ij...",
+              description: "JWT ID Token obtained from Google Identity Services or Microsoft Azure Entra ID SDK",
+            },
+          },
+        },
+        OAuthLoginResponse: {
+          type: "object",
+          properties: {
+            success: { type: "boolean", example: true },
+            data: {
+              type: "object",
+              properties: {
+                token: {
+                  type: "string",
+                  example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+                  description: "Authenticated session JWT bearer token",
+                },
+                user: {
+                  type: "object",
+                  properties: {
+                    userId: { type: "string", example: "6716a1b2c3d4e5f6a7b8c9d0" },
+                    email: { type: "string", example: "assessor@company.com" },
+                    name: { type: "string", example: "Alex Morgan" },
+                    role: { type: "string", example: "Assessor" },
+                    authProvider: { type: "string", example: "google" },
+                    companyId: { type: "string", example: "6716a1b2c3d4e5f6a7b8c9d1" },
+                  },
+                },
+              },
+            },
+            timestamp: { type: "string", format: "date-time" },
+          },
+        },
+        // Milestone 6: Machine-to-Machine API Keys
+        ApiKeyCreateRequest: {
+          type: "object",
+          required: ["name", "companyId"],
+          properties: {
+            name: { type: "string", example: "Enterprise Risk Sync Service" },
+            companyId: { type: "string", example: "6716a1b2c3d4e5f6a7b8c9d1" },
+            role: {
+              type: "string",
+              enum: ["Admin", "Assessor", "ReadOnly"],
+              default: "Assessor",
+              example: "Assessor",
+            },
+            expiresInDays: { type: "number", default: 90, example: 90 },
+          },
+        },
+        ApiKeyCreateResponse: {
+          type: "object",
+          properties: {
+            success: { type: "boolean", example: true },
+            data: {
+              type: "object",
+              properties: {
+                apiKey: {
+                  type: "object",
+                  properties: {
+                    id: { type: "string", example: "6716a1b2c3d4e5f6a7b8c9d2" },
+                    name: { type: "string", example: "Enterprise Risk Sync Service" },
+                    companyId: { type: "string", example: "6716a1b2c3d4e5f6a7b8c9d1" },
+                    role: { type: "string", example: "Assessor" },
+                    keyPrefix: { type: "string", example: "grc_live_9fa8" },
+                    status: { type: "string", example: "Active" },
+                    expiresAt: { type: "string", format: "date-time" },
+                  },
+                },
+                secretKey: {
+                  type: "string",
+                  example: "grc_live_9fa82be04a371c...",
+                  description:
+                    "Cryptographic raw API key secret. Stored hashed with SHA-256 and only revealed once upon generation.",
+                },
+              },
+            },
+            timestamp: { type: "string", format: "date-time" },
+          },
+        },
+        ApiKeyListResponse: {
+          type: "object",
+          properties: {
+            success: { type: "boolean", example: true },
+            data: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  _id: { type: "string", example: "6716a1b2c3d4e5f6a7b8c9d2" },
+                  name: { type: "string", example: "Enterprise Risk Sync Service" },
+                  companyId: { type: "string", example: "6716a1b2c3d4e5f6a7b8c9d1" },
+                  role: { type: "string", example: "Assessor" },
+                  keyPrefix: { type: "string", example: "grc_live_9fa8" },
+                  status: { type: "string", example: "Active" },
+                  lastUsedAt: { type: "string", format: "date-time", nullable: true },
+                  expiresAt: { type: "string", format: "date-time" },
+                },
+              },
+            },
+            timestamp: { type: "string", format: "date-time" },
+          },
+        },
+        // Milestone 6: Outbound Signed Webhooks
+        WebhookSubscriptionRequest: {
+          type: "object",
+          required: ["url"],
+          properties: {
+            url: {
+              type: "string",
+              format: "uri",
+              example: "https://api.acme-corp.com/v1/webhooks/graice",
+            },
+            companyId: { type: "string", example: "6716a1b2c3d4e5f6a7b8c9d1" },
+            events: {
+              type: "array",
+              items: { type: "string" },
+              example: ["assessment.submitted", "assessment.completed", "company.verified"],
+            },
+          },
+        },
+        WebhookSubscriptionResponse: {
+          type: "object",
+          properties: {
+            success: { type: "boolean", example: true },
+            data: {
+              type: "object",
+              properties: {
+                webhook: {
+                  type: "object",
+                  properties: {
+                    id: { type: "string", example: "6716a1b2c3d4e5f6a7b8c9d3" },
+                    url: { type: "string", example: "https://api.acme-corp.com/v1/webhooks/graice" },
+                    events: {
+                      type: "array",
+                      items: { type: "string" },
+                      example: ["assessment.submitted"],
+                    },
+                    isActive: { type: "boolean", example: true },
+                  },
+                },
+                signingSecret: {
+                  type: "string",
+                  example: "whsec_38c9fa014b2d...",
+                  description:
+                    "Shared HMAC-SHA256 secret used to verify the X-GRAICE-Signature header on inbound event payloads",
+                },
+              },
+            },
+            timestamp: { type: "string", format: "date-time" },
+          },
+        },
+        WebhookListResponse: {
+          type: "object",
+          properties: {
+            success: { type: "boolean", example: true },
+            data: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  _id: { type: "string", example: "6716a1b2c3d4e5f6a7b8c9d3" },
+                  url: { type: "string", example: "https://api.acme-corp.com/v1/webhooks/graice" },
+                  events: { type: "array", items: { type: "string" } },
+                  isActive: { type: "boolean", example: true },
+                  createdAt: { type: "string", format: "date-time" },
+                },
+              },
+            },
+            timestamp: { type: "string", format: "date-time" },
+          },
+        },
+        WebhookTestResponse: {
+          type: "object",
+          properties: {
+            success: { type: "boolean", example: true },
+            data: {
+              type: "object",
+              properties: {
+                delivered: { type: "boolean", example: true },
+                statusCode: { type: "number", example: 200 },
+                responseTimeMs: { type: "number", example: 142 },
+                signatureVerified: { type: "boolean", example: true },
+              },
+            },
+            timestamp: { type: "string", format: "date-time" },
+          },
+        },
+        // Milestone 6: Assessment Notifications & Reminders
+        AssessmentReminderResponse: {
+          type: "object",
+          properties: {
+            success: { type: "boolean", example: true },
+            data: {
+              type: "object",
+              properties: {
+                message: {
+                  type: "string",
+                  example: "Assessment reminder email dispatched successfully",
+                },
+                recipient: { type: "string", example: "jane.client@acme.ai" },
+                assessmentId: { type: "string", example: "6716a1b2c3d4e5f6a7b8c9d4" },
+                daysRemaining: { type: "number", example: 5 },
+              },
+            },
+            timestamp: { type: "string", format: "date-time" },
+          },
+        },
+        AssessmentCompletionResponse: {
+          type: "object",
+          properties: {
+            success: { type: "boolean", example: true },
+            data: {
+              type: "object",
+              properties: {
+                message: {
+                  type: "string",
+                  example: "Assessment completion scorecard alert sent successfully",
+                },
+                recipients: {
+                  type: "array",
+                  items: { type: "string" },
+                  example: ["jane.client@acme.ai"],
+                },
+                scorecard: {
+                  type: "object",
+                  properties: {
+                    maturityLevel: { type: "string", example: "Advanced" },
+                    compliancePercentage: { type: "number", example: 87.5 },
+                    totalExceptions: { type: "number", example: 2 },
+                  },
+                },
               },
             },
             timestamp: { type: "string", format: "date-time" },

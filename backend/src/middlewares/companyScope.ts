@@ -1,38 +1,105 @@
 import { Request, Response, NextFunction } from "express";
+import { Types } from "mongoose";
 import { sendError } from "../utils/response.js";
+import { User } from "../models/User.js";
+import { AuditorOrganization } from "../models/AuditorOrganization.js";
 
 /**
- * Ensures non-Admin users can only access resources belonging to their assigned company.
+ * Checks whether an Auditor/Assessor is authorized to assess a given organization.
+ * An auditor is authorized if:
+ * 1. An active record exists in AuditorOrganization mapping, OR
+ * 2. The user's primary companyId matches (backward compatibility).
+ */
+export async function isAuditorAssignedToOrg(
+  userId: string,
+  organizationId: string
+): Promise<boolean> {
+  if (!userId || !organizationId) return false;
+
+  const mapping = await AuditorOrganization.findOne({
+    auditorId: new Types.ObjectId(userId),
+    organizationId: new Types.ObjectId(organizationId),
+    status: "Active",
+  });
+
+  if (mapping) return true;
+
+  // Fallback: check legacy single companyId on user
+  const user = await User.findById(userId);
+  if (user?.companyId && user.companyId.toString() === organizationId.toString()) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Returns all organization IDs an Auditor/Assessor has permission to access.
+ */
+export async function getAssignedOrganizationIds(userId: string): Promise<Types.ObjectId[]> {
+  const mappings = await AuditorOrganization.find({
+    auditorId: new Types.ObjectId(userId),
+    status: "Active",
+  }).select("organizationId");
+
+  const orgIds: Types.ObjectId[] = mappings.map((m) => m.organizationId);
+
+  const user = await User.findById(userId);
+  if (user?.companyId && !orgIds.some((id) => id.toString() === user.companyId?.toString())) {
+    orgIds.push(user.companyId);
+  }
+
+  return orgIds;
+}
+
+/**
+ * Ensures non-SuperAdmin users can only access resources belonging to their assigned company or organization.
+ * Admins are strictly scoped to their own organization (companyId).
+ * SuperAdmins retain platform-wide global access.
  * Defends against Insecure Direct Object References (IDOR).
  *
- * @param paramName The route parameter name holding the company ID (defaults to 'companyId')
+ * @param paramName The route parameter name holding the company ID (defaults to 'id')
  */
-export function requireCompanyScope(paramName = "companyId") {
-  return (req: Request, res: Response, next: NextFunction) => {
+export function requireCompanyScope(paramName = "id") {
+  return async (req: Request, res: Response, next: NextFunction) => {
     if (!req.user) {
       return sendError(res, "Authentication required", 401, "UNAUTHORIZED");
     }
 
-    // Admins have platform-wide access
-    if (req.user.role === "Admin") {
+    // SuperAdmins have platform-wide global access
+    if (req.user.role === "SuperAdmin") {
       return next();
     }
 
-    const targetCompanyId = req.params[paramName] || req.body?.companyId;
+    const targetCompanyId =
+      req.params[paramName] ||
+      req.params.id ||
+      req.params.companyId ||
+      req.body?.companyId;
 
-    if (!req.user.companyId) {
+    if (!targetCompanyId) {
+      return next();
+    }
+
+    // Organization Admins are strictly isolated to their own companyId
+    if (req.user.role === "Admin") {
+      if (req.user.companyId && req.user.companyId.toString() === targetCompanyId.toString()) {
+        return next();
+      }
       return sendError(
         res,
-        "User is not assigned to any organization",
+        "Access denied. You do not have permission to access resources belonging to this organization.",
         403,
-        "NO_COMPANY_ASSIGNED"
+        "CROSS_COMPANY_ACCESS_DENIED"
       );
     }
 
-    if (targetCompanyId && targetCompanyId.toString() !== req.user.companyId.toString()) {
+    // Assessors / Auditors: check if assigned to org
+    const isAssigned = await isAuditorAssignedToOrg(req.user.userId, targetCompanyId);
+    if (!isAssigned) {
       return sendError(
         res,
-        "Access denied. You do not have permission to access resources belonging to another company.",
+        "Access denied. You do not have permission to access resources belonging to this organization.",
         403,
         "CROSS_COMPANY_ACCESS_DENIED"
       );
@@ -47,28 +114,74 @@ export function requireCompanyScope(paramName = "companyId") {
  *
  * @param req Express Request containing decoded user
  * @param baseFilter Existing query filter
- * @returns Modified query filter scoped by companyId
+ * @param companyField The field name in the collection representing the company (defaults to 'companyId', or '_id' for Company model)
+ * @returns Modified query filter scoped by assigned organization IDs
  */
-export function scopeQueryByCompany<T extends Record<string, unknown>>(
+export async function scopeQueryByCompanyAsync<T extends Record<string, unknown>>(
   req: Request,
-  baseFilter: T = {} as T
-): T {
-  // Admins can query globally
-  if (req.user?.role === "Admin") {
+  baseFilter: T = {} as T,
+  companyField = "companyId"
+): Promise<T> {
+  // SuperAdmins can query globally
+  if (req.user?.role === "SuperAdmin") {
     return baseFilter;
   }
 
-  // Assessors & other roles are scoped strictly to their company
-  if (req.user?.companyId) {
+  // Organization Admins are scoped to their own company
+  if (req.user?.role === "Admin") {
+    if (req.user?.companyId) {
+      return {
+        ...baseFilter,
+        [companyField]: req.user.companyId,
+      };
+    }
     return {
       ...baseFilter,
-      companyId: req.user.companyId,
+      [companyField]: null,
     };
+  }
+
+  // Assessors / Auditors are scoped to their assigned organizations
+  if (req.user?.userId) {
+    const orgIds = await getAssignedOrganizationIds(req.user.userId);
+    if (orgIds.length > 0) {
+      return {
+        ...baseFilter,
+        [companyField]: { $in: orgIds },
+      };
+    }
   }
 
   // If user has no company assigned, prevent leaking any records
   return {
     ...baseFilter,
-    companyId: null,
+    [companyField]: null,
+  };
+}
+
+/**
+ * Synchronous backward-compatible fallback for scoping queries.
+ */
+export function scopeQueryByCompany<T extends Record<string, unknown>>(
+  req: Request,
+  baseFilter: T = {} as T,
+  companyField = "companyId"
+): T {
+  // SuperAdmins can query globally
+  if (req.user?.role === "SuperAdmin") {
+    return baseFilter;
+  }
+
+  // Organization Admins and Users scoped to companyId
+  if (req.user?.companyId) {
+    return {
+      ...baseFilter,
+      [companyField]: req.user.companyId,
+    };
+  }
+
+  return {
+    ...baseFilter,
+    [companyField]: null,
   };
 }

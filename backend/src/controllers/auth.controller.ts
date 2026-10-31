@@ -5,6 +5,7 @@ import crypto from "crypto";
 import { generateSecret, generateURI, verifySync } from "otplib";
 import QRCode from "qrcode";
 import { User, IUser } from "../models/User.js";
+import { Company } from "../models/Company.js";
 import { sendSuccess, sendError } from "../utils/response.js";
 import { AuditLog } from "../models/AuditLog.js";
 
@@ -80,6 +81,15 @@ export async function login(req: Request, res: Response, next: NextFunction) {
       );
     }
 
+    if (!user.passwordHash) {
+      return sendError(
+        res,
+        "Account password has not been set. Please complete your invitation setup first.",
+        401,
+        "PASSWORD_NOT_SET"
+      );
+    }
+
     const match = await bcrypt.compare(password, user.passwordHash);
     if (!match) {
       user.loginAttempts += 1;
@@ -93,12 +103,25 @@ export async function login(req: Request, res: Response, next: NextFunction) {
     // MFA Challenge if MFA is enabled on user account
     if (user.mfa?.enabled) {
       if (!mfaToken) {
+        const secret = process.env.JWT_SECRET || "default_jwt_secret_dev";
+        const tempToken = jwt.sign(
+          {
+            userId: user._id.toString(),
+            email: user.email,
+            role: user.role,
+            companyId: user.companyId?.toString(),
+            scope: "mfa_pending",
+          },
+          secret,
+          { expiresIn: "5m" }
+        );
+
         return sendError(
           res,
           "Multi-factor authentication code is required",
           401,
           "MFA_REQUIRED",
-          { mfaRequired: true }
+          { mfaRequired: true, tempToken }
         );
       }
 
@@ -139,15 +162,28 @@ export async function login(req: Request, res: Response, next: NextFunction) {
         await user.save();
         return sendError(res, "Invalid MFA verification or recovery code", 401, "INVALID_MFA_TOKEN");
       }
-    } else if (user.role === "Admin") {
-      // Milestone 1.3: MFA Enforcement for Admin Accounts
-      // Admin accounts without MFA enabled must complete enrollment
+    } else if (user.role === "SuperAdmin" || user.role === "Admin") {
+      // MFA Enforcement for SuperAdmin and Admin Accounts
+      // Administrative accounts without MFA enabled must complete enrollment
+      const secret = process.env.JWT_SECRET || "default_jwt_secret_dev";
+      const tempToken = jwt.sign(
+        {
+          userId: user._id.toString(),
+          email: user.email,
+          role: user.role,
+          companyId: user.companyId?.toString(),
+          scope: "mfa_pending",
+        },
+        secret,
+        { expiresIn: "5m" }
+      );
+
       return sendError(
         res,
-        "Multi-factor authentication is mandatory for Admin accounts. Please enroll in MFA before logging in.",
+        "Multi-factor authentication is mandatory for Administrative accounts. Please enroll in MFA before logging in.",
         403,
         "ADMIN_MFA_ENFORCEMENT_REQUIRED",
-        { mfaSetupRequired: true, userId: user._id }
+        { mfaSetupRequired: true, userId: user._id, tempToken }
       );
     }
 
@@ -166,6 +202,7 @@ export async function login(req: Request, res: Response, next: NextFunction) {
         email: user.email,
         role: user.role,
         companyId: user.companyId?.toString(),
+        scope: "authenticated",
       },
       secret,
       { expiresIn: expiresIn as jwt.SignOptions["expiresIn"] }
@@ -291,8 +328,23 @@ export async function verifyMfa(req: Request, res: Response, next: NextFunction)
       userAgent: req.headers["user-agent"],
     });
 
+    const secret = process.env.JWT_SECRET || "default_jwt_secret_dev";
+    const expiresIn = process.env.JWT_EXPIRES_IN || "7d";
+    const fullToken = jwt.sign(
+      {
+        userId: user._id.toString(),
+        email: user.email,
+        role: user.role,
+        companyId: user.companyId?.toString(),
+        scope: "authenticated",
+      },
+      secret,
+      { expiresIn: expiresIn as jwt.SignOptions["expiresIn"] }
+    );
+
     return sendSuccess(res, {
       message: "Multi-Factor Authentication enabled successfully",
+      token: fullToken,
       recoveryCodes: unhashedRecoveryCodes,
     });
   } catch (err) {
@@ -317,13 +369,17 @@ export async function disableMfa(req: Request, res: Response, next: NextFunction
       return sendError(res, "MFA is not currently enabled for this account", 400, "MFA_NOT_ENABLED");
     }
 
-    if (user.role === "Admin") {
+    if (user.role === "SuperAdmin" || user.role === "Admin") {
       return sendError(
         res,
-        "MFA is mandatory for Admin accounts and cannot be disabled.",
+        "MFA is mandatory for Administrative accounts and cannot be disabled.",
         403,
         "ADMIN_MFA_MANDATORY"
       );
+    }
+
+    if (!user.passwordHash) {
+      return sendError(res, "Account password has not been initialized", 401, "INVALID_CREDENTIALS");
     }
 
     const matchPassword = await bcrypt.compare(password, user.passwordHash);
@@ -471,6 +527,10 @@ export async function changePassword(req: Request, res: Response, next: NextFunc
       return sendError(res, "User not found", 404, "USER_NOT_FOUND");
     }
 
+    if (!user.passwordHash) {
+      return sendError(res, "Account password has not been initialized", 400, "PASSWORD_NOT_SET");
+    }
+
     const match = await bcrypt.compare(currentPassword, user.passwordHash);
     if (!match) {
       return sendError(res, "Current password does not match", 401, "INVALID_CURRENT_PASSWORD");
@@ -492,6 +552,235 @@ export async function changePassword(req: Request, res: Response, next: NextFunc
 
     return sendSuccess(res, {
       message: "Password changed successfully",
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * Google OAuth / OIDC ID token authentication
+ */
+export async function oauthGoogle(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { idToken, mock, email: mockEmail, name: mockName } = req.body;
+
+    if (!idToken) {
+      return sendError(res, "Google idToken is required", 400, "ID_TOKEN_REQUIRED");
+    }
+
+    let verifiedEmail: string;
+    let verifiedName: string;
+    let verifiedSub: string;
+
+    const googleClientId = process.env.GOOGLE_CLIENT_ID;
+
+    if (googleClientId) {
+      // Production verification against Google tokeninfo endpoint
+      const response = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`);
+      if (!response.ok) {
+        return sendError(res, "Invalid Google ID token", 401, "INVALID_OAUTH_TOKEN");
+      }
+      const data = (await response.json()) as { email?: string; name?: string; sub?: string; aud?: string };
+      if (!data.email || (data.aud && data.aud !== googleClientId)) {
+        return sendError(res, "Google token audience mismatch or email missing", 401, "OAUTH_AUDIENCE_MISMATCH");
+      }
+      verifiedEmail = data.email.toLowerCase();
+      verifiedName = data.name || "Google User";
+      verifiedSub = data.sub || "";
+    } else if (mock && mockEmail) {
+      // Development mock bypass for testing
+      verifiedEmail = mockEmail.toLowerCase();
+      verifiedName = mockName || "Mock Google User";
+      verifiedSub = `mock-google-sub-${Date.now()}`;
+    } else {
+      return sendError(
+        res,
+        "Google OAuth/OIDC provider is not configured on this environment. Set GOOGLE_CLIENT_ID in .env",
+        501,
+        "OIDC_PROVIDER_NOT_CONFIGURED"
+      );
+    }
+
+    // Find or link user
+    let user = await User.findOne({ email: verifiedEmail });
+    if (!user) {
+      // Auto-provision if company domain matches
+      const domain = verifiedEmail.split("@")[1];
+      const company = await Company.findOne({ domain });
+      if (!company) {
+        return sendError(
+          res,
+          "No registered organization found for this domain. Please contact your administrator.",
+          404,
+          "ORGANIZATION_NOT_FOUND"
+        );
+      }
+
+      user = await User.create({
+        email: verifiedEmail,
+        name: verifiedName,
+        role: "Assessor",
+        status: "Active",
+        companyId: company._id,
+        authProvider: "google",
+        oauthId: verifiedSub,
+      });
+    } else {
+      user.authProvider = "google";
+      user.oauthId = verifiedSub;
+      user.lastLogin = new Date();
+      await user.save();
+    }
+
+    const secret = process.env.JWT_SECRET || "default_jwt_secret_dev";
+    const expiresIn = process.env.JWT_EXPIRES_IN || "7d";
+
+    const token = jwt.sign(
+      {
+        userId: user._id.toString(),
+        email: user.email,
+        role: user.role,
+        companyId: user.companyId?.toString(),
+        scope: "authenticated",
+      },
+      secret,
+      { expiresIn: expiresIn as jwt.SignOptions["expiresIn"] }
+    );
+
+    await AuditLog.create({
+      actorId: user._id,
+      actorEmail: user.email,
+      action: "OAUTH_LOGIN",
+      entity: "User",
+      entityId: user._id.toString(),
+      after: { provider: "google" },
+      ipAddress: req.ip,
+      userAgent: req.headers["user-agent"],
+    });
+
+    return sendSuccess(res, {
+      token,
+      user: {
+        userId: user._id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        companyId: user.companyId,
+        authProvider: "google",
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * Microsoft OAuth / OIDC ID token authentication
+ */
+export async function oauthMicrosoft(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { idToken, mock, email: mockEmail, name: mockName } = req.body;
+
+    if (!idToken) {
+      return sendError(res, "Microsoft idToken is required", 400, "ID_TOKEN_REQUIRED");
+    }
+
+    let verifiedEmail: string;
+    let verifiedName: string;
+    let verifiedSub: string;
+
+    const msClientId = process.env.MICROSOFT_CLIENT_ID;
+
+    if (msClientId) {
+      const response = await fetch(`https://graph.microsoft.com/oidc/userinfo`, {
+        headers: { Authorization: `Bearer ${idToken}` },
+      });
+      if (!response.ok) {
+        return sendError(res, "Invalid Microsoft ID token", 401, "INVALID_OAUTH_TOKEN");
+      }
+      const data = (await response.json()) as { email?: string; name?: string; sub?: string };
+      verifiedEmail = (data.email || "").toLowerCase();
+      verifiedName = data.name || "Microsoft User";
+      verifiedSub = data.sub || "";
+    } else if (mock && mockEmail) {
+      verifiedEmail = mockEmail.toLowerCase();
+      verifiedName = mockName || "Mock Microsoft User";
+      verifiedSub = `mock-ms-sub-${Date.now()}`;
+    } else {
+      return sendError(
+        res,
+        "Microsoft OAuth/OIDC provider is not configured on this environment. Set MICROSOFT_CLIENT_ID in .env",
+        501,
+        "OIDC_PROVIDER_NOT_CONFIGURED"
+      );
+    }
+
+    let user = await User.findOne({ email: verifiedEmail });
+    if (!user) {
+      const domain = verifiedEmail.split("@")[1];
+      const company = await Company.findOne({ domain });
+      if (!company) {
+        return sendError(
+          res,
+          "No registered organization found for this domain. Please contact your administrator.",
+          404,
+          "ORGANIZATION_NOT_FOUND"
+        );
+      }
+
+      user = await User.create({
+        email: verifiedEmail,
+        name: verifiedName,
+        role: "Assessor",
+        status: "Active",
+        companyId: company._id,
+        authProvider: "microsoft",
+        oauthId: verifiedSub,
+      });
+    } else {
+      user.authProvider = "microsoft";
+      user.oauthId = verifiedSub;
+      user.lastLogin = new Date();
+      await user.save();
+    }
+
+    const secret = process.env.JWT_SECRET || "default_jwt_secret_dev";
+    const expiresIn = process.env.JWT_EXPIRES_IN || "7d";
+
+    const token = jwt.sign(
+      {
+        userId: user._id.toString(),
+        email: user.email,
+        role: user.role,
+        companyId: user.companyId?.toString(),
+        scope: "authenticated",
+      },
+      secret,
+      { expiresIn: expiresIn as jwt.SignOptions["expiresIn"] }
+    );
+
+    await AuditLog.create({
+      actorId: user._id,
+      actorEmail: user.email,
+      action: "OAUTH_LOGIN",
+      entity: "User",
+      entityId: user._id.toString(),
+      after: { provider: "microsoft" },
+      ipAddress: req.ip,
+      userAgent: req.headers["user-agent"],
+    });
+
+    return sendSuccess(res, {
+      token,
+      user: {
+        userId: user._id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        companyId: user.companyId,
+        authProvider: "microsoft",
+      },
     });
   } catch (err) {
     next(err);

@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
-import { UserRole } from "../models/User.js";
+import { User, UserRole } from "../models/User.js";
 import { sendError } from "../utils/response.js";
 
 export interface TokenPayload {
@@ -8,6 +8,7 @@ export interface TokenPayload {
   email: string;
   role: UserRole;
   companyId?: string;
+  scope?: "authenticated" | "mfa_pending";
 }
 
 declare global {
@@ -19,7 +20,7 @@ declare global {
   }
 }
 
-export function authenticate(req: Request, res: Response, next: NextFunction) {
+export async function authenticate(req: Request, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
     return sendError(res, "Authorization token missing or malformed", 401, "UNAUTHORIZED");
@@ -30,7 +31,32 @@ export function authenticate(req: Request, res: Response, next: NextFunction) {
 
   try {
     const decoded = jwt.verify(token, secret) as TokenPayload;
+
+    // If token has mfa_pending scope, only allow MFA enrollment / verification endpoints
+    if (decoded.scope === "mfa_pending") {
+      const allowedEndpoints = ["/mfa/generate", "/mfa/verify"];
+      const isMfaEndpoint = allowedEndpoints.some(
+        (endpoint) => req.path.endsWith(endpoint) || req.originalUrl.endsWith(endpoint)
+      );
+      if (!isMfaEndpoint) {
+        return sendError(
+          res,
+          "MFA verification required before accessing this endpoint",
+          403,
+          "MFA_VERIFICATION_REQUIRED"
+        );
+      }
+    }
+
     req.user = decoded;
+
+    if (!req.user.companyId && req.user.userId) {
+      const u = await User.findById(req.user.userId).select("companyId");
+      if (u?.companyId) {
+        req.user.companyId = u.companyId.toString();
+      }
+    }
+
     next();
   } catch {
     return sendError(res, "Invalid or expired token", 401, "INVALID_TOKEN");
