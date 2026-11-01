@@ -25,12 +25,15 @@ export default function AuthLayout({
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(20,184,166,0.12),_transparent_55%)]" aria-hidden />
 
       <div className="relative z-10 sm:mx-auto sm:w-full sm:max-w-md px-4">
+        {/* Same brand mark as dashboard sidebar (dark-background logo asset) */}
         <div className="flex justify-center">
-          <div className="rounded-2xl bg-white/95 p-3 shadow-lg ring-1 ring-white/20 backdrop-blur-sm">
-            <img src="/logo.png" alt="GCRAI Logo" className="h-11 w-auto object-contain" />
-          </div>
+          <img
+            src="/logo.png"
+            alt="Global Council for Responsible AI"
+            className="h-9 w-auto max-w-[190px] object-contain sm:h-10 sm:max-w-[220px]"
+          />
         </div>
-        <h2 className="mt-5 text-center text-2xl font-bold tracking-tight text-white drop-shadow-sm">
+        <h2 className="mt-4 text-center text-xl sm:text-2xl font-bold tracking-tight text-white drop-shadow-sm">
           GCRAI Assessment Platform
         </h2>
         <p className="mt-1.5 text-center text-sm text-slate-200/95 max-w-sm mx-auto">

@@ -261,41 +261,6 @@ export default function LoginPage() {
         </div>
       </div>
 
-      {/* Quick Fill Testing Credentials */}
-      <div className="pt-2 border-t border-slate-100 space-y-2">
-        <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider text-center">
-          1-Click Quick Fill Credentials
-        </p>
-        <div className="grid grid-cols-2 gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              setEmail("auditor@graice.io");
-              setPassword("Auditor@123456");
-              setMfaToken("");
-              setShowMfa(false);
-              setError(null);
-            }}
-            className="py-2 px-2.5 rounded-lg border border-emerald-200 bg-emerald-50/50 hover:bg-emerald-100 text-[11px] font-semibold text-emerald-800 transition text-center"
-          >
-            Direct Login: Auditor (Piyush)
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setEmail("admin@graice.io");
-              setPassword("Admin@123456");
-              setMfaToken("11223344");
-              setShowMfa(true);
-              setError(null);
-            }}
-            className="py-2 px-2.5 rounded-lg border border-purple-200 bg-purple-50/50 hover:bg-purple-100 text-[11px] font-semibold text-purple-800 transition text-center"
-          >
-            Super Admin (+ MFA)
-          </button>
-        </div>
-      </div>
-
       <div className="border-t border-slate-200 pt-3 text-center">
         <p className="text-xs text-slate-500">
           Have an invitation link?{" "}
