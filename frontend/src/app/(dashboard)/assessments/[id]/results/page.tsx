@@ -9,6 +9,7 @@ import {
   AssessmentSummaryResponse,
   AssessmentPillarsResponse,
 } from "@/types/assessment.types";
+import { AssessmentResultsSkeleton } from "@/components/shared/PageSkeletons";
 import {
   ArrowLeft,
   Download,
@@ -149,20 +150,7 @@ export default function AssessmentResultsPage({
   }
 
   if (loading) {
-    return (
-      <div className="space-y-6 animate-pulse">
-        <div className="h-10 bg-slate-200 rounded-lg w-1/3" />
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-          {[...Array(4)].map((_, i) => (
-            <div key={i} className="h-28 bg-white rounded-xl border border-slate-200" />
-          ))}
-        </div>
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-[400px]">
-          <div className="lg:col-span-6 bg-white rounded-xl border border-slate-200" />
-          <div className="lg:col-span-6 bg-white rounded-xl border border-slate-200" />
-        </div>
-      </div>
-    );
+    return <AssessmentResultsSkeleton />;
   }
 
   if (error || !summary) {

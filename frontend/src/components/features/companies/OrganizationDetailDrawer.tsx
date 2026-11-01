@@ -38,6 +38,7 @@ import { assessmentService } from "@/services/assessment.service";
 import { userService } from "@/services/user.service";
 import { companyService } from "@/services/company.service";
 import Modal, { ConfirmationVariant } from "@/components/ui/Modal";
+import { ScreenBusyOverlay } from "@/components/shared/ScreenBusyOverlay";
 
 interface OrganizationDetailDrawerProps {
   company: Company | null;
@@ -56,9 +57,11 @@ export default function OrganizationDetailDrawer({
 }: OrganizationDetailDrawerProps) {
   const [activeTab, setActiveTab] = useState<TabType>("overview");
   const [company, setCompany] = useState<Company | null>(initialCompany);
+  const [profileRefreshing, setProfileRefreshing] = useState(false);
 
   // Fetch fresh company profile (including clientUser from backend)
   const fetchFreshCompany = useCallback(async (id: string) => {
+    setProfileRefreshing(true);
     try {
       const res = await companyService.getCompanyById(id);
       if (res?.data) {
@@ -66,6 +69,8 @@ export default function OrganizationDetailDrawer({
       }
     } catch (err) {
       console.error("Failed to load enriched company details:", err);
+    } finally {
+      setProfileRefreshing(false);
     }
   }, []);
 
@@ -335,7 +340,8 @@ export default function OrganizationDetailDrawer({
   const latestAssessment = assessments[0] || null;
 
   return (
-    <div className="w-[390px] xl:w-[420px] bg-white border-l border-slate-200/90 flex flex-col h-full shrink-0 shadow-xl z-20 animate-in slide-in-from-right duration-200">
+    <div className="relative w-[390px] xl:w-[420px] bg-white border-l border-slate-200/90 flex flex-col h-full shrink-0 shadow-xl z-20 animate-in slide-in-from-right duration-200">
+      <ScreenBusyOverlay show={profileRefreshing} label="Updating organization…" />
       {/* Header (Matching Reference Screen 4) */}
       <div className="p-4 border-b border-slate-200/80 bg-slate-50/40">
         <div className="flex items-start justify-between gap-3">
@@ -924,9 +930,10 @@ export default function OrganizationDetailDrawer({
 
             {/* List of Assigned Auditors */}
             {auditorsLoading ? (
-              <div className="py-8 text-center text-slate-400 flex flex-col items-center gap-2">
-                <RefreshCw className="h-5 w-5 animate-spin text-teal-600" />
-                <span>Loading assigned auditors...</span>
+              <div className="py-2 space-y-3" aria-busy aria-label="Loading auditors">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="h-14 rounded-lg bg-slate-100 animate-pulse" />
+                ))}
               </div>
             ) : auditors.length === 0 ? (
               <div className="p-5 bg-slate-50 border border-slate-200 rounded-xl text-center space-y-1.5">

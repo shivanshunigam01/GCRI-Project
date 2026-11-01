@@ -7,6 +7,7 @@ import { dashboardService } from "@/services/dashboard.service";
 import { assessmentService } from "@/services/assessment.service";
 import { companyService } from "@/services/company.service";
 import { StatCard } from "@/components/shared/StatCard";
+import { DashboardPageSkeleton } from "@/components/shared/PageSkeletons";
 import { AnimatedNumber } from "@/components/ui/AnimatedNumber";
 import {
   AuditorDashboardSummary,
@@ -160,7 +161,7 @@ export default function DashboardPage() {
   }, [roleView, refreshTrigger]);
 
   if (loading) {
-    return <DashboardSkeleton roleView={roleView} />;
+    return <DashboardPageSkeleton roleView={roleView} />;
   }
 
   if (error) {
@@ -205,33 +206,6 @@ export default function DashboardPage() {
   );
 }
 
-/* -------------------------------------------------------------------------- */
-/*                               LOADING SKELETON                             */
-/* -------------------------------------------------------------------------- */
-
-function DashboardSkeleton({ roleView }: { roleView: "Admin" | "Auditor" }) {
-  return (
-    <div className="space-y-6 animate-pulse">
-      <div className="flex justify-between items-center">
-        <div className="h-9 bg-slate-200 rounded-lg w-1/3" />
-        <div className="h-9 bg-slate-200 rounded-lg w-40" />
-      </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {[...Array(4)].map((_, i) => (
-          <div key={i} className="h-28 bg-white rounded-xl border border-slate-200 p-5 space-y-3">
-            <div className="h-4 bg-slate-200 rounded w-1/2" />
-            <div className="h-8 bg-slate-200 rounded w-1/3" />
-          </div>
-        ))}
-      </div>
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-        <div className="lg:col-span-5 h-80 bg-white rounded-xl border border-slate-200" />
-        <div className="lg:col-span-4 h-80 bg-white rounded-xl border border-slate-200" />
-        <div className="lg:col-span-3 h-80 bg-white rounded-xl border border-slate-200" />
-      </div>
-    </div>
-  );
-}
 
 interface DonutSegmentInput {
   key: string;

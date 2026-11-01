@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { AuthProvider } from "@/context/AuthContext";
+import { ApiLoadingProvider } from "@/context/ApiLoadingContext";
+import { ApiLoadingBar } from "@/components/shared/ApiLoadingBar";
 
 export const metadata: Metadata = {
   title: "GCRAI - Enterprise AI Governance & Assessment Platform",
@@ -23,7 +25,12 @@ export default function RootLayout({
         />
       </head>
       <body className="antialiased min-h-screen bg-slate-50 text-slate-900 selection:bg-blue-600 selection:text-white">
-        <AuthProvider>{children}</AuthProvider>
+        <ApiLoadingProvider>
+          <AuthProvider>
+            <ApiLoadingBar />
+            {children}
+          </AuthProvider>
+        </ApiLoadingProvider>
       </body>
     </html>
   );

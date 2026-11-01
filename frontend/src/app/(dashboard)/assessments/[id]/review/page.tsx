@@ -8,6 +8,7 @@ import { assessmentService } from "@/services/assessment.service";
 import {
   AssessmentSession,
 } from "@/types/assessment.types";
+import { AssessmentReviewSkeleton } from "@/components/shared/PageSkeletons";
 import {
   ArrowLeft,
   Shield,
@@ -144,13 +145,7 @@ export default function AssessmentReviewPage({
   }
 
   if (loading) {
-    return (
-      <div className="space-y-6 animate-pulse">
-        <div className="h-10 bg-slate-200 rounded-lg w-1/3" />
-        <div className="h-32 bg-white rounded-xl border border-slate-200" />
-        <div className="h-80 bg-white rounded-xl border border-slate-200" />
-      </div>
-    );
+    return <AssessmentReviewSkeleton />;
   }
 
   if (error || !session) {

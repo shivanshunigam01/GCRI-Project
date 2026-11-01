@@ -5,6 +5,7 @@ import { useAuth } from "@/context/AuthContext";
 import { apiKeyService, ApiKeyItem } from "@/services/apiKey.service";
 import { companyService } from "@/services/company.service";
 import { Company } from "@/types/company.types";
+import { ApiKeysPageSkeleton, DataTableSkeleton } from "@/components/shared/PageSkeletons";
 import {
   Lock,
   Key,
@@ -157,6 +158,10 @@ export default function ApiKeysPage() {
   const activeKeysCount = keys.filter((k) => k.isActive).length;
   const revokedKeysCount = keys.filter((k) => !k.isActive).length;
 
+  if (loading && keys.length === 0 && !error) {
+    return <ApiKeysPageSkeleton />;
+  }
+
   return (
     <div className="space-y-8 max-w-7xl mx-auto pb-12">
       {/* Header */}
@@ -256,9 +261,8 @@ export default function ApiKeysPage() {
 
         <div className="overflow-x-auto">
           {loading ? (
-            <div className="p-12 text-center space-y-3">
-              <RefreshCw className="h-6 w-6 text-blue-600 animate-spin mx-auto" />
-              <p className="text-xs text-slate-500">Loading API credentials...</p>
+            <div className="p-4">
+              <DataTableSkeleton rows={5} columns={5} className="border-0 shadow-none" />
             </div>
           ) : keys.length === 0 ? (
             <div className="p-12 text-center text-slate-400 text-xs">

@@ -43,20 +43,8 @@ The server will start on `http://localhost:5000`.
 
 ### 3. Health Check
 ```bash
-curl http://localhost:5001/api/v1/health
+curl http://localhost:5000/api/v1/health
 ```
-
-### 4. API documentation (Swagger)
-
-Generated from `src/config/swagger.ts` and route annotations (not a separate static file in git). Served by the running API:
-
-| Environment | Swagger UI | OpenAPI JSON |
-|-------------|------------|--------------|
-| **Local** (`PORT=5001`) | http://localhost:5001/api-docs | http://localhost:5001/api-docs.json |
-| **Local (alias)** | http://localhost:5001/api/v1/docs | same JSON |
-| **Production** | https://backend.shivanshu.shop/api-docs | https://backend.shivanshu.shop/api-docs.json |
-
-Use **Authorize** in Swagger UI with `Bearer <JWT>` from `POST /api/v1/auth/login` to try protected routes.
 
 ## Production (EC2 + PM2)
 

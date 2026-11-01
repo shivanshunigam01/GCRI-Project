@@ -3,6 +3,7 @@
 import React, { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
+import { DashboardShellContentSkeleton } from "@/components/shared/PageSkeletons";
 
 export default function AdminLayout({
   children,
@@ -18,12 +19,12 @@ export default function AdminLayout({
     }
   }, [loading, user, isAdmin, router]);
 
-  if (loading || !user || !isAdmin) {
-    return (
-      <div className="p-8 text-center text-sm text-slate-500">
-        Verifying administrative authorization...
-      </div>
-    );
+  if (loading || !user) {
+    return <DashboardShellContentSkeleton />;
+  }
+
+  if (!isAdmin) {
+    return null;
   }
 
   return <>{children}</>;

@@ -9,6 +9,7 @@ import {
 } from "@/services/webhook.service";
 import { companyService } from "@/services/company.service";
 import { Company } from "@/types/company.types";
+import { WebhooksPageSkeleton, DataTableSkeleton } from "@/components/shared/PageSkeletons";
 import {
   SlidersHorizontal,
   Plus,
@@ -214,6 +215,10 @@ export default function WebhooksPage() {
     setTimeout(() => setSecretCopied(false), 2500);
   };
 
+  if (loading && webhooks.length === 0 && !error) {
+    return <WebhooksPageSkeleton />;
+  }
+
   return (
     <div className="space-y-8 max-w-7xl mx-auto pb-12">
       {/* Header */}
@@ -318,9 +323,8 @@ export default function WebhooksPage() {
 
         <div className="overflow-x-auto">
           {loading ? (
-            <div className="p-12 text-center space-y-3">
-              <RefreshCw className="h-6 w-6 text-blue-600 animate-spin mx-auto" />
-              <p className="text-xs text-slate-500">Loading webhook subscriptions...</p>
+            <div className="p-4">
+              <DataTableSkeleton rows={4} columns={5} className="border-0 shadow-none" />
             </div>
           ) : webhooks.length === 0 ? (
             <div className="p-12 text-center text-slate-400 text-xs">

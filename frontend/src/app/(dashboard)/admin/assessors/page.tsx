@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
+import { UsersTableSkeleton } from "@/components/shared/PageSkeletons";
 import {
   Users,
   UserPlus,
@@ -682,26 +683,7 @@ export default function AdminAssessorsPage() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
-                Array.from({ length: 6 }).map((_, i) => (
-                  <tr key={i} className="animate-pulse">
-                    <td className="py-3 px-3 text-center"><div className="h-3 w-5 bg-slate-200 rounded mx-auto" /></td>
-                    <td className="py-3 px-3.5">
-                      <div className="flex items-center gap-2.5">
-                        <div className="h-8 w-8 rounded-full bg-slate-200" />
-                        <div className="space-y-1">
-                          <div className="h-3 w-28 bg-slate-200 rounded" />
-                          <div className="h-2.5 w-36 bg-slate-100 rounded" />
-                        </div>
-                      </div>
-                    </td>
-                    <td className="py-3 px-3"><div className="h-4 w-16 bg-slate-100 rounded-full" /></td>
-                    <td className="py-3 px-3"><div className="h-3.5 w-24 bg-slate-100 rounded" /></td>
-                    <td className="py-3 px-3"><div className="h-4 w-14 bg-slate-100 rounded-full" /></td>
-                    <td className="py-3 px-3"><div className="h-3.5 w-12 bg-slate-100 rounded" /></td>
-                    <td className="py-3 px-3"><div className="h-3.5 w-16 bg-slate-100 rounded" /></td>
-                    <td className="py-3 px-3 text-right"><div className="h-6 w-6 bg-slate-100 rounded ml-auto" /></td>
-                  </tr>
-                ))
+                <UsersTableSkeleton rows={6} />
               ) : users.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="py-14 text-center">

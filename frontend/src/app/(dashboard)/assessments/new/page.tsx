@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { companyService } from "@/services/company.service";
 import { assessmentService } from "@/services/assessment.service";
 import { Company } from "@/types/company.types";
+import { FormFieldsSkeleton } from "@/components/shared/PageSkeletons";
 import {
   ArrowLeft,
   Building2,
@@ -131,9 +132,7 @@ export default function NewAssessmentPage() {
           </div>
 
           {loadingCompanies ? (
-            <div className="py-6 flex items-center justify-center gap-2 text-xs text-slate-500">
-              <Loader2 className="h-4 w-4 animate-spin text-blue-600" /> Loading assigned organizations...
-            </div>
+            <FormFieldsSkeleton fields={2} />
           ) : companies.length > 0 ? (
             <div className="space-y-2">
               <label className="block text-xs font-semibold text-slate-700">

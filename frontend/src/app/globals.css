@@ -32,3 +32,18 @@
     font-family: 'Instrument Serif', Georgia, serif;
   }
 }
+
+@keyframes api-loading-bar {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(350%);
+  }
+}
+
+@layer utilities {
+  .animate-api-loading-bar {
+    animation: api-loading-bar 1.1s ease-in-out infinite;
+  }
+}
