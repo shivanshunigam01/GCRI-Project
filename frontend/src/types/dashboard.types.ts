@@ -16,6 +16,7 @@ export interface AuditorDashboardStats {
 
 export interface AuditorPillarPerformance {
   pillarId: string;
+  canonicalPillarId?: string;
   pillarNumber: number;
   name: string;
   completionPercentage: number;
@@ -84,6 +85,7 @@ export interface AuditorAssessmentsItem {
   resumptionAid: {
     currentQuestionIndex: number;
     currentPillarId: string;
+    currentPillarName?: string;
   };
   createdAt: string;
   updatedAt: string;

@@ -32,6 +32,7 @@ CLAUDE.md
 **/AGENTS.md
 **/CLAUDE.md
 _takeover_guide_extract.txt
+_pdf_extract.txt
 
 # debug
 npm-debug.log*

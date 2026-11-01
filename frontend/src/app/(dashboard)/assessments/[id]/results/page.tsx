@@ -8,6 +8,7 @@ import { assessmentService } from "@/services/assessment.service";
 import {
   AssessmentSummaryResponse,
   AssessmentPillarsResponse,
+  AssessmentRecommendationsResponse,
 } from "@/types/assessment.types";
 import { AssessmentResultsSkeleton } from "@/components/shared/PageSkeletons";
 import {
@@ -44,6 +45,8 @@ export default function AssessmentResultsPage({
 
   const [summary, setSummary] = useState<AssessmentSummaryResponse | null>(null);
   const [pillarsData, setPillarsData] = useState<AssessmentPillarsResponse | null>(null);
+  const [recommendationsData, setRecommendationsData] =
+    useState<AssessmentRecommendationsResponse | null>(null);
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const [pdfSuccessMessage, setPdfSuccessMessage] = useState<string | null>(null);
   const [sendingCompletion, setSendingCompletion] = useState(false);
@@ -62,13 +65,15 @@ export default function AssessmentResultsPage({
       }
 
       try {
-        const [sumRes, pilRes] = await Promise.all([
+        const [sumRes, pilRes, recRes] = await Promise.all([
           assessmentService.getSummary(id),
           assessmentService.getPillars(id),
+          assessmentService.getRecommendations(id).catch(() => null),
         ]);
 
         if (sumRes?.data) setSummary(sumRes.data);
         if (pilRes?.data) setPillarsData(pilRes.data);
+        if (recRes?.data) setRecommendationsData(recRes.data);
       } catch (err: any) {
         if (
           err?.response?.status === 403 &&
@@ -551,6 +556,48 @@ export default function AssessmentResultsPage({
           </div>
         </div>
       </div>
+
+      {recommendationsData && recommendationsData.recommendations.length > 0 && (
+        <div className="bg-white rounded-xl border border-slate-200/90 p-6 shadow-xs space-y-4">
+          <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-3">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-amber-500" />
+                Tailored remediation recommendations
+              </h3>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                {recommendationsData.totalRecommendations} guidance items mapped to noted exceptions
+                and gaps.
+              </p>
+            </div>
+          </div>
+          <ul className="space-y-3">
+            {recommendationsData.recommendations.map((rec) => (
+              <li
+                key={rec.recommendationId || rec.questionId}
+                className="rounded-lg border border-slate-100 bg-slate-50/80 p-4 text-xs"
+              >
+                <div className="flex flex-wrap items-center gap-2 mb-2">
+                  <span className="font-mono font-bold text-slate-700">{rec.questionId}</span>
+                  <span className="text-slate-400">•</span>
+                  <span className="text-slate-600">{rec.pillarName}</span>
+                  <span
+                    className={`ml-auto px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                      rec.priority === "High"
+                        ? "bg-rose-50 text-rose-700 border border-rose-200"
+                        : "bg-amber-50 text-amber-800 border border-amber-200"
+                    }`}
+                  >
+                    {rec.priority} priority
+                  </span>
+                </div>
+                <p className="text-slate-800 font-medium leading-relaxed">{rec.controlText}</p>
+                <p className="mt-2 text-slate-600 leading-relaxed">{rec.recommendedAction}</p>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }

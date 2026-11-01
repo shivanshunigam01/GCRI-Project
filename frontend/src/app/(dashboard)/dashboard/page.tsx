@@ -1,10 +1,13 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
-import { dashboardService } from "@/services/dashboard.service";
-import { assessmentService } from "@/services/assessment.service";
+import {
+  dashboardService,
+  buildAuditorAssessmentsQuery,
+  AuditorPipelineFilter,
+} from "@/services/dashboard.service";
 import { companyService } from "@/services/company.service";
 import { StatCard } from "@/components/shared/StatCard";
 import { DashboardPageSkeleton } from "@/components/shared/PageSkeletons";
@@ -16,6 +19,7 @@ import {
   AuditorAssessmentsItem,
   AuditorOrganizationItem,
   AuditorPillarPerformance,
+  AuditorActiveAssessment,
 } from "@/types/dashboard.types";
 import { useDashboardScope } from "@/context/DashboardScopeContext";
 import {
@@ -77,6 +81,18 @@ export default function DashboardPage() {
   const [adminSummary, setAdminSummary] = useState<AdminDashboardSummary | null>(null);
   const [adminAssessments, setAdminAssessments] = useState<AdminAssessmentItem[]>([]);
 
+  const fetchAuditorAssessments = useCallback(
+    async (params?: Parameters<typeof dashboardService.getAuditorAssessments>[0]) => {
+      const res = await dashboardService.getAuditorAssessments({ limit: 100, ...params });
+      if (res?.data?.assessments) {
+        setAuditorAssessments(res.data.assessments);
+      } else {
+        setAuditorAssessments([]);
+      }
+    },
+    []
+  );
+
   const fetchDashboard = async () => {
     setLoading(true);
     setError(null);
@@ -106,40 +122,17 @@ export default function DashboardPage() {
         }
         if (assessRes?.data?.assessments) setAdminAssessments(assessRes.data.assessments);
       } else {
-        const [sumRes, assessRes, orgsRes, directAssessRes] = await Promise.all([
-          dashboardService.getAuditorSummary().catch(() => null),
-          dashboardService.getAuditorAssessments({ limit: 50 }).catch(() => null),
-          dashboardService.getAuditorOrganizations().catch(() => null),
-          assessmentService.getAssessments({ limit: 50 }).catch(() => null),
+        const [sumRes, assessRes, orgsRes] = await Promise.all([
+          dashboardService.getAuditorSummary(),
+          dashboardService.getAuditorAssessments({ limit: 100 }),
+          dashboardService.getAuditorOrganizations(),
         ]);
         if (sumRes?.data) setAuditorSummary(sumRes.data);
-
-        let list: any[] = [];
-        if (assessRes?.data?.assessments && Array.isArray(assessRes.data.assessments)) {
-          list = assessRes.data.assessments;
-        } else if (Array.isArray(assessRes?.data)) {
-          list = assessRes.data as any;
+        if (assessRes?.data?.assessments) {
+          setAuditorAssessments(assessRes.data.assessments);
+        } else {
+          setAuditorAssessments([]);
         }
-
-        if (Array.isArray(directAssessRes?.data) && directAssessRes.data.length > 0) {
-          if (list.length === 0) {
-            list = directAssessRes.data;
-          } else {
-            list = list.map((item) => {
-              if (item.scoreSnapshot?.pillarScores?.length) return item;
-              const match = directAssessRes.data.find(
-                (d: any) => d._id?.toString() === item._id?.toString()
-              );
-              if (match?.scoreSnapshot) {
-                return { ...item, scoreSnapshot: match.scoreSnapshot };
-              }
-              return item;
-            });
-          }
-        }
-
-        setAuditorAssessments(list);
-
         if (orgsRes?.data?.organizations) {
           setAuditorOrgs(orgsRes.data.organizations);
           setOrganizations(orgsRes.data.organizations);
@@ -193,6 +186,7 @@ export default function DashboardPage() {
           organizations={auditorOrgs}
           userName={user?.name || "Auditor"}
           onRefresh={fetchDashboard}
+          onFetchAssessments={fetchAuditorAssessments}
         />
       ) : (
         <AdminDashboardContent
@@ -265,18 +259,22 @@ function AuditorDashboardContent({
   organizations,
   userName,
   onRefresh,
+  onFetchAssessments,
 }: {
   summary: AuditorDashboardSummary | null;
   assessments: AuditorAssessmentsItem[];
   organizations: AuditorOrganizationItem[];
   userName: string;
   onRefresh: () => void;
+  onFetchAssessments: (
+    params?: Parameters<typeof dashboardService.getAuditorAssessments>[0]
+  ) => Promise<void>;
 }) {
   const [isMounted, setIsMounted] = useState(false);
+  const [assessmentsLoading, setAssessmentsLoading] = useState(false);
+  const skipAssessmentsRefetch = useRef(true);
   const { selectedOrgFilter, setSelectedOrgFilter } = useDashboardScope();
-  const [pipelineFilter, setPipelineFilter] = useState<
-    "All" | "InProgress" | "Submitted" | "Light" | "Full"
-  >("All");
+  const [pipelineFilter, setPipelineFilter] = useState<AuditorPipelineFilter>("All");
   const [pipelineSearch, setPipelineSearch] = useState("");
   const [hoveredPillarIndex, setHoveredPillarIndex] = useState<number | null>(null);
   const [lifecycleHover, setLifecycleHover] = useState<"Completed" | "InProgress" | "NotStarted" | null>(null);
@@ -286,6 +284,27 @@ function AuditorDashboardContent({
     const t = setTimeout(() => setIsMounted(true), 60);
     return () => clearTimeout(t);
   }, []);
+
+  useEffect(() => {
+    if (skipAssessmentsRefetch.current) {
+      skipAssessmentsRefetch.current = false;
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      setAssessmentsLoading(true);
+      try {
+        await onFetchAssessments(
+          buildAuditorAssessmentsQuery(pipelineFilter, selectedOrgFilter)
+        );
+      } finally {
+        if (!cancelled) setAssessmentsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [pipelineFilter, selectedOrgFilter, onFetchAssessments]);
 
   // Standard 7 GRAICE Pillars Definition
   const STANDARD_PILLARS = [
@@ -311,8 +330,50 @@ function AuditorDashboardContent({
     });
   }, [assessments, selectedOrgFilter]);
 
-  // Derive Pillar Scores accurately from live scoreSnapshots
+  const mapSummaryPillarPerformance = (backendPillars: AuditorPillarPerformance[]) => {
+    const results = STANDARD_PILLARS.map((std) => {
+      const match = backendPillars.find(
+        (p) =>
+          p.pillarNumber === std.pillarNumber ||
+          p.canonicalPillarId === std.pillarId ||
+          p.pillarId === std.pillarId ||
+          p.pillarId === `P${std.pillarNumber}`
+      );
+      const pct = match?.completionPercentage ?? 0;
+      return {
+        pillarId: std.pillarId,
+        pillarNumber: std.pillarNumber,
+        name: std.name,
+        completionPercentage: pct,
+        scoreEarned: Math.round((pct / 100) * 16),
+        scoreMax: 16,
+      };
+    });
+    const avgSum = results.reduce((acc, p) => acc + p.completionPercentage, 0);
+    const overallAvg =
+      results.length > 0 ? Math.round((avgSum / results.length) * 10) / 10 : 0;
+    let tierName = "Tier 1: Initial";
+    if (overallAvg >= 75) tierName = "Tier 4: Advanced";
+    else if (overallAvg >= 50) tierName = "Tier 3: Established";
+    else if (overallAvg >= 25) tierName = "Tier 2: Emerging";
+    return {
+      pillars: results,
+      overallAvgScore: overallAvg,
+      maturityTier: tierName,
+      evaluatedSessionsCount: summary?.stats?.totalAssessments ?? 0,
+    };
+  };
+
+  // Derive Pillar Scores: summary API first (portfolio view), then scoreSnapshots
   const derivedPillarData = useMemo(() => {
+    if (
+      selectedOrgFilter === "all" &&
+      summary?.pillarPerformance &&
+      summary.pillarPerformance.length > 0
+    ) {
+      return mapSummaryPillarPerformance(summary.pillarPerformance);
+    }
+
     const scopedPool = scopedAssessments.filter(
       (a) => a.scoreSnapshot?.pillarScores && a.scoreSnapshot.pillarScores.length > 0
     );
@@ -389,34 +450,8 @@ function AuditorDashboardContent({
       };
     }
 
-    // Fallback to summary.pillarPerformance if available with non-zero values
-    const backendPillars = summary?.pillarPerformance || [];
-    const hasBackendValues = backendPillars.some((p) => p.completionPercentage > 0);
-
-    if (hasBackendValues) {
-      const results = backendPillars.map((p, idx) => ({
-        pillarId: p.pillarId || STANDARD_PILLARS[idx]?.pillarId || `P${idx + 1}`,
-        pillarNumber: p.pillarNumber || idx + 1,
-        name: p.name || STANDARD_PILLARS[idx]?.name || `Pillar ${idx + 1}`,
-        completionPercentage: p.completionPercentage,
-        scoreEarned: Math.round((p.completionPercentage / 100) * 16),
-        scoreMax: 16,
-      }));
-      const sum = results.reduce((acc, p) => acc + p.completionPercentage, 0);
-      const avg = Math.round(sum / results.length);
-      return {
-        pillars: results,
-        overallAvgScore: avg,
-        maturityTier:
-          avg >= 75
-            ? "Tier 4: Advanced"
-            : avg >= 50
-            ? "Tier 3: Established"
-            : avg >= 25
-            ? "Tier 2: Emerging"
-            : "Tier 1: Initial",
-        evaluatedSessionsCount: 0,
-      };
+    if (summary?.pillarPerformance?.length) {
+      return mapSummaryPillarPerformance(summary.pillarPerformance);
     }
 
     // Default 0 placeholder
@@ -431,26 +466,82 @@ function AuditorDashboardContent({
       maturityTier: "Tier 1: Initial",
       evaluatedSessionsCount: 0,
     };
-  }, [scopedAssessments, summary]);
+  }, [scopedAssessments, summary, selectedOrgFilter, assessments]);
 
-  // Derived metrics for Scoped View
-  const totalAssessments = scopedAssessments.length;
+  const scopedOrg = useMemo(
+    () => organizations.find((o) => o._id === selectedOrgFilter),
+    [organizations, selectedOrgFilter]
+  );
+  const isPortfolioView = selectedOrgFilter === "all";
+
   const inProgressAssessments = scopedAssessments.filter((a) => a.status === "InProgress");
   const completedAssessments = scopedAssessments.filter((a) => a.status === "Submitted");
-  const inProgressCount = inProgressAssessments.length;
-  const completedCount = completedAssessments.length;
-  const notStartedCount = Math.max(0, totalAssessments - completedCount - inProgressCount);
+
+  const totalAssessments = isPortfolioView
+    ? (summary?.stats?.totalAssessments ?? scopedAssessments.length)
+    : (scopedOrg?.assessmentsSummary?.total ?? scopedAssessments.length);
+
+  const inProgressCount = isPortfolioView
+    ? (summary?.stats?.inProgressAssessments ?? inProgressAssessments.length)
+    : (scopedOrg?.assessmentsSummary?.inProgress ?? inProgressAssessments.length);
+
+  const completedCount = isPortfolioView
+    ? (summary?.stats?.completedAssessments ?? completedAssessments.length)
+    : (scopedOrg?.assessmentsSummary?.completed ?? completedAssessments.length);
+
+  const notStartedCount = isPortfolioView
+    ? Math.max(0, totalAssessments - completedCount - inProgressCount)
+    : (scopedOrg?.assessmentsSummary?.notStarted ??
+      Math.max(0, totalAssessments - completedCount - inProgressCount));
 
   const completedRatio = totalAssessments > 0 ? completedCount / totalAssessments : 0;
   const inProgressRatio = totalAssessments > 0 ? inProgressCount / totalAssessments : 0;
   const overallCompletion =
-    totalAssessments > 0 ? Math.round((completedCount / totalAssessments) * 100) : 0;
+    isPortfolioView && summary?.overallCompletionPercentage != null
+      ? summary.overallCompletionPercentage
+      : totalAssessments > 0
+      ? Math.round((completedCount / totalAssessments) * 100)
+      : 0;
 
-  // Framework type split
-  const lightCount = scopedAssessments.filter((a) => a.assessmentType === "Light").length;
-  const fullCount = scopedAssessments.filter((a) => a.assessmentType === "Full").length;
-  const lightPct = totalAssessments > 0 ? Math.round((lightCount / totalAssessments) * 100) : 0;
-  const fullPct = totalAssessments > 0 ? Math.round((fullCount / totalAssessments) * 100) : 0;
+  const lightCount = isPortfolioView
+    ? (summary?.assessmentTypes?.lightCount ??
+      scopedAssessments.filter((a) => a.assessmentType === "Light").length)
+    : scopedAssessments.filter((a) => a.assessmentType === "Light").length;
+
+  const fullCount = isPortfolioView
+    ? (summary?.assessmentTypes?.fullCount ??
+      scopedAssessments.filter((a) => a.assessmentType === "Full").length)
+    : scopedAssessments.filter((a) => a.assessmentType === "Full").length;
+
+  const lightPct =
+    isPortfolioView && summary?.assessmentTypes
+      ? summary.assessmentTypes.lightPercentage
+      : totalAssessments > 0
+      ? Math.round((lightCount / totalAssessments) * 100)
+      : 0;
+
+  const fullPct =
+    isPortfolioView && summary?.assessmentTypes
+      ? summary.assessmentTypes.fullPercentage
+      : totalAssessments > 0
+      ? Math.round((fullCount / totalAssessments) * 100)
+      : 0;
+
+  const resumeActive = useMemo((): {
+    kind: "summary";
+    data: AuditorActiveAssessment;
+  } | {
+    kind: "assessment";
+    data: AuditorAssessmentsItem;
+  } | null => {
+    if (isPortfolioView && summary?.activeAssessments?.length) {
+      return { kind: "summary", data: summary.activeAssessments[0] };
+    }
+    if (inProgressAssessments.length > 0) {
+      return { kind: "assessment", data: inProgressAssessments[0] };
+    }
+    return null;
+  }, [isPortfolioView, summary?.activeAssessments, inProgressAssessments]);
 
   // Memoized segmented donut calculations for Assessment Lifecycle
   const lifecycleSegments = useMemo(() => {
@@ -489,16 +580,9 @@ function AuditorDashboardContent({
   const findingsCount = summary?.stats?.totalFindings ?? 0;
   const latestFindings = summary?.latestFindings ?? [];
 
-  // Filtered assessment pipeline table
+  // Pipeline table: status/type/org from GET /dashboard/auditor/assessments; search is client-only
   const filteredPipeline = useMemo(() => {
     return scopedAssessments.filter((a) => {
-      // Status/Type filter
-      if (pipelineFilter === "InProgress" && a.status !== "InProgress") return false;
-      if (pipelineFilter === "Submitted" && a.status !== "Submitted") return false;
-      if (pipelineFilter === "Light" && a.assessmentType !== "Light") return false;
-      if (pipelineFilter === "Full" && a.assessmentType !== "Full") return false;
-
-      // Search query
       if (pipelineSearch.trim()) {
         const query = pipelineSearch.toLowerCase();
         const orgName = ((a.organization as any)?.name || "").toLowerCase();
@@ -510,7 +594,7 @@ function AuditorDashboardContent({
       }
       return true;
     });
-  }, [scopedAssessments, pipelineFilter, pipelineSearch]);
+  }, [scopedAssessments, pipelineSearch]);
 
   return (
     <div className="space-y-6">
@@ -1200,42 +1284,49 @@ function AuditorDashboardContent({
         <div className="lg:col-span-5 bg-gradient-to-br from-slate-900 via-slate-850 to-[#0c162c] text-white rounded-2xl p-6 shadow-md flex flex-col justify-between relative overflow-hidden">
           <div className="absolute top-0 right-0 -mr-10 -mt-10 w-44 h-44 rounded-full bg-blue-500/10 blur-2xl pointer-events-none" />
 
-          {inProgressAssessments.length > 0 ? (
+          {resumeActive ? (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/20 text-blue-300 border border-blue-400/30">
                   Active Session
                 </span>
                 <span className="text-xs font-semibold text-slate-300">
-                  {inProgressAssessments[0].completionPercentage}% Answered
+                  {resumeActive.data.completionPercentage}% Answered
                 </span>
               </div>
 
               <div>
                 <h3 className="text-lg font-bold text-white">
-                  {(inProgressAssessments[0].organization as any)?.name || "Assigned Organization"}
+                  {resumeActive.kind === "summary"
+                    ? resumeActive.data.organizationName
+                    : (resumeActive.data.organization as any)?.name || "Assigned Organization"}
                 </h3>
                 <p className="text-xs text-slate-300 mt-1 leading-relaxed">
-                  {inProgressAssessments[0].assessmentType} Assessment currently in progress. Resume evaluation at{" "}
+                  {resumeActive.data.assessmentType} Assessment currently in progress. Resume evaluation at{" "}
                   <strong className="text-sky-300">
-                    {inProgressAssessments[0].resumptionAid?.currentPillarId || "P1: Ethical Leadership"}
-                  </strong>.
+                    {resumeActive.kind === "summary"
+                      ? resumeActive.data.resumptionAid.currentPillarName ||
+                        resumeActive.data.resumptionAid.currentPillarId
+                      : resumeActive.data.resumptionAid?.currentPillarName ||
+                        resumeActive.data.resumptionAid?.currentPillarId ||
+                        "P1: Ethical Leadership"}
+                  </strong>
+                  .
                 </p>
               </div>
 
-              {/* Progress bar */}
               <div className="space-y-1">
                 <div className="h-2 w-full bg-slate-800 rounded-full overflow-hidden">
                   <div
                     className="h-full bg-gradient-to-r from-blue-500 to-sky-400 rounded-full"
-                    style={{ width: `${inProgressAssessments[0].completionPercentage}%` }}
+                    style={{ width: `${resumeActive.data.completionPercentage}%` }}
                   />
                 </div>
               </div>
 
               <div className="pt-1">
                 <Link
-                  href={`/assessments/${inProgressAssessments[0]._id}`}
+                  href={`/assessments/${resumeActive.data._id}`}
                   className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-md transition"
                 >
                   <span>Resume Assessment</span>
@@ -1397,9 +1488,15 @@ function AuditorDashboardContent({
           </div>
         </div>
 
-        {/* Filtered Table */}
-        <div className="overflow-x-auto">
-          {filteredPipeline.length > 0 ? (
+        <div
+          className={`overflow-x-auto transition-opacity ${assessmentsLoading ? "opacity-60 pointer-events-none" : ""}`}
+        >
+          {assessmentsLoading && filteredPipeline.length === 0 ? (
+            <div className="py-8 text-center text-xs text-slate-500 flex items-center justify-center gap-2">
+              <RefreshCw className="h-4 w-4 animate-spin" />
+              Loading assessments…
+            </div>
+          ) : filteredPipeline.length > 0 ? (
             <table className="w-full text-left text-xs">
               <thead className="text-[10px] font-semibold text-slate-400 uppercase border-b border-slate-100">
                 <tr>
@@ -1487,6 +1584,7 @@ function AuditorDashboardContent({
                 onClick={() => {
                   setPipelineFilter("All");
                   setPipelineSearch("");
+                  setSelectedOrgFilter("all");
                 }}
                 className="text-blue-600 font-semibold hover:underline"
               >
