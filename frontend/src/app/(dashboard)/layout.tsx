@@ -37,6 +37,7 @@ import {
   useDashboardScope,
 } from "@/context/DashboardScopeContext";
 import { DashboardShellContentSkeleton } from "@/components/shared/PageSkeletons";
+import { useApiLoading } from "@/context/ApiLoadingContext";
 
 export default function DashboardLayout({
   children,
@@ -371,6 +372,7 @@ function DashboardLayoutContent({
 function SearchableScopeSelector({ activeRoleView }: { activeRoleView: "Admin" | "Auditor" }) {
   const { selectedOrgFilter, setSelectedOrgFilter, organizations, triggerRefresh } =
     useDashboardScope();
+  const { isLoading: apiBusy } = useApiLoading();
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const containerRef = useRef<HTMLDivElement>(null);
@@ -457,7 +459,9 @@ function SearchableScopeSelector({ activeRoleView }: { activeRoleView: "Admin" |
         title="Refresh Telemetry Data"
         className="p-1.5 sm:p-2 rounded-xl border border-slate-200 hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition shadow-2xs shrink-0"
       >
-        <RefreshCw className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+        <RefreshCw
+          className={`h-3.5 w-3.5 sm:h-4 sm:w-4 ${apiBusy ? "animate-spin text-blue-600" : ""}`}
+        />
       </button>
 
       {/* Popover Dropdown Panel */}

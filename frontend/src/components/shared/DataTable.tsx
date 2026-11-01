@@ -1,5 +1,6 @@
 import React from "react";
 import { DataTableSkeleton } from "@/components/shared/PageSkeletons";
+import { Spinner } from "@/components/ui/Spinner";
 
 export interface Column<T> {
   header: string;
@@ -22,8 +23,14 @@ export function DataTable<T extends Record<string, any>>({
 }: DataTableProps<T>) {
   if (loading) {
     return (
-      <div className="w-full py-12 text-center text-sm text-slate-400">
-        Loading data...
+      <div className="relative w-full">
+        <DataTableSkeleton rows={6} columns={Math.max(columns.length, 4)} />
+        <div className="absolute inset-0 flex items-center justify-center bg-white/40 backdrop-blur-[1px] rounded-xl">
+          <div className="flex items-center gap-2 rounded-full bg-white px-4 py-2 text-xs font-medium text-slate-600 shadow-sm border border-slate-200">
+            <Spinner />
+            Loading data…
+          </div>
+        </div>
       </div>
     );
   }

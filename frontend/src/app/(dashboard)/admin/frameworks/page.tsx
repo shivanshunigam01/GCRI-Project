@@ -41,6 +41,8 @@ export default function AdminFrameworksPage() {
   const [cloneFrom, setCloneFrom] = useState("");
   const [creatingDraft, setCreatingDraft] = useState(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [frameworkActionKey, setFrameworkActionKey] = useState<string | null>(null);
+  const [questionActionId, setQuestionActionId] = useState<string | null>(null);
 
   const fetchFrameworks = async () => {
     setLoading(true);
@@ -98,6 +100,7 @@ export default function AdminFrameworksPage() {
 
   const handleToggleQuestion = async (questionId: string, currentActive: boolean) => {
     if (!activeFrameworkDetail?._id) return;
+    setQuestionActionId(questionId);
     try {
       await adminFrameworkService.toggleQuestionStatus(activeFrameworkDetail._id, questionId, !currentActive);
       setActiveFrameworkDetail((prev) => {
@@ -111,12 +114,15 @@ export default function AdminFrameworksPage() {
       });
     } catch (err: any) {
       alert(err?.response?.data?.error?.message || "Failed to toggle question status.");
+    } finally {
+      setQuestionActionId(null);
     }
   };
 
   const handleDeleteQuestion = async (questionId: string) => {
     if (!activeFrameworkDetail?._id) return;
     if (!confirm(`Are you sure you want to delete control '${questionId}'?`)) return;
+    setQuestionActionId(questionId);
     try {
       await adminFrameworkService.deleteQuestion(activeFrameworkDetail._id, questionId);
       setActiveFrameworkDetail((prev) => {
@@ -129,6 +135,8 @@ export default function AdminFrameworksPage() {
       fetchFrameworks();
     } catch (err: any) {
       alert(err?.response?.data?.error?.message || "Failed to delete control.");
+    } finally {
+      setQuestionActionId(null);
     }
   };
 
@@ -212,12 +220,15 @@ export default function AdminFrameworksPage() {
       return;
     }
 
+    setFrameworkActionKey(`publish:${id}`);
     try {
       await adminFrameworkService.publishFramework(id);
       setActionMessage(`Version ${version} promoted to Published! Prior versions archived.`);
       fetchFrameworks();
     } catch (err: any) {
       alert(err?.response?.data?.error?.message || "Failed to publish framework version.");
+    } finally {
+      setFrameworkActionKey(null);
     }
   };
 
@@ -226,12 +237,15 @@ export default function AdminFrameworksPage() {
       return;
     }
 
+    setFrameworkActionKey(`delete:${id}`);
     try {
       await adminFrameworkService.deleteDraft(id);
       setActionMessage(`Draft version ${version} deleted.`);
       fetchFrameworks();
     } catch (err: any) {
       alert(err?.response?.data?.error?.message || "Failed to delete draft framework.");
+    } finally {
+      setFrameworkActionKey(null);
     }
   };
 
@@ -240,12 +254,15 @@ export default function AdminFrameworksPage() {
       return;
     }
 
+    setFrameworkActionKey(`rollback:${id}`);
     try {
       await adminFrameworkService.rollbackFramework(id);
       setActionMessage(`Version ${version} reactivated to Published status.`);
       fetchFrameworks();
     } catch (err: any) {
       alert(err?.response?.data?.error?.message || "Failed to rollback framework version.");
+    } finally {
+      setFrameworkActionKey(null);
     }
   };
 
@@ -370,17 +387,29 @@ export default function AdminFrameworksPage() {
                     <>
                       <button
                         type="button"
+                        disabled={frameworkActionKey === `publish:${fw._id}`}
                         onClick={() => handlePublish(fw._id, fw.version)}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs rounded-lg shadow-2xs transition"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs rounded-lg shadow-2xs transition disabled:opacity-60"
                       >
-                        <CheckCircle2 className="h-3.5 w-3.5" /> Publish
+                        {frameworkActionKey === `publish:${fw._id}` ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                        )}{" "}
+                        Publish
                       </button>
                       <button
                         type="button"
+                        disabled={frameworkActionKey === `delete:${fw._id}`}
                         onClick={() => handleDelete(fw._id, fw.version)}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-rose-200 hover:bg-rose-50 text-rose-700 font-semibold text-xs rounded-lg transition"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-rose-200 hover:bg-rose-50 text-rose-700 font-semibold text-xs rounded-lg transition disabled:opacity-60"
                       >
-                        <Trash2 className="h-3.5 w-3.5" /> Delete
+                        {frameworkActionKey === `delete:${fw._id}` ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-3.5 w-3.5" />
+                        )}{" "}
+                        Delete
                       </button>
                     </>
                   )}
@@ -388,10 +417,16 @@ export default function AdminFrameworksPage() {
                   {isArchived && (
                     <button
                       type="button"
+                      disabled={frameworkActionKey === `rollback:${fw._id}`}
                       onClick={() => handleRollback(fw._id, fw.version)}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs rounded-lg transition"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs rounded-lg transition disabled:opacity-60"
                     >
-                      <RotateCcw className="h-3.5 w-3.5" /> Reactivate
+                      {frameworkActionKey === `rollback:${fw._id}` ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <RotateCcw className="h-3.5 w-3.5" />
+                      )}{" "}
+                      Reactivate
                     </button>
                   )}
 
@@ -766,14 +801,19 @@ export default function AdminFrameworksPage() {
                                   <div className="flex items-center justify-end gap-1.5">
                                     <button
                                       type="button"
+                                      disabled={questionActionId === q.questionId}
                                       onClick={() => handleToggleQuestion(q.questionId, q.isActive !== false)}
-                                      className="p-1 rounded hover:bg-slate-100 text-slate-600 text-[11px] font-semibold"
+                                      className="p-1 rounded hover:bg-slate-100 text-slate-600 text-[11px] font-semibold disabled:opacity-50 inline-flex items-center gap-1"
                                       title={q.isActive !== false ? "Deactivate Control" : "Activate Control"}
                                     >
+                                      {questionActionId === q.questionId ? (
+                                        <Loader2 className="h-3 w-3 animate-spin" />
+                                      ) : null}
                                       {q.isActive !== false ? "Deactivate" : "Activate"}
                                     </button>
                                     <button
                                       type="button"
+                                      disabled={questionActionId === q.questionId}
                                       onClick={() => handleDeleteQuestion(q.questionId)}
                                       className="p-1 rounded hover:bg-rose-50 text-rose-600 text-[11px] font-semibold"
                                       title="Delete Control"

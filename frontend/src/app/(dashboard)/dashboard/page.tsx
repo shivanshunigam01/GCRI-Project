@@ -161,7 +161,7 @@ export default function DashboardPage() {
   }, [roleView, refreshTrigger]);
 
   if (loading) {
-    return <DashboardSkeleton roleView={roleView} />;
+    return <DashboardPageSkeleton roleView={roleView} />;
   }
 
   if (error) {

@@ -1,13 +1,28 @@
 import React from "react";
 import { cn } from "@/lib/utils";
+import { Spinner } from "@/components/ui/Spinner";
 
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: "primary" | "secondary" | "outline" | "danger" | "ghost";
   size?: "sm" | "md" | "lg";
+  loading?: boolean;
+  loadingText?: string;
 }
 
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant = "primary", size = "md", children, ...props }, ref) => {
+  (
+    {
+      className,
+      variant = "primary",
+      size = "md",
+      children,
+      loading = false,
+      loadingText,
+      disabled,
+      ...props
+    },
+    ref
+  ) => {
     const base = "inline-flex items-center justify-center font-medium rounded-lg transition focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none";
     
     const variants = {
@@ -24,13 +39,29 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       lg: "text-base px-5 py-2.5",
     };
 
+    const isDisabled = disabled || loading;
+
     return (
       <button
         ref={ref}
         className={cn(base, variants[variant], sizes[size], className)}
+        disabled={isDisabled}
+        aria-busy={loading || undefined}
         {...props}
       >
-        {children}
+        {loading ? (
+          <>
+            <Spinner
+              className={cn(
+                "mr-2 shrink-0",
+                variant === "primary" || variant === "danger" ? "text-white" : "text-blue-600"
+              )}
+            />
+            {loadingText ?? children}
+          </>
+        ) : (
+          children
+        )}
       </button>
     );
   }
