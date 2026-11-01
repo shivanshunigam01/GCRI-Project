@@ -69,6 +69,8 @@ Set `PORT=5090` (or your chosen port) in `.env` on the server.
 
 Workflow: `.github/workflows/deploy-backend.yml` — runs on push to `main` when `backend/**` changes.
 
+Trigger a deploy by pushing any commit that touches files under `backend/`.
+
 **Repository → Settings → Secrets and variables → Actions → New repository secret:**
 
 | Secret | Example |
