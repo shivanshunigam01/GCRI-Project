@@ -71,6 +71,8 @@ Workflow: `.github/workflows/deploy-backend.yml` — runs on push to `main` when
 
 Trigger a deploy by pushing any commit that touches files under `backend/`.
 
+<!-- ci: deploy test -->
+
 **Repository → Settings → Secrets and variables → Actions → New repository secret:**
 
 | Secret | Example |
