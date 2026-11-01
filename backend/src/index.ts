@@ -27,9 +27,13 @@ app.use(
     },
   })
 );
+const corsOrigins = process.env.CORS_ORIGIN
+  ? process.env.CORS_ORIGIN.split(",").map((o) => o.trim()).filter(Boolean)
+  : ["http://localhost:3000", "http://localhost:3001"];
+
 app.use(
   cors({
-    origin: process.env.CORS_ORIGIN || "http://localhost:3000",
+    origin: corsOrigins.length === 1 ? corsOrigins[0] : corsOrigins,
     credentials: true,
   })
 );
