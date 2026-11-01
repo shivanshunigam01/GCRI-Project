@@ -38,5 +38,15 @@ jobs:
               pm2 start ecosystem.config.cjs
             fi
             pm2 save
-            APP_PORT=$(grep -E '^PORT=' .env | cut -d= -f2 | tr -d '\r' || echo 5090)
-            curl -fsS "http://127.0.0.1:${APP_PORT}/api/v1/health"
+            APP_PORT=$(grep -E '^PORT=' .env | cut -d= -f2 | tr -d '\r"' || echo 5090)
+            echo "Waiting for health on port ${APP_PORT}..."
+            for i in $(seq 1 20); do
+              if curl -fsS "http://127.0.0.1:${APP_PORT}/api/v1/health" >/dev/null; then
+                curl -fsS "http://127.0.0.1:${APP_PORT}/api/v1/health"
+                exit 0
+              fi
+              sleep 3
+            done
+            echo "Health check failed; PM2 logs:"
+            pm2 logs gcri-backend --lines 40 --nostream
+            exit 1
