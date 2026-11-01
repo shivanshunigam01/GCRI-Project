@@ -37,6 +37,7 @@ import {
   useDashboardScope,
 } from "@/context/DashboardScopeContext";
 import { DashboardShellContentSkeleton } from "@/components/shared/PageSkeletons";
+import { BrandLogo } from "@/components/shared/BrandLogo";
 import { useApiLoading } from "@/context/ApiLoadingContext";
 
 export default function DashboardLayout({
@@ -135,9 +136,13 @@ function DashboardLayoutContent({
         }`}
       >
         {/* Brand Header */}
-        <div className="px-5 py-4 border-b border-[#18274a]/60 shrink-0 flex items-center justify-between">
-          <Link href="/dashboard" onClick={() => setMobileMenuOpen(false)} className="flex items-center">
-            <img src="/logo.png" alt="GRAICE Logo" className="h-9 w-auto max-w-[190px] object-contain" />
+        <div className="px-4 py-5 border-b border-[#18274a]/60 shrink-0 flex items-center justify-between gap-2">
+          <Link
+            href="/dashboard"
+            onClick={() => setMobileMenuOpen(false)}
+            className="flex min-w-0 flex-1 items-center"
+          >
+            <BrandLogo variant="sidebar" />
           </Link>
           <button
             type="button"
