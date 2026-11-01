@@ -27,6 +27,11 @@ node_modules/
 # misc
 .DS_Store
 *.pem
+AGENTS.md
+CLAUDE.md
+**/AGENTS.md
+**/CLAUDE.md
+_takeover_guide_extract.txt
 
 # debug
 npm-debug.log*
