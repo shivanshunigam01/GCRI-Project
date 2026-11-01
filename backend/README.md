@@ -64,3 +64,29 @@ curl -s http://127.0.0.1:${PORT:-5090}/api/v1/health
 ```
 
 Set `PORT=5090` (or your chosen port) in `.env` on the server.
+
+## GitHub Actions (CI/CD)
+
+Workflow: `.github/workflows/deploy-backend.yml` — runs on push to `main` when `backend/**` changes.
+
+**Repository → Settings → Secrets and variables → Actions → New repository secret:**
+
+| Secret | Example |
+|--------|---------|
+| `EC2_HOST` | `72.61.255.51` or `backend.shivanshu.shop` |
+| `EC2_USER` | `ubuntu` or `root` (match your SSH login) |
+| `EC2_SSH_KEY` | Full contents of your `.pem` private key |
+
+**One-time on EC2:** clone repo to `/var/www/GCRI-Project`, create `backend/.env`, run first manual `npm ci && npm run build && pm2 start ecosystem.config.cjs`.
+
+**Private repo:** on EC2, use a [deploy key](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/managing-deploy-keys) or HTTPS with a PAT so `git pull` works without prompts.
+
+**Manual deploy (same as the workflow):**
+
+```bash
+ssh ubuntu@YOUR_EC2_IP
+cd /var/www/GCRI-Project && git pull origin main
+cd backend && npm ci && npm run build
+pm2 restart gcri-backend || pm2 start ecosystem.config.cjs
+pm2 save
+```
