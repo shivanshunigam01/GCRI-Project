@@ -8,6 +8,7 @@ import {
   Finding,
   AssessmentFindingsResponse,
 } from "@/types/assessment.types";
+import { AssessmentFindingsSkeleton } from "@/components/shared/PageSkeletons";
 import {
   ArrowLeft,
   Shield,
@@ -109,17 +110,7 @@ export default function AssessmentFindingsPage({
   }
 
   if (loading) {
-    return (
-      <div className="space-y-6 animate-pulse max-w-6xl mx-auto">
-        <div className="h-10 bg-slate-200 rounded-lg w-1/3" />
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-          {[...Array(4)].map((_, i) => (
-            <div key={i} className="h-24 bg-white rounded-xl border border-slate-200" />
-          ))}
-        </div>
-        <div className="h-96 bg-white rounded-xl border border-slate-200" />
-      </div>
-    );
+    return <AssessmentFindingsSkeleton />;
   }
 
   if (error || !findingsData) {

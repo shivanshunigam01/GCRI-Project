@@ -12,6 +12,7 @@ import {
   ExceptionStatus,
 } from "@/types/assessment.types";
 import { FrameworkPillar, Question } from "@/types/framework.types";
+import { AssessmentWorkspaceSkeleton } from "@/components/shared/PageSkeletons";
 import {
   ArrowLeft,
   ArrowRight,
@@ -390,16 +391,7 @@ export default function AssessmentWorkspacePage({
   }
 
   if (loading) {
-    return (
-      <div className="space-y-6 animate-pulse">
-        <div className="h-10 bg-slate-200 rounded-lg w-1/3" />
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-[600px]">
-          <div className="lg:col-span-3 bg-white rounded-xl border border-slate-200" />
-          <div className="lg:col-span-6 bg-white rounded-xl border border-slate-200" />
-          <div className="lg:col-span-3 bg-white rounded-xl border border-slate-200" />
-        </div>
-      </div>
-    );
+    return <AssessmentWorkspaceSkeleton />;
   }
 
   if (error || !session) {

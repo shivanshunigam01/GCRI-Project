@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import { adminFrameworkService } from "@/services/adminFramework.service";
+import { FrameworkListSkeleton, DataTableSkeleton } from "@/components/shared/PageSkeletons";
 import {
   Layers,
   Plus,
@@ -312,14 +313,7 @@ export default function AdminFrameworksPage() {
 
       {/* Main Framework Cards List */}
       {loading ? (
-        <div className="space-y-4 animate-pulse">
-          {[...Array(3)].map((_, i) => (
-            <div key={i} className="h-32 bg-white rounded-xl border border-slate-200 p-6 space-y-3">
-              <div className="h-5 bg-slate-200 rounded w-1/4" />
-              <div className="h-4 bg-slate-200 rounded w-1/2" />
-            </div>
-          ))}
-        </div>
+        <FrameworkListSkeleton />
       ) : frameworks.length > 0 ? (
         <div className="space-y-4">
           {frameworks.map((fw) => {
@@ -582,9 +576,8 @@ export default function AdminFrameworksPage() {
             {/* Content Area */}
             <div className="flex-1 overflow-y-auto p-5 space-y-4">
               {loadingDetail ? (
-                <div className="py-16 text-center space-y-2">
-                  <Loader2 className="h-6 w-6 animate-spin text-blue-600 mx-auto" />
-                  <p className="text-xs text-slate-500">Loading controls specification...</p>
+                <div className="py-4">
+                  <DataTableSkeleton rows={8} columns={4} />
                 </div>
               ) : activeFrameworkDetail ? (
                 <>

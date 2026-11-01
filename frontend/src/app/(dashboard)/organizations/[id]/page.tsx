@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback, use } from "react";
 import Link from "next/link";
+import { OrganizationDetailSkeleton } from "@/components/shared/PageSkeletons";
 import {
   ArrowLeft,
   Building2,
@@ -273,14 +274,7 @@ export default function OrganizationProfileFullPage({
   };
 
   if (loading) {
-    return (
-      <div className="h-full flex items-center justify-center">
-        <div className="flex flex-col items-center gap-2 text-slate-500 text-xs">
-          <RefreshCw className="h-6 w-6 animate-spin text-teal-600" />
-          <span>Loading organization profile...</span>
-        </div>
-      </div>
-    );
+    return <OrganizationDetailSkeleton />;
   }
 
   if (error || !company) {

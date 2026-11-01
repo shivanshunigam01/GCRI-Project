@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { TableBodySkeletonRows } from "@/components/shared/PageSkeletons";
 import {
   UserCheck,
   Building2,
@@ -463,14 +464,7 @@ export default function AuditorMappingsPage() {
 
             <tbody className="divide-y divide-slate-100">
               {loading && mappings.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="text-center py-16 text-slate-400">
-                    <div className="flex flex-col items-center justify-center gap-2">
-                      <RefreshCw className="h-6 w-6 animate-spin text-teal-600" />
-                      <p className="text-xs font-medium">Loading auditor assignments from database...</p>
-                    </div>
-                  </td>
-                </tr>
+                <TableBodySkeletonRows rows={6} cols={7} />
               ) : filteredMappings.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="text-center py-16 text-slate-400">

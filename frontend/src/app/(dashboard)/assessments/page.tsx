@@ -10,6 +10,7 @@ import {
   AuditorAssessmentsItem,
   AdminAssessmentItem,
 } from "@/types/dashboard.types";
+import { AssessmentListSkeleton } from "@/components/shared/PageSkeletons";
 import {
   FileCheck2,
   Plus,
@@ -172,14 +173,7 @@ export default function AssessmentsPage() {
 
       {/* Main Content Area */}
       {loading ? (
-        <div className="space-y-4 animate-pulse">
-          {[...Array(4)].map((_, i) => (
-            <div key={i} className="h-28 bg-white rounded-xl border border-slate-200 p-5 space-y-3">
-              <div className="h-5 bg-slate-200 rounded w-1/3" />
-              <div className="h-3 bg-slate-200 rounded w-1/2" />
-            </div>
-          ))}
-        </div>
+        <AssessmentListSkeleton />
       ) : error ? (
         <div className="p-8 bg-white rounded-xl border border-red-200 text-center space-y-3">
           <AlertCircle className="h-6 w-6 text-red-500 mx-auto" />

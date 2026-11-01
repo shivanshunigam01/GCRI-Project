@@ -924,9 +924,10 @@ export default function OrganizationDetailDrawer({
 
             {/* List of Assigned Auditors */}
             {auditorsLoading ? (
-              <div className="py-8 text-center text-slate-400 flex flex-col items-center gap-2">
-                <RefreshCw className="h-5 w-5 animate-spin text-teal-600" />
-                <span>Loading assigned auditors...</span>
+              <div className="py-2 space-y-3" aria-busy aria-label="Loading auditors">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="h-14 rounded-lg bg-slate-100 animate-pulse" />
+                ))}
               </div>
             ) : auditors.length === 0 ? (
               <div className="p-5 bg-slate-50 border border-slate-200 rounded-xl text-center space-y-1.5">

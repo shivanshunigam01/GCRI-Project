@@ -5,6 +5,7 @@ import { useAuth } from "@/context/AuthContext";
 import { companyService } from "@/services/company.service";
 import { dashboardService } from "@/services/dashboard.service";
 import { Company, SubscriptionTier } from "@/types/company.types";
+import { SubscriptionsPageSkeleton, DataTableSkeleton } from "@/components/shared/PageSkeletons";
 import {
   CreditCard,
   Shield,
@@ -147,6 +148,10 @@ export default function SubscriptionsPage() {
       return matchesSearch && matchesTier;
     });
   }, [companies, searchQuery, tierFilter]);
+
+  if (loading && companies.length === 0 && !error) {
+    return <SubscriptionsPageSkeleton />;
+  }
 
   return (
     <div className="space-y-8 max-w-7xl mx-auto pb-12">
@@ -453,9 +458,8 @@ export default function SubscriptionsPage() {
         {/* Organizations Table */}
         <div className="overflow-x-auto">
           {loading ? (
-            <div className="p-12 text-center space-y-3">
-              <RefreshCw className="h-6 w-6 text-blue-600 animate-spin mx-auto" />
-              <p className="text-xs text-slate-500">Loading live client allocations...</p>
+            <div className="p-4">
+              <DataTableSkeleton rows={6} columns={6} className="border-0 shadow-none" />
             </div>
           ) : filteredCompanies.length === 0 ? (
             <div className="p-12 text-center text-slate-400 text-xs">

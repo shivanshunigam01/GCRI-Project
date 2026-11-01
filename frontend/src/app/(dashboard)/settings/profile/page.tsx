@@ -17,8 +17,10 @@ import {
   Lock,
 } from "lucide-react";
 
+import { ProfileSettingsSkeleton } from "@/components/shared/PageSkeletons";
+
 export default function ProfileSettingsPage() {
-  const { user, refreshUser } = useAuth();
+  const { user, loading: authLoading, refreshUser } = useAuth();
 
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -67,6 +69,10 @@ export default function ProfileSettingsPage() {
     typeof user?.companyId === "object" && user?.companyId?.name
       ? user.companyId.name
       : undefined;
+
+  if (authLoading && !user) {
+    return <ProfileSettingsSkeleton />;
+  }
 
   return (
     <div className="max-w-3xl mx-auto space-y-6 pb-12">

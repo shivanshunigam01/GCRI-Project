@@ -1,4 +1,5 @@
 import React from "react";
+import { DataTableSkeleton } from "@/components/shared/PageSkeletons";
 
 export interface Column<T> {
   header: string;

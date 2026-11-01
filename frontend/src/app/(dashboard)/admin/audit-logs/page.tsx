@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { auditLogService } from "@/services/auditLog.service";
+import { DataTableSkeleton } from "@/components/shared/PageSkeletons";
 import { AuditLogEntry, AuditLogStats } from "@/types/auditLog.types";
 import {
   History,
@@ -198,10 +199,8 @@ export default function AdminAuditLogsPage() {
       {/* Main Audit Logs Table */}
       <div className="bg-white rounded-xl border border-slate-200/90 shadow-xs overflow-hidden">
         {loading ? (
-          <div className="p-8 space-y-3 animate-pulse">
-            {[...Array(6)].map((_, i) => (
-              <div key={i} className="h-10 bg-slate-100 rounded" />
-            ))}
+          <div className="p-4">
+            <DataTableSkeleton rows={8} columns={6} className="border-0 shadow-none" />
           </div>
         ) : logs.length > 0 ? (
           <div className="overflow-x-auto">

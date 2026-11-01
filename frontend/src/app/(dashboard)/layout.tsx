@@ -36,6 +36,7 @@ import {
   DashboardScopeProvider,
   useDashboardScope,
 } from "@/context/DashboardScopeContext";
+import { DashboardShellContentSkeleton } from "@/components/shared/PageSkeletons";
 
 export default function DashboardLayout({
   children,
@@ -360,7 +361,7 @@ function DashboardLayoutContent({
               : "p-4 sm:p-6 lg:p-8 overflow-y-auto"
           }`}
         >
-          {children}
+          {loading && !user ? <DashboardShellContentSkeleton /> : children}
         </main>
       </div>
     </div>
