@@ -45,3 +45,22 @@ The server will start on `http://localhost:5000`.
 ```bash
 curl http://localhost:5000/api/v1/health
 ```
+
+## Production (EC2 + PM2)
+
+`dist/` is not in git. On the server you must install dependencies and compile before PM2 can start.
+
+```bash
+cd /var/www/GCRI-Project/backend
+git pull origin main
+npm ci
+npm run build
+test -f dist/index.js && echo "Build OK"
+
+pm2 delete gcri-backend 2>/dev/null || true
+pm2 start ecosystem.config.cjs
+pm2 save
+curl -s http://127.0.0.1:${PORT:-5090}/api/v1/health
+```
+
+Set `PORT=5090` (or your chosen port) in `.env` on the server.
