@@ -26,11 +26,12 @@ export default function AuthLayout({
 
       <div className="relative z-10 sm:mx-auto sm:w-full sm:max-w-md px-4">
         {/* Same brand mark as dashboard sidebar (dark-background logo asset) */}
-        <div className="flex justify-center">
+        <div className="flex justify-center bg-transparent">
           <img
             src="/logo.png"
             alt="Global Council for Responsible AI"
-            className="h-9 w-auto max-w-[190px] object-contain sm:h-10 sm:max-w-[220px]"
+            className="h-9 w-auto max-w-[190px] object-contain bg-transparent sm:h-10 sm:max-w-[220px]"
+            style={{ background: "transparent" }}
           />
         </div>
         <h2 className="mt-4 text-center text-xl sm:text-2xl font-bold tracking-tight text-white drop-shadow-sm">
