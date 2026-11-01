@@ -7,6 +7,7 @@ import { useAuth } from "@/context/AuthContext";
 import { assessmentService } from "@/services/assessment.service";
 import {
   AssessmentSession,
+  AssessmentProgressResponse,
   SaveAnswerItemInput,
   TestStatus,
   ExceptionStatus,
@@ -76,6 +77,16 @@ export default function AssessmentWorkspacePage({
   // Operational Reminder State
   const [sendingReminder, setSendingReminder] = useState(false);
   const [reminderMessage, setReminderMessage] = useState<string | null>(null);
+  const [apiProgress, setApiProgress] = useState<AssessmentProgressResponse | null>(null);
+
+  const refreshProgress = async (assessmentId: string) => {
+    try {
+      const res = await assessmentService.getProgress(assessmentId);
+      if (res?.data) setApiProgress(res.data);
+    } catch {
+      /* keep client-side fallback */
+    }
+  };
 
   // Load Session and Framework
   useEffect(() => {
@@ -141,6 +152,8 @@ export default function AssessmentWorkspacePage({
         if (defaultQuestion) {
           setActiveQuestionId(defaultQuestion.questionId);
         }
+
+        await refreshProgress(id);
       } catch (err: any) {
         if (
           err?.response?.status === 403 &&
@@ -176,6 +189,7 @@ export default function AssessmentWorkspacePage({
     saveTimeoutRef.current = setTimeout(async () => {
       try {
         await assessmentService.saveAnswers(id, [updatedAnswer]);
+        await refreshProgress(id);
         setSavingStatus("saved");
         setTimeout(() => setSavingStatus("idle"), 2500);
       } catch (err) {
@@ -326,9 +340,12 @@ export default function AssessmentWorkspacePage({
     (a) => !!a.selectedOptionCode || a.testStatus === "Complete"
   ).length;
   const progressPct =
-    totalQuestionsCount > 0
+    apiProgress?.overallPercentage ??
+    (totalQuestionsCount > 0
       ? Math.round((answeredQuestionsCount / totalQuestionsCount) * 100)
-      : 0;
+      : 0);
+  const progressAnswered = apiProgress?.answeredCount ?? answeredQuestionsCount;
+  const progressTotal = apiProgress?.totalCount ?? totalQuestionsCount;
 
   // Question navigation helpers
   const goToNextQuestion = () => {
@@ -887,9 +904,33 @@ export default function AssessmentWorkspacePage({
               />
             </div>
             <div className="text-[11px] text-slate-500 text-right">
-              {answeredQuestionsCount} of {totalQuestionsCount} controls evaluated
+              {progressAnswered} of {progressTotal} controls evaluated
             </div>
           </div>
+
+          {apiProgress?.pillarProgress && apiProgress.pillarProgress.length > 0 && (
+            <div className="space-y-2 pt-2 border-t border-slate-100">
+              <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wide">
+                GRAICE pillar progress
+              </span>
+              <ul className="space-y-2 max-h-40 overflow-y-auto pr-1">
+                {apiProgress.pillarProgress.map((p) => (
+                  <li key={p.pillarId}>
+                    <div className="flex justify-between text-[10px] text-slate-600 mb-0.5">
+                      <span className="truncate pr-2 font-medium">{p.pillarName}</span>
+                      <span className="font-bold text-slate-800 shrink-0">{p.completionPercentage}%</span>
+                    </div>
+                    <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-cyan-600 rounded-full transition-all"
+                        style={{ width: `${p.completionPercentage}%` }}
+                      />
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           {/* Question Jump Grid */}
           <div className="space-y-2 pt-2 border-t border-slate-100">

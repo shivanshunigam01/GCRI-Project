@@ -7,6 +7,35 @@ import {
   AdminAssessmentItem,
 } from "@/types/dashboard.types";
 
+export type AuditorPipelineFilter = "All" | "InProgress" | "Submitted" | "Light" | "Full";
+
+export function buildAuditorAssessmentsQuery(
+  pipelineFilter: AuditorPipelineFilter,
+  organizationScope: string
+): {
+  limit: number;
+  status?: string;
+  assessmentType?: string;
+  organizationId?: string;
+} {
+  const params: {
+    limit: number;
+    status?: string;
+    assessmentType?: string;
+    organizationId?: string;
+  } = { limit: 100 };
+
+  if (organizationScope !== "all") {
+    params.organizationId = organizationScope;
+  }
+  if (pipelineFilter === "InProgress") params.status = "InProgress";
+  if (pipelineFilter === "Submitted") params.status = "Submitted";
+  if (pipelineFilter === "Light") params.assessmentType = "Light";
+  if (pipelineFilter === "Full") params.assessmentType = "Full";
+
+  return params;
+}
+
 export const dashboardService = {
   // Auditor Dashboard Routes
   getAuditorSummary: () =>
