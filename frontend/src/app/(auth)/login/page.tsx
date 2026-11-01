@@ -112,8 +112,8 @@ export default function LoginPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="text-lg font-semibold text-slate-900">Sign in to your account</h3>
-        <p className="text-sm text-slate-500">Access your organization assessments</p>
+        <h3 className="font-editorial text-xl font-normal text-slate-900">Sign in to your account</h3>
+        <p className="mt-1 text-sm font-medium text-slate-500">Access your organization assessments</p>
       </div>
 
       {error && (
@@ -124,13 +124,13 @@ export default function LoginPage() {
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">Email address</label>
+          <label className="block text-sm font-semibold text-slate-700 mb-1.5">Email address</label>
           <input
             type="email"
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/80 focus:border-blue-400"
             placeholder="auditor@graice.io"
             suppressHydrationWarning
           />
@@ -138,7 +138,7 @@ export default function LoginPage() {
 
         <div>
           <div className="flex items-center justify-between mb-1">
-            <label className="block text-sm font-medium text-slate-700">Password</label>
+            <label className="block text-sm font-semibold text-slate-700">Password</label>
             <Link href="/forgot-password" className="text-xs text-blue-600 hover:underline">
               Forgot password?
             </Link>
@@ -149,7 +149,7 @@ export default function LoginPage() {
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-3 py-2 pr-10 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              className="w-full px-3 py-2.5 pr-10 border border-slate-200 rounded-xl text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/80 focus:border-blue-400 bg-white"
               placeholder="••••••••"
               autoComplete="current-password"
               suppressHydrationWarning
@@ -189,7 +189,7 @@ export default function LoginPage() {
         <button
           type="submit"
           disabled={loading}
-          className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium text-sm rounded-lg transition shadow-sm"
+          className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold text-sm tracking-wide rounded-xl transition shadow-sm"
         >
           {loading ? "Signing in..." : showMfa ? "Verify & Sign in" : "Sign in"}
         </button>

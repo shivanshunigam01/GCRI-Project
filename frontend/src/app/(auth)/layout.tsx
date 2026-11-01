@@ -29,10 +29,10 @@ export default function AuthLayout({
         <div className="flex justify-center bg-transparent py-1">
           <BrandLogo variant="auth" />
         </div>
-        <h2 className="mt-5 text-center text-xl sm:text-2xl font-bold tracking-tight text-white drop-shadow-sm">
+        <h2 className="font-editorial mt-5 text-center text-2xl sm:text-[1.75rem] font-normal tracking-tight text-white drop-shadow-sm">
           GCRAI Assessment Platform
         </h2>
-        <p className="mt-1.5 text-center text-sm text-slate-200/95 max-w-sm mx-auto">
+        <p className="mt-2 text-center text-sm font-medium leading-relaxed text-slate-200/95 max-w-sm mx-auto">
           Enterprise AI governance, GRAICE assurance audits &amp; institutional verification
         </p>
       </div>
