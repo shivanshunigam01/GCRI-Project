@@ -14,7 +14,8 @@ import {
   SubmitAssessmentResponse,
   GenerateReportResponse,
 } from "@/types/assessment.types";
-import { downloadAssessmentExcel, downloadAssessmentPdf } from "@/lib/assessmentDownloads";
+import { downloadAssessmentExcel } from "@/lib/assessmentDownloads";
+import { downloadGraiceBrandedAssessmentPdf } from "@/lib/graiceAssessmentReportPdf";
 
 export const assessmentService = {
   createAssessment: (payload: CreateAssessmentPayload) =>
@@ -84,7 +85,8 @@ export const assessmentService = {
   generateReport: (id: string) =>
     apiClient.post<GenerateReportResponse>(`/assessments/${id}/report`),
 
-  downloadReportPdf: (id: string) => downloadAssessmentPdf(id),
+  /** Branded GRAICE PDF (all pillars + control detail) — used by Generate/Download flows */
+  downloadReportPdf: (id: string) => downloadGraiceBrandedAssessmentPdf(id),
 
   downloadExportExcel: (id: string) => downloadAssessmentExcel(id),
 

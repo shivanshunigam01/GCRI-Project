@@ -6,8 +6,6 @@ import { getApiErrorMessage, getUserFacingApiError } from "@/lib/authUser";
 import { useToast } from "@/context/ToastContext";
 import { cn } from "@/lib/utils";
 import { FileDown, FileSpreadsheet, Loader2, FileText } from "lucide-react";
-import { downloadGraiceBrandedAssessmentPdf } from "@/lib/graiceAssessmentReportPdf";
-
 interface AssessmentReportsPanelProps {
   assessmentId: string;
   className?: string;
@@ -24,7 +22,7 @@ export function AssessmentReportsPanel({ assessmentId, className }: AssessmentRe
     if (generating) return;
     setGenerating(true);
     try {
-      await downloadGraiceBrandedAssessmentPdf(assessmentId);
+      await assessmentService.downloadReportPdf(assessmentId);
       const safeName = `GRAICE_Report_${assessmentId.slice(-6)}.pdf`;
       setLastGeneratedName(safeName);
       toast.success("GRAICE assessment PDF downloaded.");
@@ -39,8 +37,7 @@ export function AssessmentReportsPanel({ assessmentId, className }: AssessmentRe
     if (downloadingPdf) return;
     setDownloadingPdf(true);
     try {
-      // Always use the branded GRAICE layout (same as Generate PDF).
-      await downloadGraiceBrandedAssessmentPdf(assessmentId);
+      await assessmentService.downloadReportPdf(assessmentId);
       toast.success("Branded GRAICE PDF downloaded.");
     } catch (err: unknown) {
       toast.error(getApiErrorMessage(err, "Failed to download PDF report."));
