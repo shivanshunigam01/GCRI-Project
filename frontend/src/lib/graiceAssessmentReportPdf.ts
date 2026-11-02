@@ -337,11 +337,15 @@ async function buildAndSavePdf(
       name: p.name,
     }))
   );
-  const completionPct = Math.round(progress.overallCompletionPercentage ?? 0);
-  const controlsAssessed =
-    summary.totalControlsAssessed ??
-    progress.completedQuestions ??
-    summary.totalNoExceptionsNoted + summary.totalExceptionsNoted;
+  // KPIs must match Status-by-Pillar + findings gaps (never Light overallScore-as-controls).
+  const pillarTotal = pillarRows.reduce((s, p) => s + (p.total ?? 0), 0);
+  const controlsAssessed = pillarRows.reduce((s, p) => s + (p.complete ?? 0), 0);
+  const notYetAssessed = pillarRows.reduce(
+    (s, p) => s + (p.notStarted ?? 0) + (p.inProgress ?? 0),
+    0
+  );
+  const completionPct =
+    pillarTotal > 0 ? Math.round((controlsAssessed / pillarTotal) * 1000) / 10 : 0;
   const scope =
     questions.find((q) => q.organizationScope)?.organizationScope ||
     allQuestions.find((q) => q.organizationScope)?.organizationScope ||
@@ -358,17 +362,18 @@ async function buildAndSavePdf(
 
   y += 9;
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(28);
+  doc.setFontSize(22);
   doc.setTextColor(...NAVY);
-  doc.text(org, MARGIN, y);
+  const orgLines = doc.splitTextToSize(org, CONTENT_W);
+  doc.text(orgLines, MARGIN, y);
+  y += orgLines.length * 8 + 2;
 
-  y += 8;
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(12);
+  doc.setFontSize(11);
   doc.setTextColor(...BODY);
-  doc.text(subtitle.length > 90 ? `${subtitle.slice(0, 87)}…` : subtitle, MARGIN, y);
-
-  y += 7;
+  const subLines = doc.splitTextToSize(subtitle, CONTENT_W);
+  doc.text(subLines, MARGIN, y);
+  y += subLines.length * 5.5 + 4;
   y = drawGradientRule(doc, y);
   y += 5;
 
@@ -410,8 +415,8 @@ async function buildAndSavePdf(
   const kpiLabels = [
     String(controlsAssessed),
     `${completionPct}%`,
-    String(summary.totalExceptionsNoted ?? gapCount),
-    String(summary.totalNotAssessed ?? 0),
+    String(gapCount),
+    String(notYetAssessed),
   ];
   const kpiTitles = ["Controls assessed", "Completion", "Exceptions noted", "Not yet assessed"];
   const boxW = (CONTENT_W - 9) / 4;
