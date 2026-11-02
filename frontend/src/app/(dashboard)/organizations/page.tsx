@@ -27,7 +27,10 @@ import {
   Sparkles,
 } from "lucide-react";
 import { companyService } from "@/services/company.service";
-import { auditorMappingService } from "@/services/auditorMapping.service";
+import {
+  applyOrganizationListFilters,
+  fetchAssessorAccessibleCompanies,
+} from "@/lib/auditorOrganizations";
 import { useAuth } from "@/context/AuthContext";
 import { Company, CompanyStatus, VerificationStatus, SubscriptionTier } from "@/types/company.types";
 import OrganizationDetailDrawer from "@/components/features/companies/OrganizationDetailDrawer";
@@ -118,50 +121,16 @@ export default function OrganizationsPage() {
           (currentUser as any)?.userId;
 
         let assignedCompanies: Company[] = [];
-
         if (auditorId) {
-          try {
-            const mappingsRes = await auditorMappingService.getMappingsByAuditor(auditorId);
-            const orgList =
-              (mappingsRes as any)?.data?.organizations ||
-              (mappingsRes as any)?.organizations ||
-              (mappingsRes as any)?.data ||
-              [];
-
-            assignedCompanies = orgList
-              .map((m: any) => m.organization || m.organizationId)
-              .filter((c: any) => c && typeof c === "object" && c._id);
-          } catch (mapErr) {
-            console.warn("Could not fetch auditor mappings:", mapErr);
-          }
+          assignedCompanies = await fetchAssessorAccessibleCompanies(String(auditorId));
         }
 
-        // Also fetch via standard companyService (which backend scopes to their company/assigned orgs)
-        try {
-          const directRes = await companyService.getCompanies({ limit: 100 });
-          if (directRes && directRes.data) {
-            for (const c of directRes.data) {
-              if (!assignedCompanies.some((ac) => ac._id === c._id)) {
-                assignedCompanies.push(c);
-              }
-            }
-          }
-        } catch (directErr) {
-          console.warn("Could not fetch direct companies:", directErr);
-        }
-
-        if (debouncedSearch.trim()) {
-          const q = debouncedSearch.trim().toLowerCase();
-          assignedCompanies = assignedCompanies.filter(
-            (c) =>
-              c.name.toLowerCase().includes(q) ||
-              c.domain.toLowerCase().includes(q)
-          );
-        }
-
-        if (statusFilter !== "all") {
-          assignedCompanies = assignedCompanies.filter((c) => c.status === statusFilter);
-        }
+        assignedCompanies = applyOrganizationListFilters(assignedCompanies, {
+          search: debouncedSearch,
+          status: statusFilter,
+          verificationStatus: verificationFilter,
+          tier: tierFilter,
+        });
 
         setCompanies(assignedCompanies);
         setPaginationMeta({

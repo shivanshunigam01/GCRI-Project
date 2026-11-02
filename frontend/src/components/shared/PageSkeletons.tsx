@@ -122,12 +122,14 @@ export function AssessmentWorkspaceSkeleton() {
 
 export function AssessmentResultsSkeleton() {
   return (
-    <div className="space-y-6" aria-busy aria-label="Loading results">
-      <Skeleton className="h-10 w-1/3 max-w-md" />
+    <div className="max-w-6xl mx-auto space-y-8 pb-14" aria-busy aria-label="Loading results">
+      <Skeleton className="h-10 w-48 rounded-xl" />
+      <Skeleton className="h-[280px] w-full rounded-3xl" />
       <StatCardsSkeleton count={4} />
+      <Skeleton className="h-[520px] w-full rounded-3xl" />
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Skeleton className="h-96 rounded-xl" />
-        <Skeleton className="h-96 rounded-xl" />
+        <Skeleton className="h-80 rounded-3xl" />
+        <Skeleton className="h-80 rounded-3xl" />
       </div>
     </div>
   );

@@ -3,6 +3,8 @@
 import React, { useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { authService } from "@/services/auth.service";
+import { getApiErrorMessage, isMfaMandatoryRole } from "@/lib/authUser";
+import { storage } from "@/lib/storage";
 import { SetupMfaResponse } from "@/types/auth.types";
 import {
   ShieldCheck,
@@ -23,7 +25,7 @@ import {
 } from "lucide-react";
 
 export default function SecuritySettingsPage() {
-  const { user, refreshUser } = useAuth();
+  const { user, refreshUser, login } = useAuth();
 
   // Password Change Form State
   const [currentPassword, setCurrentPassword] = useState("");
@@ -54,6 +56,7 @@ export default function SecuritySettingsPage() {
   const [disableError, setDisableError] = useState<string | null>(null);
 
   const isMfaActive = Boolean(user?.mfa?.enabled || user?.mfaEnabled);
+  const mfaMandatory = isMfaMandatoryRole(user?.role);
 
   // Handle Password Change
   const handlePasswordChange = async (e: React.FormEvent) => {
@@ -81,11 +84,9 @@ export default function SecuritySettingsPage() {
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Failed to change password:", err);
-      setPasswordError(
-        err?.response?.data?.message || err?.message || "Failed to update password."
-      );
+      setPasswordError(getApiErrorMessage(err, "Failed to update password."));
     } finally {
       setPasswordLoading(false);
     }
@@ -102,11 +103,9 @@ export default function SecuritySettingsPage() {
 
       const res = await authService.setupMfa();
       setSetupData(res.data);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Failed to initiate MFA setup:", err);
-      setMfaError(
-        err?.response?.data?.message || err?.message || "Failed to generate 2FA secret."
-      );
+      setMfaError(getApiErrorMessage(err, "Failed to generate 2FA secret."));
     } finally {
       setSetupLoading(false);
     }
@@ -125,15 +124,23 @@ export default function SecuritySettingsPage() {
       setMfaError(null);
 
       const res = await authService.verifyMfa({ token: verifyToken.trim() });
+      if (res.data?.token) {
+        storage.setToken(res.data.token);
+        if (user) {
+          login(res.data.token, {
+            ...user,
+            mfa: { enabled: true },
+            mfaEnabled: true,
+          });
+        }
+      }
       if (res.data?.recoveryCodes) {
         setRecoveryCodes(res.data.recoveryCodes);
       }
       await refreshUser();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("MFA verification failed:", err);
-      setMfaError(
-        err?.response?.data?.message || err?.message || "Invalid 6-digit code. Please try again."
-      );
+      setMfaError(getApiErrorMessage(err, "Invalid 6-digit code. Please try again."));
     } finally {
       setVerifying(false);
     }
@@ -160,11 +167,9 @@ export default function SecuritySettingsPage() {
       setDisablePassword("");
       setDisableToken("");
       await refreshUser();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Failed to disable MFA:", err);
-      setDisableError(
-        err?.response?.data?.message || err?.message || "Failed to disable MFA."
-      );
+      setDisableError(getApiErrorMessage(err, "Failed to disable MFA."));
     } finally {
       setDisabling(false);
     }
@@ -192,14 +197,27 @@ export default function SecuritySettingsPage() {
           <ShieldCheck className="h-4 w-4" />
           <span>Security &amp; Credentials</span>
         </div>
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900">Security &amp; MFA</h1>
+        <h1 className="page-title">Security &amp; MFA</h1>
         <p className="text-sm text-slate-500 mt-1">
           Configure two-factor TOTP authentication, maintain recovery codes, and update your account password.
         </p>
       </div>
 
+      {mfaMandatory && !isMfaActive && (
+        <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl flex gap-3 text-sm text-amber-950">
+          <AlertCircle className="h-5 w-5 shrink-0 text-amber-600" />
+          <div>
+            <p className="font-semibold">MFA required for your role</p>
+            <p className="text-xs mt-1 text-amber-800/90">
+              Super Admin and Org Admin accounts must enable two-factor authentication before using
+              administrative features. Complete setup below.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Two-Factor Authentication Card */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-6 space-y-5">
+      <div className="surface-panel shadow-xs p-6 space-y-5">
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
           <div className="flex items-start gap-3.5">
             <div
@@ -234,9 +252,9 @@ export default function SecuritySettingsPage() {
 
           <div>
             {isMfaActive ? (
-              user?.role === "Admin" ? (
-                <span className="text-[11px] font-medium text-slate-400 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200 inline-block text-center">
-                  Mandatory for Admins
+              mfaMandatory ? (
+                <span className="text-[11px] font-medium text-slate-600 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200 inline-block text-center">
+                  Mandatory for {user?.role === "SuperAdmin" ? "Super Admin" : "Org Admin"}
                 </span>
               ) : (
                 <button
@@ -255,7 +273,7 @@ export default function SecuritySettingsPage() {
                 className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition shadow-xs disabled:opacity-50"
               >
                 {setupLoading && <RefreshCw className="h-3.5 w-3.5 animate-spin" />}
-                <span>Enable 2FA</span>
+                <span>{mfaMandatory && !isMfaActive ? "Complete required MFA setup" : "Enable 2FA"}</span>
               </button>
             )}
           </div>
@@ -263,7 +281,7 @@ export default function SecuritySettingsPage() {
       </div>
 
       {/* Change Password Card */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-6 space-y-5">
+      <div className="surface-panel shadow-xs p-6 space-y-5">
         <div>
           <h3 className="text-base font-bold text-slate-900">Update Password</h3>
           <p className="text-xs text-slate-500 mt-0.5">

@@ -143,7 +143,7 @@ export default function ApiKeysPage() {
 
   if (!isAdmin) {
     return (
-      <div className="max-w-2xl mx-auto my-12 bg-white rounded-2xl border border-slate-200 p-8 text-center space-y-4 shadow-xs">
+      <div className="max-w-2xl mx-auto my-12 surface-panel p-8 text-center space-y-4 shadow-xs">
         <div className="h-12 w-12 rounded-full bg-red-50 text-red-600 flex items-center justify-center mx-auto">
           <ShieldAlert className="h-6 w-6" />
         </div>
@@ -171,7 +171,7 @@ export default function ApiKeysPage() {
             <Lock className="h-4 w-4" />
             <span>M2M Authentication</span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">
+          <h1 className="page-title page-title-lg">
             Machine-to-Machine API Keys
           </h1>
           <p className="text-sm text-slate-500 mt-1">
@@ -249,7 +249,7 @@ export default function ApiKeysPage() {
       </div>
 
       {/* Keys Directory Table */}
-      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
+      <div className="surface-panel overflow-hidden shadow-xs">
         <div className="px-6 py-4 border-b border-slate-200 bg-slate-50/70 flex items-center justify-between">
           <div>
             <h2 className="text-base font-bold text-slate-900">Provisioned API Credentials</h2>

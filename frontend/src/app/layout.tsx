@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { AuthProvider } from "@/context/AuthContext";
+import { ToastProvider } from "@/context/ToastContext";
 import { ApiLoadingProvider } from "@/context/ApiLoadingContext";
 import { ApiLoadingBar } from "@/components/shared/ApiLoadingBar";
 import { fontDisplay, fontSans } from "@/lib/fonts";
@@ -22,8 +23,10 @@ export default function RootLayout({
       >
         <ApiLoadingProvider>
           <AuthProvider>
-            <ApiLoadingBar />
-            {children}
+            <ToastProvider>
+              <ApiLoadingBar />
+              {children}
+            </ToastProvider>
           </AuthProvider>
         </ApiLoadingProvider>
       </body>

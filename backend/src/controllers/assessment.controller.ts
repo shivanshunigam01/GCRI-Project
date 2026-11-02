@@ -1,6 +1,5 @@
 import { Request, Response, NextFunction } from "express";
 import { Types } from "mongoose";
-import fs from "fs";
 import { AssessmentSession, IAnswer, ExceptionStatus, TestStatus } from "../models/AssessmentSession.js";
 import { AssessmentFramework } from "../models/AssessmentFramework.js";
 import { Company } from "../models/Company.js";
@@ -1244,12 +1243,7 @@ export async function downloadAssessmentReport(req: Request, res: Response, next
       return sendError(res, "Access denied. You are not assigned to this organization.", 403, "CROSS_COMPANY_ACCESS_DENIED");
     }
 
-    // If report already generated and exists on disk
-    if (session.reportMetadata?.filePath && fs.existsSync(session.reportMetadata.filePath)) {
-      return res.download(session.reportMetadata.filePath, session.reportMetadata.fileName);
-    }
-
-    // If not generated yet, generate on-demand
+    // Always regenerate so the branded GRAICE layout stays current with assessment data.
     const [company, framework, auditor] = await Promise.all([
       Company.findById(session.companyId),
       AssessmentFramework.findOne({

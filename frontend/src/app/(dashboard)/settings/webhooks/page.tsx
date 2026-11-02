@@ -228,7 +228,7 @@ export default function WebhooksPage() {
             <SlidersHorizontal className="h-4 w-4" />
             <span>Developer Webhooks</span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">
+          <h1 className="page-title page-title-lg">
             Outbound Webhooks
           </h1>
           <p className="text-sm text-slate-500 mt-1">
@@ -308,7 +308,7 @@ export default function WebhooksPage() {
       )}
 
       {/* Webhooks Subscriptions Directory */}
-      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
+      <div className="surface-panel overflow-hidden shadow-xs">
         <div className="px-6 py-4 border-b border-slate-200 bg-slate-50/70 flex items-center justify-between">
           <div>
             <h2 className="text-base font-bold text-slate-900">Active Webhook Endpoints</h2>

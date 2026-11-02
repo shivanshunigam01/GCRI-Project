@@ -45,7 +45,7 @@ export default function OrganizationProfileFullPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
-  const { user: currentUser, isAdmin } = useAuth();
+  const { user: currentUser, isAdmin, isSuperAdmin } = useAuth();
 
   const [company, setCompany] = useState<Company | null>(null);
   const [loading, setLoading] = useState(true);
@@ -311,7 +311,7 @@ export default function OrganizationProfileFullPage({
           </div>
           <div>
             <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-xl font-black text-slate-900 tracking-tight">{company.name}</h1>
+              <h1 className="page-title text-xl sm:text-2xl font-black tracking-tight">{company.name}</h1>
               <span
                 className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
                   company.status === "Active"
@@ -342,16 +342,18 @@ export default function OrganizationProfileFullPage({
         </div>
 
         <div className="flex items-center gap-2">
-          <button
-            onClick={handleToggleStatus}
-            className={`p-2 border rounded-lg text-xs flex items-center gap-1.5 font-medium shadow-2xs transition ${
-              company.status === "Active"
-                ? "border-rose-200 text-rose-600 hover:bg-rose-50"
-                : "border-emerald-200 text-emerald-600 hover:bg-emerald-50"
-            }`}
-          >
-            {company.status === "Active" ? "Suspend Account" : "Activate Account"}
-          </button>
+          {isSuperAdmin && (
+            <button
+              onClick={handleToggleStatus}
+              className={`p-2 border rounded-lg text-xs flex items-center gap-1.5 font-medium shadow-2xs transition ${
+                company.status === "Active"
+                  ? "border-rose-200 text-rose-600 hover:bg-rose-50"
+                  : "border-emerald-200 text-emerald-600 hover:bg-emerald-50"
+              }`}
+            >
+              {company.status === "Active" ? "Suspend Account" : "Activate Account"}
+            </button>
+          )}
           <button
             onClick={() => {
               fetchCompany();

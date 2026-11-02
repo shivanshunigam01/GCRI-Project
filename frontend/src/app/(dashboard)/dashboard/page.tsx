@@ -22,6 +22,7 @@ import {
   AuditorActiveAssessment,
 } from "@/types/dashboard.types";
 import { useDashboardScope } from "@/context/DashboardScopeContext";
+import { getUserFacingApiError } from "@/lib/authUser";
 import {
   FileCheck2,
   Clock,
@@ -71,6 +72,7 @@ export default function DashboardPage() {
   const roleView: "Admin" | "Auditor" = isAdmin ? "Admin" : "Auditor";
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [dashboardWarning, setDashboardWarning] = useState<string | null>(null);
 
   // Auditor state
   const [auditorSummary, setAuditorSummary] = useState<AuditorDashboardSummary | null>(null);
@@ -96,6 +98,7 @@ export default function DashboardPage() {
   const fetchDashboard = async () => {
     setLoading(true);
     setError(null);
+    setDashboardWarning(null);
     try {
       if (roleView === "Admin") {
         const [sumRes, assessRes, compRes] = await Promise.all([
@@ -122,28 +125,63 @@ export default function DashboardPage() {
         }
         if (assessRes?.data?.assessments) setAdminAssessments(assessRes.data.assessments);
       } else {
-        const [sumRes, assessRes, orgsRes] = await Promise.all([
+        const [sumResult, assessResult, orgsResult] = await Promise.allSettled([
           dashboardService.getAuditorSummary(),
           dashboardService.getAuditorAssessments({ limit: 100 }),
           dashboardService.getAuditorOrganizations(),
         ]);
-        if (sumRes?.data) setAuditorSummary(sumRes.data);
-        if (assessRes?.data?.assessments) {
-          setAuditorAssessments(assessRes.data.assessments);
+
+        const partialErrors: string[] = [];
+
+        if (sumResult.status === "fulfilled" && sumResult.value?.data) {
+          setAuditorSummary(sumResult.value.data);
+        } else {
+          const msg =
+            sumResult.status === "rejected"
+              ? getUserFacingApiError(sumResult.reason, "dashboard summary")
+              : "Dashboard summary returned an unexpected format.";
+          setAuditorSummary(null);
+          setError(msg);
+          return;
+        }
+
+        if (assessResult.status === "fulfilled") {
+          const assessments = assessResult.value?.data?.assessments;
+          setAuditorAssessments(Array.isArray(assessments) ? assessments : []);
+          if (assessResult.value?.data && !Array.isArray(assessments)) {
+            partialErrors.push("Some assessment data could not be loaded.");
+          }
         } else {
           setAuditorAssessments([]);
+          partialErrors.push(
+            getUserFacingApiError(assessResult.reason, "assessments")
+          );
         }
-        if (orgsRes?.data?.organizations) {
-          setAuditorOrgs(orgsRes.data.organizations);
-          setOrganizations(orgsRes.data.organizations);
+
+        if (orgsResult.status === "fulfilled") {
+          const orgs = orgsResult.value?.data?.organizations;
+          if (Array.isArray(orgs)) {
+            setAuditorOrgs(orgs);
+            setOrganizations(orgs);
+          } else {
+            setAuditorOrgs([]);
+            setOrganizations([]);
+            partialErrors.push("Organization list returned an unexpected format.");
+          }
+        } else {
+          setAuditorOrgs([]);
+          setOrganizations([]);
+          partialErrors.push(
+            getUserFacingApiError(orgsResult.reason, "assigned organizations")
+          );
+        }
+
+        if (partialErrors.length > 0) {
+          setDashboardWarning(partialErrors.join(" "));
         }
       }
-    } catch (err: any) {
-      setError(
-        err?.response?.data?.error?.message ||
-          err?.message ||
-          "Failed to load real-time dashboard data"
-      );
+    } catch (err: unknown) {
+      setError(getUserFacingApiError(err, "dashboard data"));
     } finally {
       setLoading(false);
     }
@@ -179,6 +217,21 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
+      {dashboardWarning && roleView === "Auditor" && (
+        <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 flex items-start gap-3 text-sm text-amber-900">
+          <AlertTriangle className="h-5 w-5 shrink-0 text-amber-600 mt-0.5" />
+          <div className="flex-1 space-y-2">
+            <p>{dashboardWarning}</p>
+            <button
+              type="button"
+              onClick={fetchDashboard}
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-900 underline hover:no-underline"
+            >
+              <RefreshCw className="h-3.5 w-3.5" /> Retry loading data
+            </button>
+          </div>
+        </div>
+      )}
       {roleView === "Auditor" ? (
         <AuditorDashboardContent
           summary={auditorSummary}
@@ -306,14 +359,14 @@ function AuditorDashboardContent({
     };
   }, [pipelineFilter, selectedOrgFilter, onFetchAssessments]);
 
-  // Standard 7 GRAICE Pillars Definition
+  // Must match backend CANONICAL_GRAICE_PILLARS (dashboard.controller.ts)
   const STANDARD_PILLARS = [
     { pillarId: "ethical-leadership", pillarNumber: 1, name: "Ethical Leadership" },
-    { pillarId: "data-governance-integrity", pillarNumber: 2, name: "Data Governance & Integrity" },
-    { pillarId: "purpose-driven-innovation", pillarNumber: 3, name: "Purpose-Driven Innovation" },
-    { pillarId: "human-centric-use", pillarNumber: 4, name: "Human-Centric Use" },
-    { pillarId: "responsible-implementation", pillarNumber: 5, name: "Responsible Implementation" },
-    { pillarId: "ai-literacy-workforce-readiness", pillarNumber: 6, name: "AI Literacy & Workforce Readiness" },
+    { pillarId: "purpose-driven-innovation", pillarNumber: 2, name: "Purpose-Driven Innovation" },
+    { pillarId: "human-centric-use", pillarNumber: 3, name: "Human-Centric Use" },
+    { pillarId: "responsible-implementation", pillarNumber: 4, name: "Responsible Implementation" },
+    { pillarId: "ai-literacy-workforce-readiness", pillarNumber: 5, name: "AI Literacy & Workforce Readiness" },
+    { pillarId: "data-governance-integrity", pillarNumber: 6, name: "Data Governance & Integrity" },
     { pillarId: "transparency-auditability", pillarNumber: 7, name: "Transparency & Auditability" },
   ];
 
@@ -334,16 +387,16 @@ function AuditorDashboardContent({
     const results = STANDARD_PILLARS.map((std) => {
       const match = backendPillars.find(
         (p) =>
-          p.pillarNumber === std.pillarNumber ||
           p.canonicalPillarId === std.pillarId ||
           p.pillarId === std.pillarId ||
-          p.pillarId === `P${std.pillarNumber}`
+          p.pillarId === `P${std.pillarNumber}` ||
+          p.pillarNumber === std.pillarNumber
       );
       const pct = match?.completionPercentage ?? 0;
       return {
         pillarId: std.pillarId,
         pillarNumber: std.pillarNumber,
-        name: std.name,
+        name: match?.name ?? std.name,
         completionPercentage: pct,
         scoreEarned: Math.round((pct / 100) * 16),
         scoreMax: 16,
@@ -450,11 +503,14 @@ function AuditorDashboardContent({
       };
     }
 
-    if (summary?.pillarPerformance?.length) {
+    if (
+      selectedOrgFilter === "all" &&
+      summary?.pillarPerformance?.length
+    ) {
       return mapSummaryPillarPerformance(summary.pillarPerformance);
     }
 
-    // Default 0 placeholder
+    // No scoreSnapshot for this scope — show empty chart (avoid portfolio summary on one org)
     return {
       pillars: STANDARD_PILLARS.map((std) => ({
         ...std,
@@ -604,7 +660,7 @@ function AuditorDashboardContent({
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 font-editorial">
+            <h1 className="page-title page-title-lg font-editorial">
               Good Morning, {userName} 👋
             </h1>
             <span className="hidden sm:inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
@@ -675,14 +731,14 @@ function AuditorDashboardContent({
       {/* -------------------------------------------------------------------- */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
         {/* CARD 1: 7 GRAICE Pillars Assurance (Interactive Radar Spider Graph) */}
-        <div className="lg:col-span-5 bg-white rounded-2xl border border-slate-200/90 p-4 sm:p-5 shadow-xs hover:shadow-md hover:border-slate-300 transition-all duration-300 group flex flex-col justify-between relative overflow-hidden">
+        <div className="lg:col-span-5 surface-panel p-4 sm:p-5 shadow-xs hover:shadow-md hover:border-slate-300 transition-all duration-300 group flex flex-col justify-between relative overflow-hidden">
           {/* Ambient Corner Glow */}
           <div className="pointer-events-none absolute -top-16 -right-16 w-44 h-44 bg-blue-500/5 rounded-full blur-2xl group-hover:bg-blue-500/10 transition-all duration-500" />
 
           <div className="flex items-center justify-between pb-2.5 border-b border-slate-100 relative z-10">
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-sm font-bold text-slate-900">7 GRAICE Pillars Assurance</h3>
+                <h3 className="section-heading">7 GRAICE Pillars Assurance</h3>
                 <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border transition-colors ${
                   derivedPillarData.overallAvgScore >= 75
                     ? "bg-emerald-50 text-emerald-700 border-emerald-200"
@@ -738,13 +794,13 @@ function AuditorDashboardContent({
         </div>
 
         {/* CARD 2: Governance Pillars Breakdown (Progress Bars) */}
-        <div className="lg:col-span-7 bg-white rounded-2xl border border-slate-200/90 p-4 sm:p-5 shadow-xs hover:shadow-md hover:border-slate-300 transition-all duration-300 group flex flex-col justify-between relative overflow-hidden">
+        <div className="lg:col-span-7 surface-panel p-4 sm:p-5 shadow-xs hover:shadow-md hover:border-slate-300 transition-all duration-300 group flex flex-col justify-between relative overflow-hidden">
           {/* Ambient Corner Glow */}
           <div className="pointer-events-none absolute -top-16 -right-16 w-44 h-44 bg-indigo-500/5 rounded-full blur-2xl group-hover:bg-indigo-500/10 transition-all duration-500" />
 
           <div className="flex items-center justify-between pb-2.5 border-b border-slate-100 relative z-10">
             <div>
-              <h3 className="text-sm font-bold text-slate-900">Governance Pillar Breakdown</h3>
+              <h3 className="section-heading">Governance Pillar Breakdown</h3>
               <p className="text-[11px] text-slate-500 mt-0.5">Assurance score and weighted points by pillar</p>
             </div>
             <span className="text-xs text-slate-500 font-medium bg-slate-100 px-2.5 py-0.5 rounded-full">
@@ -820,10 +876,10 @@ function AuditorDashboardContent({
       {/* -------------------------------------------------------------------- */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
         {/* CARD 1: Assessment Lifecycle (Span 6) */}
-        <div className="lg:col-span-6 bg-white rounded-2xl border border-slate-200/90 p-4 sm:p-5 shadow-xs hover:shadow-sm transition-all duration-300 flex flex-col justify-between relative overflow-hidden">
+        <div className="lg:col-span-6 surface-panel p-4 sm:p-5 shadow-xs hover:shadow-sm transition-all duration-300 flex flex-col justify-between relative overflow-hidden">
           <div className="flex items-center justify-between pb-3 border-b border-slate-100">
             <div>
-              <h3 className="text-sm font-bold text-slate-900">Assessment Lifecycle</h3>
+              <h3 className="section-heading">Assessment Lifecycle</h3>
               <p className="text-[11px] text-slate-500 mt-0.5">Audit completion ratio</p>
             </div>
             <span className="text-xs text-slate-600 font-semibold bg-slate-100 px-2.5 py-0.5 rounded-full border border-slate-200/70">
@@ -966,10 +1022,10 @@ function AuditorDashboardContent({
         </div>
 
         {/* CARD 2: Assessment Framework Split (Span 6) */}
-        <div className="lg:col-span-6 bg-white rounded-2xl border border-slate-200/90 p-4 sm:p-5 shadow-xs hover:shadow-sm transition-all duration-300 flex flex-col justify-between relative overflow-hidden">
+        <div className="lg:col-span-6 surface-panel p-4 sm:p-5 shadow-xs hover:shadow-sm transition-all duration-300 flex flex-col justify-between relative overflow-hidden">
           <div className="flex items-center justify-between pb-3 border-b border-slate-100">
             <div>
-              <h3 className="text-sm font-bold text-slate-900">Framework Mix</h3>
+              <h3 className="section-heading">Framework Mix</h3>
               <p className="text-[11px] text-slate-500 mt-0.5">Light vs Full standard distribution</p>
             </div>
             <div className="p-1.5 rounded-lg bg-slate-100 text-slate-500">
@@ -1100,10 +1156,10 @@ function AuditorDashboardContent({
       {/* -------------------------------------------------------------------- */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
         {/* CARD 1: Governance Maturity Classification (Span 6) */}
-        <div className="lg:col-span-6 bg-white rounded-2xl border border-slate-200/90 p-5 shadow-xs flex flex-col justify-between">
+        <div className="lg:col-span-6 surface-panel p-5 shadow-xs flex flex-col justify-between">
           <div className="flex items-center justify-between pb-3 border-b border-slate-100">
             <div>
-              <h3 className="text-sm font-bold text-slate-900">Governance Maturity Classification</h3>
+              <h3 className="section-heading">Governance Maturity Classification</h3>
               <p className="text-[11px] text-slate-500 mt-0.5">
                 GRAICE 4-tier assurance rating based on audited client scores
               </p>
@@ -1196,10 +1252,10 @@ function AuditorDashboardContent({
         </div>
 
         {/* CARD 2: Risk Findings & Assurance Exceptions (Span 6) */}
-        <div className="lg:col-span-6 bg-white rounded-2xl border border-slate-200/90 p-5 shadow-xs flex flex-col justify-between">
+        <div className="lg:col-span-6 surface-panel p-5 shadow-xs flex flex-col justify-between">
           <div className="flex items-center justify-between pb-3 border-b border-slate-100">
             <div>
-              <h3 className="text-sm font-bold text-slate-900">Risk Findings &amp; Exceptions</h3>
+              <h3 className="section-heading">Risk Findings &amp; Exceptions</h3>
               <p className="text-[11px] text-slate-500 mt-0.5">
                 Flagged exceptions requiring remediation across audits
               </p>
@@ -1364,10 +1420,10 @@ function AuditorDashboardContent({
         </div>
 
         {/* CARD 2: Assigned Client Organizations Directory (Span 7) */}
-        <div className="lg:col-span-7 bg-white rounded-2xl border border-slate-200/90 p-5 shadow-xs flex flex-col justify-between">
+        <div className="lg:col-span-7 surface-panel p-5 shadow-xs flex flex-col justify-between">
           <div className="flex items-center justify-between pb-3 border-b border-slate-100">
             <div>
-              <h3 className="text-sm font-bold text-slate-900">Assigned Organizations Directory</h3>
+              <h3 className="section-heading">Assigned Organizations Directory</h3>
               <p className="text-[11px] text-slate-500 mt-0.5">
                 Client organizations under your assurance portfolio
               </p>
@@ -1447,10 +1503,10 @@ function AuditorDashboardContent({
       {/* -------------------------------------------------------------------- */}
       {/* ROW 5: INTERACTIVE ASSESSMENT PIPELINE EXPLORER & FILTERABLE TABLE    */}
       {/* -------------------------------------------------------------------- */}
-      <div className="bg-white rounded-2xl border border-slate-200/90 p-5 shadow-xs space-y-4">
+      <div className="surface-panel p-5 shadow-xs space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-slate-100">
           <div>
-            <h3 className="text-sm font-bold text-slate-900">Assessment Pipeline Explorer</h3>
+            <h3 className="section-heading">Assessment Pipeline Explorer</h3>
             <p className="text-[11px] text-slate-500 mt-0.5">
               Filterable ledger of live evaluations, compliance scores, and reports
             </p>
@@ -1886,7 +1942,7 @@ function AdminDashboardContent({
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200/90 shadow-xs">
         <div>
           <div className="flex items-center gap-2.5">
-            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 font-editorial">
+            <h1 className="page-title page-title-lg font-editorial">
               {isSuperAdmin ? "Platform Operations & Governance" : "Organization Governance & Compliance"}
             </h1>
             <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/80">
@@ -2035,10 +2091,10 @@ function AdminDashboardContent({
       {/* -------------------------------------------------------------------- */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
         {/* CARD 1: Assessments by Status (Donut Chart) */}
-        <div className="lg:col-span-6 bg-white rounded-2xl border border-slate-200/90 p-4 sm:p-5 shadow-xs hover:shadow-sm transition-all duration-300 flex flex-col justify-between relative overflow-hidden">
+        <div className="lg:col-span-6 surface-panel p-4 sm:p-5 shadow-xs hover:shadow-sm transition-all duration-300 flex flex-col justify-between relative overflow-hidden">
           <div className="flex items-center justify-between pb-3 border-b border-slate-100">
             <div>
-              <h3 className="text-sm font-bold text-slate-900">
+              <h3 className="section-heading">
                 {isScoped ? `${scopedOrg?.name} Assessments` : "Platform Assessments by Status"}
               </h3>
               <p className="text-[11px] text-slate-500 mt-0.5">
@@ -2185,10 +2241,10 @@ function AdminDashboardContent({
         </div>
 
         {/* CARD 2: SaaS Licensing & Tenant Architecture Matrix (Completely distinct layout, NOT a duplicate donut) */}
-        <div className="lg:col-span-6 bg-white rounded-2xl border border-slate-200/90 p-4 sm:p-5 shadow-xs hover:shadow-sm transition-all duration-300 flex flex-col justify-between relative overflow-hidden">
+        <div className="lg:col-span-6 surface-panel p-4 sm:p-5 shadow-xs hover:shadow-sm transition-all duration-300 flex flex-col justify-between relative overflow-hidden">
           <div className="flex items-center justify-between pb-3 border-b border-slate-100">
             <div>
-              <h3 className="text-sm font-bold text-slate-900">SaaS Licensing &amp; Plan Matrix</h3>
+              <h3 className="section-heading">SaaS Licensing &amp; Plan Matrix</h3>
               <p className="text-[11px] text-slate-500 mt-0.5">Tier distribution, tenant features &amp; SLA allocation</p>
             </div>
             <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-50 text-amber-800 border border-amber-200/80 text-xs font-bold shadow-2xs">
@@ -2315,10 +2371,10 @@ function AdminDashboardContent({
       {/* -------------------------------------------------------------------- */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
         {/* Card 1: Recent Organizations */}
-        <div className="lg:col-span-8 bg-white rounded-2xl border border-slate-200/90 p-5 shadow-xs">
+        <div className="lg:col-span-8 surface-panel p-5 shadow-xs">
           <div className="flex items-center justify-between pb-3 border-b border-slate-100">
             <div>
-              <h3 className="text-sm font-bold text-slate-900">Recent Client Organizations</h3>
+              <h3 className="section-heading">Recent Client Organizations</h3>
               <p className="text-[11px] text-slate-500">Live directory of onboarded tenant companies</p>
             </div>
             <Link href="/organizations" className="text-xs font-semibold text-blue-600 hover:underline">
@@ -2401,10 +2457,10 @@ function AdminDashboardContent({
         </div>
 
         {/* Card 2: Recent Activity Feed */}
-        <div className="lg:col-span-4 bg-white rounded-2xl border border-slate-200/90 p-5 shadow-xs flex flex-col justify-between">
+        <div className="lg:col-span-4 surface-panel p-5 shadow-xs flex flex-col justify-between">
           <div className="flex items-center justify-between pb-3 border-b border-slate-100">
             <div>
-              <h3 className="text-sm font-bold text-slate-900">Security Audit Trail</h3>
+              <h3 className="section-heading">Security Audit Trail</h3>
               <p className="text-[11px] text-slate-500">Immutable platform security events</p>
             </div>
             <Link href="/admin/audit-logs" className="text-xs font-semibold text-blue-600 hover:underline">
@@ -2442,11 +2498,11 @@ function AdminDashboardContent({
       {/* -------------------------------------------------------------------- */}
       {/* ROW 4: PLATFORM ASSESSMENT PIPELINE (FULL OPERATIONAL TRACKING)      */}
       {/* -------------------------------------------------------------------- */}
-      <div className="bg-white rounded-2xl border border-slate-200/90 p-5 shadow-xs space-y-4">
+      <div className="surface-panel p-5 shadow-xs space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
           <div>
             <div className="flex items-center gap-2">
-              <h3 className="text-sm font-bold text-slate-900">
+              <h3 className="section-heading">
                 {isScoped ? `${scopedOrg?.name} Assessment Pipeline` : "Platform Assessment Pipeline"}
               </h3>
               {filteredAssessments.length > 10 && (

@@ -4,9 +4,12 @@ import React, { useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { userService } from "@/services/user.service";
+import { useAuth } from "@/context/AuthContext";
+import { getApiErrorMessage, normalizeLoginUser } from "@/lib/authUser";
 
 function AcceptInviteContent() {
   const router = useRouter();
+  const { login } = useAuth();
   const searchParams = useSearchParams();
   const initialToken = searchParams.get("token") || "";
 
@@ -29,13 +32,34 @@ function AcceptInviteContent() {
 
     setLoading(true);
     try {
-      await userService.acceptInvite({ token, password });
-      setMessage("Account activated successfully! Redirecting to login...");
+      const res = await userService.acceptInvite({ token, password });
+      const data = res.data as {
+        token?: string;
+        user?: Record<string, unknown>;
+        message?: string;
+      };
+
+      if (data?.token && data?.user) {
+        const user = normalizeLoginUser(data.user);
+        if (user) {
+          login(data.token, user);
+          if (user.role === "SuperAdmin" || user.role === "Admin") {
+            setMessage("Account activated. Complete MFA enrollment to continue…");
+            setTimeout(() => router.push("/settings/security"), 800);
+          } else {
+            setMessage("Account activated! Redirecting to your dashboard…");
+            setTimeout(() => router.push("/dashboard"), 800);
+          }
+          return;
+        }
+      }
+
+      setMessage("Account activated successfully! Redirecting to sign in…");
       setTimeout(() => {
         router.push("/login");
       }, 2000);
-    } catch (err: any) {
-      setError(err?.message || "Failed to accept invitation or token expired");
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, "Failed to accept invitation or token expired"));
     } finally {
       setLoading(false);
     }

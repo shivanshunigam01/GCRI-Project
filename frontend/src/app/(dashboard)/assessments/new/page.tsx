@@ -1,11 +1,15 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { Suspense, useState, useEffect, useMemo } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useAuth } from "@/context/AuthContext";
 import { companyService } from "@/services/company.service";
 import { assessmentService } from "@/services/assessment.service";
+import { fetchAssessorAccessibleCompanies } from "@/lib/auditorOrganizations";
+import { getApiErrorMessage } from "@/lib/authUser";
 import { Company } from "@/types/company.types";
+import { CreateAssessmentPayload } from "@/types/assessment.types";
 import { FormFieldsSkeleton } from "@/components/shared/PageSkeletons";
 import {
   ArrowLeft,
@@ -15,90 +19,117 @@ import {
   Sparkles,
   AlertCircle,
   Loader2,
-  User,
-  Mail,
-  Phone,
-  Briefcase,
 } from "lucide-react";
 
-export default function NewAssessmentPage() {
+function NewAssessmentPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const companyIdParam = searchParams.get("companyId");
+  const { user, isAssessor } = useAuth();
+
   const [companies, setCompanies] = useState<Company[]>([]);
   const [loadingCompanies, setLoadingCompanies] = useState(true);
   const [selectedCompanyId, setSelectedCompanyId] = useState<string>("");
   const [assessmentType, setAssessmentType] = useState<"Light" | "Full">("Light");
-
-  // Client contact (optional per client mandate)
-  const [contactName, setContactName] = useState("");
-  const [contactEmail, setContactEmail] = useState("");
-  const [contactPhone, setContactPhone] = useState("");
-  const [contactTitle, setContactTitle] = useState("");
+  const [companyIdNotice, setCompanyIdNotice] = useState<string | null>(null);
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const auditorId = useMemo(() => {
+    if (!user) return "";
+    return String(user._id || (user as { id?: string }).id || "");
+  }, [user]);
+
   useEffect(() => {
+    let cancelled = false;
+
     async function loadCompanies() {
+      setLoadingCompanies(true);
+      setError(null);
+      setCompanyIdNotice(null);
+
       try {
-        const res = await companyService.getCompanies({ limit: 100 });
-        const list = Array.isArray(res?.data) ? res.data : [];
-        setCompanies(list);
-        if (list.length > 0) {
-          setSelectedCompanyId(list[0]._id);
+        let list: Company[] = [];
+        if (isAssessor && auditorId) {
+          list = await fetchAssessorAccessibleCompanies(auditorId);
+        } else {
+          const res = await companyService.getCompanies({ limit: 100 });
+          list = Array.isArray(res?.data) ? res.data : [];
         }
-      } catch (err: any) {
-        setError("Failed to load assigned client organizations.");
+
+        if (cancelled) return;
+        setCompanies(list);
+
+        const paramId = companyIdParam?.trim();
+        if (paramId) {
+          const match = list.find((c) => String(c._id) === paramId);
+          if (match) {
+            setSelectedCompanyId(paramId);
+          } else {
+            setCompanyIdNotice(
+              "The organization from this link is not available to your account. Choose another from the list."
+            );
+            setSelectedCompanyId(list[0]?._id ?? "");
+          }
+        } else {
+          setSelectedCompanyId((prev) => {
+            if (prev && list.some((c) => c._id === prev)) return prev;
+            return list[0]?._id ?? "";
+          });
+        }
+      } catch {
+        if (!cancelled) {
+          setError("Failed to load assigned client organizations.");
+          setCompanies([]);
+          setSelectedCompanyId("");
+        }
       } finally {
-        setLoadingCompanies(false);
+        if (!cancelled) setLoadingCompanies(false);
       }
     }
+
     loadCompanies();
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [isAssessor, auditorId, companyIdParam]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitting) return;
     if (!selectedCompanyId) {
       setError("Please select a target client organization.");
+      return;
+    }
+    if (!companies.some((c) => c._id === selectedCompanyId)) {
+      setError("Please select a valid organization you have access to.");
       return;
     }
 
     setSubmitting(true);
     setError(null);
     try {
-      const payload: any = {
+      const payload: CreateAssessmentPayload = {
         companyId: selectedCompanyId,
-        assessmentType,
+        assessmentType: assessmentType as CreateAssessmentPayload["assessmentType"],
       };
 
-      if (contactName.trim() || contactEmail.trim()) {
-        payload.clientContact = {
-          name: contactName.trim(),
-          email: contactEmail.trim(),
-          phone: contactPhone.trim() || undefined,
-          title: contactTitle.trim() || undefined,
-        };
-      }
-
       const res = await assessmentService.createAssessment(payload);
-      const createdSession = (res?.data as any)?.session || res?.data;
-      if (createdSession?._id) {
-        router.push(`/assessments/${createdSession._id}`);
+      const createdSession = (res?.data as { session?: { _id?: string } })?.session || res?.data;
+      if (createdSession && typeof createdSession === "object" && "_id" in createdSession) {
+        router.push(`/assessments/${(createdSession as { _id: string })._id}`);
       } else {
         router.push("/assessments");
       }
-    } catch (err: any) {
-      setError(
-        err?.response?.data?.error?.message ||
-          err?.message ||
-          "Failed to initiate assessment session."
-      );
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, "Failed to initiate assessment session."));
       setSubmitting(false);
     }
   };
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
-      {/* Header */}
       <div className="flex items-center gap-3 border-b border-slate-200 pb-4">
         <Link
           href="/assessments"
@@ -107,9 +138,7 @@ export default function NewAssessmentPage() {
           <ArrowLeft className="h-4 w-4" />
         </Link>
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900 font-editorial">
-            Initiate Assessment
-          </h1>
+          <h1 className="page-title font-editorial">Initiate Assessment</h1>
           <p className="text-xs sm:text-sm text-slate-500">
             Select an assigned client organization and evaluation framework tier.
           </p>
@@ -123,8 +152,14 @@ export default function NewAssessmentPage() {
         </div>
       )}
 
+      {companyIdNotice && (
+        <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 flex items-center gap-3 text-sm text-amber-800">
+          <AlertCircle className="h-5 w-5 shrink-0 text-amber-600" />
+          <span>{companyIdNotice}</span>
+        </div>
+      )}
+
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Step 1: Select Organization */}
         <div className="bg-white rounded-xl border border-slate-200/90 p-6 shadow-xs space-y-4">
           <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
             <Building2 className="h-4 w-4 text-slate-500" />
@@ -154,7 +189,8 @@ export default function NewAssessmentPage() {
             <div className="p-4 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-800 space-y-1">
               <p className="font-semibold">No assigned client organizations found.</p>
               <p>
-                You must onboard an organization or have an Administrator map an organization to your auditor account first.
+                You must onboard an organization or have an Administrator map an organization to
+                your auditor account first.
               </p>
               <div className="pt-2">
                 <Link href="/organizations" className="underline font-bold text-amber-900">
@@ -165,7 +201,6 @@ export default function NewAssessmentPage() {
           )}
         </div>
 
-        {/* Step 2: Select Assessment Type */}
         <div className="bg-white rounded-xl border border-slate-200/90 p-6 shadow-xs space-y-4">
           <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
             <Sparkles className="h-4 w-4 text-slate-500" />
@@ -184,12 +219,11 @@ export default function NewAssessmentPage() {
             >
               <div className="flex items-center justify-between">
                 <span className="font-bold text-slate-900 text-sm">Lightweight Assessment</span>
-                {assessmentType === "Light" && (
-                  <CheckCircle2 className="h-4 w-4 text-blue-600" />
-                )}
+                {assessmentType === "Light" && <CheckCircle2 className="h-4 w-4 text-blue-600" />}
               </div>
               <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
-                30 baseline controls across the 7 GRAICE Pillars. Deterministic scoring out of 120 points with standard maturity ratings.
+                30 baseline controls across the 7 GRAICE Pillars. Deterministic scoring out of 120
+                points with standard maturity ratings.
               </p>
               <div className="mt-3 inline-flex items-center gap-1 text-[11px] font-semibold text-blue-700 bg-blue-100/60 px-2 py-0.5 rounded">
                 Bronze &amp; Silver Baseline
@@ -207,12 +241,11 @@ export default function NewAssessmentPage() {
             >
               <div className="flex items-center justify-between">
                 <span className="font-bold text-slate-900 text-sm">Full Framework Assessment</span>
-                {assessmentType === "Full" && (
-                  <CheckCircle2 className="h-4 w-4 text-blue-600" />
-                )}
+                {assessmentType === "Full" && <CheckCircle2 className="h-4 w-4 text-blue-600" />}
               </div>
               <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
-                Comprehensive, deep-dive control matrix across all governance areas with S3 evidence upload, exceptions tracking, and radar benchmarking.
+                Comprehensive, deep-dive control matrix across all governance areas with S3 evidence
+                upload, exceptions tracking, and radar benchmarking.
               </p>
               <div className="mt-3 inline-flex items-center gap-1 text-[11px] font-semibold text-indigo-700 bg-indigo-100/60 px-2 py-0.5 rounded">
                 Gold Assurance Tier
@@ -221,84 +254,6 @@ export default function NewAssessmentPage() {
           </div>
         </div>
 
-        {/* Step 3: Optional Client Stakeholder Contact */}
-        <div className="bg-white rounded-xl border border-slate-200/90 p-6 shadow-xs space-y-4">
-          <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-            <div className="flex items-center gap-2">
-              <User className="h-4 w-4 text-slate-500" />
-              <h2 className="text-sm font-bold text-slate-900">3. Client Contact Person</h2>
-            </div>
-            <span className="text-[11px] text-slate-400 font-medium">Optional per client policy</span>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Contact Name
-              </label>
-              <div className="relative">
-                <User className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="e.g. Sarah Jenkins"
-                  value={contactName}
-                  onChange={(e) => setContactName(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Contact Email
-              </label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-                <input
-                  type="email"
-                  placeholder="e.g. sarah@client.com"
-                  value={contactEmail}
-                  onChange={(e) => setContactEmail(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Job Title
-              </label>
-              <div className="relative">
-                <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="e.g. VP of AI Governance"
-                  value={contactTitle}
-                  onChange={(e) => setContactTitle(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Phone Number
-              </label>
-              <div className="relative">
-                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-                <input
-                  type="tel"
-                  placeholder="e.g. +1 (555) 019-2834"
-                  value={contactPhone}
-                  onChange={(e) => setContactPhone(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Action Buttons */}
         <div className="flex items-center justify-end gap-3 pt-2">
           <Link
             href="/assessments"
@@ -326,5 +281,13 @@ export default function NewAssessmentPage() {
         </div>
       </form>
     </div>
+  );
+}
+
+export default function NewAssessmentPage() {
+  return (
+    <Suspense fallback={<FormFieldsSkeleton fields={4} />}>
+      <NewAssessmentPageContent />
+    </Suspense>
   );
 }
