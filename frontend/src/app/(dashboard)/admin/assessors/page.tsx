@@ -263,7 +263,10 @@ export default function AdminAssessorsPage() {
       await userService.adminUpdateUser(editingUser._id, {
         name: editForm.name.trim(),
         phone: editForm.phone.trim() || undefined,
-        role: editForm.role,
+        // Sole Super Admin cannot be reassigned or created via this form
+        ...(editingUser.role === "SuperAdmin" || editForm.role === "SuperAdmin"
+          ? {}
+          : { role: editForm.role }),
         status: editForm.status,
         companyId: editForm.companyId ? editForm.companyId : null,
       });
@@ -1122,7 +1125,6 @@ export default function AdminAssessorsPage() {
                         className="w-full text-xs py-2 px-2.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition cursor-pointer"
                       >
                         <option value="Assessor">Assessor</option>
-                        {isSuperAdmin && <option value="SuperAdmin">Super Admin</option>}
                         {isSuperAdmin && <option value="Admin">Organization Admin</option>}
                         <option value="MembershipApprover">Membership Approver</option>
                       </select>
@@ -1295,7 +1297,6 @@ export default function AdminAssessorsPage() {
                     className="w-full text-xs py-2 px-2.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition cursor-pointer"
                   >
                     <option value="Assessor">Assessor</option>
-                    {isSuperAdmin && <option value="SuperAdmin">Super Admin</option>}
                     {isSuperAdmin && <option value="Admin">Organization Admin</option>}
                     <option value="MembershipApprover">Membership Approver</option>
                   </select>
@@ -1417,12 +1418,18 @@ export default function AdminAssessorsPage() {
                     <label className="block text-xs font-semibold text-slate-700">
                       System Role *
                     </label>
-                    {!isSuperAdmin && (
-                      <span className="text-[10px] text-amber-600 font-medium">Super Admin only</span>
-                    )}
+                    {editingUser?.role === "SuperAdmin" ? (
+                      <span className="text-[10px] text-amber-600 font-medium">
+                        Sole platform role
+                      </span>
+                    ) : !isSuperAdmin ? (
+                      <span className="text-[10px] text-amber-600 font-medium">
+                        Super Admin only
+                      </span>
+                    ) : null}
                   </div>
                   <select
-                    disabled={!isSuperAdmin}
+                    disabled={!isSuperAdmin || editingUser?.role === "SuperAdmin"}
                     value={editForm.role}
                     onChange={(e) =>
                       setEditForm({ ...editForm, role: e.target.value as UserRole })
@@ -1430,7 +1437,9 @@ export default function AdminAssessorsPage() {
                     className="w-full text-xs py-2 px-2.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition cursor-pointer disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
                   >
                     <option value="Assessor">Assessor</option>
-                    {isSuperAdmin && <option value="SuperAdmin">Super Admin</option>}
+                    {editForm.role === "SuperAdmin" && (
+                      <option value="SuperAdmin">Super Admin</option>
+                    )}
                     <option value="Admin">Organization Admin</option>
                     <option value="MembershipApprover">Membership Approver</option>
                   </select>

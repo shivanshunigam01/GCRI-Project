@@ -179,8 +179,9 @@ export async function getUserById(req: Request, res: Response, next: NextFunctio
 
 /**
  * Invite a new user, assessor, or admin (SuperAdmin or Admin)
- * SuperAdmins can invite Admins for a specific company, Assessors, or other SuperAdmins.
+ * SuperAdmins can invite Admins for a specific company or Assessors.
  * Org Admins can only invite Assessors or MembershipApprovers for their own company.
+ * SuperAdmin is sole/platform-seeded and cannot be invited.
  */
 export async function inviteUser(req: Request, res: Response, next: NextFunction) {
   try {
@@ -191,13 +192,23 @@ export async function inviteUser(req: Request, res: Response, next: NextFunction
 
     let targetCompanyId = companyId;
 
+    // Sole Super Admin — never create additional SuperAdmin accounts via invite
+    if (role === "SuperAdmin") {
+      return sendError(
+        res,
+        "Only one Super Admin exists on the platform. New Super Admin accounts cannot be created.",
+        403,
+        "SUPER_ADMIN_CREATION_DENIED"
+      );
+    }
+
     // RBAC Guardrails
     if (actorRole === "Admin") {
-      // Organization Admins cannot invite SuperAdmins or other Admins
-      if (role === "SuperAdmin" || role === "Admin") {
+      // Organization Admins cannot invite other Admins
+      if (role === "Admin") {
         return sendError(
           res,
-          "Organization Admins cannot invite Admin or SuperAdmin accounts.",
+          "Organization Admins cannot invite Admin accounts.",
           403,
           "PRIVILEGE_ESCALATION_DENIED"
         );
@@ -481,27 +492,24 @@ export async function updateUserRole(req: Request, res: Response, next: NextFunc
       return sendError(res, "User not found", 404, "USER_NOT_FOUND");
     }
 
-    // Safety Guard: Prevent user from demoting their own SuperAdmin account
-    if (actorId === id && user.role === "SuperAdmin" && role !== "SuperAdmin") {
+    // Never promote anyone to SuperAdmin — sole account is seed-only
+    if (role === "SuperAdmin") {
       return sendError(
         res,
-        "You cannot demote your own Super Administrator account.",
-        400,
-        "SELF_DEMOTION_PROHIBITED"
+        "Only one Super Admin exists on the platform. Users cannot be promoted to Super Admin.",
+        403,
+        "SUPER_ADMIN_PROMOTION_DENIED"
       );
     }
 
-    // Safety Guard: Prevent last SuperAdmin from demoting themselves or others
-    if (user.role === "SuperAdmin" && role !== "SuperAdmin") {
-      const superAdminCount = await User.countDocuments({ role: "SuperAdmin", status: "Active" });
-      if (superAdminCount <= 1) {
-        return sendError(
-          res,
-          "Cannot demote the sole active Super Administrator of the platform.",
-          400,
-          "SOLE_SUPER_ADMIN_DEMOTION_PROHIBITED"
-        );
-      }
+    // Safety Guard: Prevent demoting the SuperAdmin account
+    if (user.role === "SuperAdmin") {
+      return sendError(
+        res,
+        "The sole Super Administrator account cannot be demoted.",
+        400,
+        "SOLE_SUPER_ADMIN_DEMOTION_PROHIBITED"
+      );
     }
 
     // Guard: An Admin must belong to an organization
@@ -672,13 +680,30 @@ export async function adminUpdateUser(
         );
       }
     } else if (actorRole === "SuperAdmin") {
-      // Protection: Prevent last SuperAdmin from demoting or deactivating themselves
-      if (actorId === id && ((role && role !== "SuperAdmin") || (status && status !== "Active"))) {
-        const superAdminCount = await User.countDocuments({ role: "SuperAdmin", status: "Active" });
-        if (superAdminCount <= 1) {
+      // Never promote anyone to SuperAdmin
+      if (role === "SuperAdmin" && user.role !== "SuperAdmin") {
+        return sendError(
+          res,
+          "Only one Super Admin exists on the platform. Users cannot be promoted to Super Admin.",
+          403,
+          "SUPER_ADMIN_PROMOTION_DENIED"
+        );
+      }
+
+      // Protection: Prevent demoting or deactivating the sole SuperAdmin
+      if (user.role === "SuperAdmin") {
+        if (role && role !== "SuperAdmin") {
           return sendError(
             res,
-            "Cannot demote or deactivate the sole active Super Administrator of the platform.",
+            "The sole Super Administrator account cannot be demoted.",
+            400,
+            "SOLE_SUPER_ADMIN_DEMOTION_PROHIBITED"
+          );
+        }
+        if (actorId === id && status && status !== "Active") {
+          return sendError(
+            res,
+            "Cannot deactivate the sole active Super Administrator of the platform.",
             400,
             "SOLE_SUPER_ADMIN_ACTION_PROHIBITED"
           );
@@ -697,7 +722,9 @@ export async function adminUpdateUser(
     if (name !== undefined) user.name = name;
     if (phone !== undefined) user.phone = phone;
     if (actorRole === "SuperAdmin" && companyId !== undefined) user.companyId = companyId;
-    if (actorRole === "SuperAdmin" && role !== undefined) user.role = role;
+    if (actorRole === "SuperAdmin" && role !== undefined && role !== "SuperAdmin") {
+      user.role = role;
+    }
     if (status !== undefined) user.status = status;
 
     await user.save();
