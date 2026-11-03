@@ -30,6 +30,7 @@ import {
   ArrowLeft,
   AlertCircle,
   CheckCircle2,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   ClipboardCheck,
@@ -125,6 +126,7 @@ export function FullAssessmentPlayer({ assessmentId }: FullAssessmentPlayerProps
   >({});
   const [currentIndex, setCurrentIndex] = useState(0);
   const [dirty, setDirty] = useState(false);
+  const [expandedPillarIds, setExpandedPillarIds] = useState<Set<string>>(new Set());
 
   const [progress, setProgress] = useState<AssessmentProgressResponse | null>(null);
   const [progressLoading, setProgressLoading] = useState(false);
@@ -245,6 +247,12 @@ export function FullAssessmentPlayer({ assessmentId }: FullAssessmentPlayerProps
   }, [loadAssessment]);
 
   const pillars = useMemo(() => groupQuestionsByPillar(questions), [questions]);
+
+  const questionIndexById = useMemo(() => {
+    const map = new Map<string, number>();
+    questions.forEach((q, i) => map.set(q.questionId, i));
+    return map;
+  }, [questions]);
 
   const currentQuestion = questions[currentIndex];
   const currentAnswer = currentQuestion
@@ -434,18 +442,31 @@ export function FullAssessmentPlayer({ assessmentId }: FullAssessmentPlayerProps
     questionTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [currentIndex]);
 
+  // Keep the active pillar accordion open so its questions stay visible
+  useEffect(() => {
+    const pillarId = questions[currentIndex]?.pillarId;
+    if (!pillarId) return;
+    setExpandedPillarIds((prev) => {
+      if (prev.has(pillarId)) return prev;
+      const next = new Set(prev);
+      next.add(pillarId);
+      return next;
+    });
+  }, [currentIndex, questions]);
+
+  const togglePillarExpanded = (pillarId: string) => {
+    setExpandedPillarIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(pillarId)) next.delete(pillarId);
+      else next.add(pillarId);
+      return next;
+    });
+  };
+
   const goToIndex = (index: number) => {
     if (index < 0 || index >= questions.length) return;
     shouldScrollToControlRef.current = true;
     setCurrentIndex(index);
-  };
-
-  const goToPillar = (pillarId: string) => {
-    const idx = questions.findIndex((q) => q.pillarId === pillarId);
-    if (idx >= 0) {
-      shouldScrollToControlRef.current = true;
-      setCurrentIndex(idx);
-    }
   };
 
   const goToReview = async () => {
@@ -639,51 +660,122 @@ export function FullAssessmentPlayer({ assessmentId }: FullAssessmentPlayerProps
                   Seven pillars
                 </h2>
                 <p className="text-[11px] text-slate-500">
-                  {progress ? "Server progress" : "Local preview until first save"}
+                  Expand a pillar to jump to its controls
                 </p>
               </div>
             </div>
-            <ul className="max-h-[560px] overflow-y-auto p-2 space-y-1">
+            <ul className="max-h-[620px] overflow-y-auto p-2 space-y-1.5">
               {pillarStats.map((p) => {
                 const active = p.pillarId === activePillarId;
+                const expanded = expandedPillarIds.has(p.pillarId);
                 return (
-                  <li key={p.pillarId}>
+                  <li
+                    key={p.pillarId}
+                    className={cn(
+                      "rounded-xl border transition-all",
+                      active
+                        ? "border-indigo-500/40 bg-indigo-50/50 shadow-sm ring-1 ring-indigo-500/10"
+                        : "border-slate-100 bg-white hover:border-slate-200"
+                    )}
+                  >
                     <button
                       type="button"
-                      onClick={() => goToPillar(p.pillarId)}
-                      className={cn(
-                        "w-full text-left rounded-xl px-3 py-2.5 transition-all border",
-                        active
-                          ? "border-indigo-500/40 bg-indigo-50/70 shadow-sm ring-1 ring-indigo-500/10"
-                          : "border-transparent hover:bg-slate-50"
-                      )}
+                      onClick={() => togglePillarExpanded(p.pillarId)}
+                      aria-expanded={expanded}
+                      className="w-full text-left px-3 py-2.5"
                     >
-                      <div className="flex items-start justify-between gap-2">
-                        <span className="text-xs font-semibold text-slate-800 line-clamp-2">
-                          P{p.pillarNumber}. {p.pillarName}
-                        </span>
-                        {p.percent === 100 ? (
-                          <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0 mt-0.5" />
-                        ) : null}
-                      </div>
-                      <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] font-medium text-slate-600">
-                        <span className="px-1.5 py-0.5 rounded bg-slate-100">
-                          {p.total} controls
-                        </span>
-                        <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800">
-                          {p.completed} done
-                        </span>
-                        <span className="px-1.5 py-0.5 rounded bg-sky-100 text-sky-900">
-                          {p.percent}%
-                        </span>
-                      </div>
-                      <div className="mt-2 h-1 rounded-full bg-slate-100 overflow-hidden">
-                        <div
-                          className="h-full bg-indigo-500 transition-all duration-500"
-                          style={{ width: `${p.percent}%` }}
+                      <div className="flex items-start gap-2">
+                        <ChevronDown
+                          className={cn(
+                            "h-3.5 w-3.5 text-slate-400 shrink-0 mt-0.5 transition-transform duration-200",
+                            expanded && "rotate-180 text-indigo-600"
+                          )}
                         />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-start justify-between gap-2">
+                            <span className="text-xs font-semibold text-slate-800 line-clamp-2">
+                              P{p.pillarNumber}. {p.pillarName}
+                            </span>
+                            {p.percent === 100 ? (
+                              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0 mt-0.5" />
+                            ) : null}
+                          </div>
+                          <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] font-medium text-slate-600">
+                            <span className="px-1.5 py-0.5 rounded bg-slate-100">
+                              {p.total} controls
+                            </span>
+                            <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800">
+                              {p.completed} done
+                            </span>
+                            <span className="px-1.5 py-0.5 rounded bg-sky-100 text-sky-900">
+                              {p.percent}%
+                            </span>
+                          </div>
+                          <div className="mt-2 h-1 rounded-full bg-slate-100 overflow-hidden">
+                            <div
+                              className="h-full bg-indigo-500 transition-all duration-500"
+                              style={{ width: `${p.percent}%` }}
+                            />
+                          </div>
+                        </div>
                       </div>
                     </button>
+
+                    {expanded && (
+                      <ul className="px-2 pb-2 space-y-1 border-t border-slate-100/80 pt-1.5 mt-0.5">
+                        {p.questions.map((q) => {
+                          const idx = questionIndexById.get(q.questionId) ?? -1;
+                          const state = answersByQuestionId[q.questionId];
+                          const assessed = Boolean(state && isControlAssessed(state));
+                          const exception = state?.exceptionStatus === "ExceptionNoted";
+                          const inProg = Boolean(state && isControlInProgress(state));
+                          const isCurrent = idx === currentIndex;
+                          return (
+                            <li key={q.questionId}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (idx >= 0) goToIndex(idx);
+                                }}
+                                className={cn(
+                                  "w-full text-left rounded-lg px-2.5 py-2 transition-all border",
+                                  isCurrent
+                                    ? "border-indigo-400 bg-white shadow-sm ring-1 ring-indigo-500/15"
+                                    : "border-transparent hover:bg-white/80 hover:border-slate-100"
+                                )}
+                              >
+                                <div className="flex items-start gap-2">
+                                  <span
+                                    className={cn(
+                                      "mt-0.5 h-2 w-2 rounded-full shrink-0",
+                                      exception && "bg-rose-500",
+                                      assessed && !exception && "bg-emerald-500",
+                                      inProg && !assessed && "bg-blue-400",
+                                      !assessed && !inProg && !exception && "bg-slate-300"
+                                    )}
+                                  />
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="text-[10px] font-bold text-indigo-700 tabular-nums">
+                                        {q.questionId}
+                                      </span>
+                                      {isCurrent && (
+                                        <span className="text-[9px] font-semibold uppercase tracking-wide text-indigo-600">
+                                          Current
+                                        </span>
+                                      )}
+                                    </div>
+                                    <p className="text-[11px] text-slate-600 leading-snug line-clamp-2 mt-0.5">
+                                      {q.text}
+                                    </p>
+                                  </div>
+                                </div>
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
                   </li>
                 );
               })}
