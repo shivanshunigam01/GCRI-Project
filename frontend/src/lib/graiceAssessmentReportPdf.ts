@@ -79,17 +79,30 @@ function exceptionLabel(
   answer: AnswerItem | undefined,
   isGap: boolean
 ): string {
-  if (!answer || answer.testStatus === "NotStarted") {
-    if (assessmentType === "Full" && answer?.exceptionStatus === "NotAssessed") return "Not Assessed";
-    if (!answer?.selectedOptionCode && assessmentType === "Light") return "Not Assessed";
-  }
+  const code = answer?.selectedOptionCode;
+  const meaningfulCode = code && code !== "NOT_ASSESSED" ? code : undefined;
+
   if (assessmentType === "Full") {
-    if (answer?.exceptionStatus === "ExceptionNoted") return "Exception Noted";
-    if (answer?.exceptionStatus === "NoExceptionNoted") return "No Exception Noted";
+    if (
+      answer?.exceptionStatus === "ExceptionNoted" ||
+      meaningfulCode === "EXCEPTION_NOTED"
+    ) {
+      return "Exception Noted";
+    }
+    if (
+      answer?.exceptionStatus === "NoExceptionNoted" ||
+      meaningfulCode === "NO_EXCEPTION_NOTED"
+    ) {
+      return "No Exception Noted";
+    }
+    return "Not Assessed";
+  }
+
+  if (!answer || (answer.testStatus === "NotStarted" && !meaningfulCode)) {
     return "Not Assessed";
   }
   if (isGap) return "Exception Noted";
-  if (answer?.selectedOptionCode || answer?.testStatus === "Complete") return "No Exception Noted";
+  if (meaningfulCode || answer.testStatus === "Complete") return "No Exception Noted";
   return "Not Assessed";
 }
 

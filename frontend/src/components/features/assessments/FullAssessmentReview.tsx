@@ -124,13 +124,12 @@ export function FullAssessmentReview({ assessmentId }: FullAssessmentReviewProps
       const a = session?.answers?.find((x) => x.questionId === q.questionId);
       if (!a) return true;
       if (a.exceptionStatus === "ExceptionNoted") return true;
-      if (
-        (!a.selectedOptionCode && a.exceptionStatus === "NotAssessed") ||
-        a.testStatus === "NotStarted" ||
-        !a.testStatus
-      ) {
-        return true;
-      }
+      const meaningful =
+        a.exceptionStatus === "NoExceptionNoted" ||
+        a.selectedOptionCode === "NO_EXCEPTION_NOTED" ||
+        a.selectedOptionCode === "EXCEPTION_NOTED";
+      // NOT_ASSESSED placeholders and untouched rows still need attention
+      if (!meaningful) return true;
       return false;
     });
   }, [questions, session]);
