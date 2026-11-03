@@ -21,9 +21,13 @@ type SeedAccount = {
   assignCompany: boolean;
 };
 
+/**
+ * Note: login schema requires a real email (must contain @).
+ * Client-facing shorthand "gcrai.superadmin.com" maps to gcrai.superadmin@gcrai.com
+ */
 const ACCOUNTS: SeedAccount[] = [
   {
-    email: "gcrai.superadmin@graice.io",
+    email: "gcrai.superadmin@gcrai.com",
     password: "GcraiSuper@2026!",
     name: "GCRAI Super Administrator",
     role: "SuperAdmin",
@@ -40,7 +44,7 @@ const ACCOUNTS: SeedAccount[] = [
     assignCompany: false,
   },
   {
-    email: "gcrai.admin@graice.io",
+    email: "gcrai.admin@gcrai.com",
     password: "GcraiAdmin@2026!",
     name: "GCRAI Organization Admin",
     role: "Admin",
@@ -57,7 +61,7 @@ const ACCOUNTS: SeedAccount[] = [
     assignCompany: true,
   },
   {
-    email: "gcrai.auditor@graice.io",
+    email: "gcrai.auditor@gcrai.com",
     password: "GcraiAuditor@2026!",
     name: "GCRAI Certified Auditor",
     role: "Assessor",
@@ -131,12 +135,14 @@ async function main() {
 
   const saltRounds = parseInt(process.env.BCRYPT_SALT_ROUNDS || "12", 10);
 
-  let company = await Company.findOne({ status: "Active" }).sort({ createdAt: 1 });
+  let company =
+    (await Company.findOne({ name: "GitHub Enterprise Org" })) ||
+    (await Company.findOne({ status: "Active" }).sort({ createdAt: 1 }));
   if (!company) {
     company = await Company.create({
-      name: "GCRAI Demo Organization",
-      domain: "gcrai-demo.org",
-      industry: "Responsible AI",
+      name: "GitHub Enterprise Org",
+      domain: "github-enterprise.example",
+      industry: "Technology",
       country: "United States",
       status: "Active",
       verificationStatus: "Verified",
@@ -146,6 +152,17 @@ async function main() {
   } else {
     console.log(`Using existing company: ${company.name} (${company._id})\n`);
   }
+
+  // Deactivate previous demo emails so clients only use the new @gcrai.com accounts
+  const legacyEmails = [
+    "gcrai.superadmin@graice.io",
+    "gcrai.admin@graice.io",
+    "gcrai.auditor@graice.io",
+  ];
+  await User.updateMany(
+    { email: { $in: legacyEmails } },
+    { $set: { status: "Deactivated" } }
+  );
 
   const results: Array<{
     role: string;

@@ -370,8 +370,9 @@ export async function saveAnswers(req: Request, res: Response, next: NextFunctio
           newAns.exceptionStatus === "NotAssessed" ||
           newAns.selectedOptionCode === "NOT_ASSESSED"
         ) {
+          // Clear placeholder — NOT_ASSESSED must not count as an answered control
           resolvedExceptionStatus = "NotAssessed";
-          resolvedSelectedCode = "NOT_ASSESSED";
+          resolvedSelectedCode = undefined;
           resolvedScoreValue = 0;
         }
       } else {
@@ -410,12 +411,24 @@ export async function saveAnswers(req: Request, res: Response, next: NextFunctio
     session.answers = Array.from(existingMap.values());
     await session.save();
 
+    const isFull = session.assessmentType === "Full";
     return sendSuccess(res, {
       message: "Answers saved successfully",
       savedCount: answers.length,
-      totalAnswered: session.answers.filter(
-        (a) => a.testStatus === "Complete" || !!a.selectedOptionCode
-      ).length,
+      totalAnswered: session.answers.filter((a) => {
+        if (isFull) {
+          return (
+            a.exceptionStatus === "NoExceptionNoted" ||
+            a.exceptionStatus === "ExceptionNoted" ||
+            a.selectedOptionCode === "NO_EXCEPTION_NOTED" ||
+            a.selectedOptionCode === "EXCEPTION_NOTED"
+          );
+        }
+        return (
+          a.testStatus === "Complete" ||
+          (!!a.selectedOptionCode && a.selectedOptionCode !== "NOT_ASSESSED")
+        );
+      }).length,
     });
   } catch (err) {
     next(err);
@@ -496,22 +509,64 @@ export async function getAssessmentProgress(req: Request, res: Response, next: N
 
       for (const q of questions) {
         const a = answerMap.get(q.questionId);
+        const meaningfulCode =
+          a?.selectedOptionCode && a.selectedOptionCode !== "NOT_ASSESSED"
+            ? a.selectedOptionCode
+            : undefined;
+
+        if (session.assessmentType === "Full") {
+          // Full: only exception outcomes count as complete — ignore NOT_ASSESSED placeholders
+          const assessed =
+            a?.exceptionStatus === "NoExceptionNoted" ||
+            a?.exceptionStatus === "ExceptionNoted" ||
+            meaningfulCode === "NO_EXCEPTION_NOTED" ||
+            meaningfulCode === "EXCEPTION_NOTED";
+          const working =
+            !!a &&
+            !assessed &&
+            (a.testStatus === "InProgress" ||
+              Boolean(a.evidenceNotes?.trim()) ||
+              Boolean(a.workPaperReference?.trim()) ||
+              Boolean(a.evidenceAttachmentUrl));
+
+          if (assessed) {
+            complete++;
+            if (
+              a!.exceptionStatus === "ExceptionNoted" ||
+              meaningfulCode === "EXCEPTION_NOTED"
+            ) {
+              exceptionsNoted++;
+            }
+            if (
+              a!.exceptionStatus === "NoExceptionNoted" ||
+              meaningfulCode === "NO_EXCEPTION_NOTED"
+            ) {
+              noExceptions++;
+            }
+          } else if (working) {
+            inProgress++;
+          } else {
+            notStarted++;
+          }
+          continue;
+        }
+
         if (
           !a ||
-          (a.testStatus === "NotStarted" && !a.selectedOptionCode) ||
-          (!a.testStatus && !a.selectedOptionCode)
+          (a.testStatus === "NotStarted" && !meaningfulCode) ||
+          (!a.testStatus && !meaningfulCode)
         ) {
           notStarted++;
-        } else if (a.testStatus === "InProgress" && !a.selectedOptionCode) {
+        } else if (a.testStatus === "InProgress" && !meaningfulCode) {
           inProgress++;
         } else {
           complete++;
-          if (a.exceptionStatus === "ExceptionNoted" || a.selectedOptionCode === "EXCEPTION_NOTED") {
+          if (a.exceptionStatus === "ExceptionNoted" || meaningfulCode === "EXCEPTION_NOTED") {
             exceptionsNoted++;
           }
           if (
             a.exceptionStatus === "NoExceptionNoted" ||
-            a.selectedOptionCode === "NO_EXCEPTION_NOTED"
+            meaningfulCode === "NO_EXCEPTION_NOTED"
           ) {
             noExceptions++;
           }
