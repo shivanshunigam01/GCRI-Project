@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { authService } from "@/services/auth.service";
-import { EnterpriseSsoPanel } from "@/components/auth/EnterpriseSsoPanel";
 import {
   getApiErrorCode,
   getApiErrorDetails,
@@ -94,24 +93,8 @@ export default function LoginPage() {
     }
   };
 
-  const handleLiveSso = async (provider: "google" | "microsoft") => {
-    setError(null);
-    const idToken = "REPLACE_WITH_OIDC_ID_TOKEN";
-    try {
-      const res =
-        provider === "google"
-          ? await authService.oauthGoogle({ idToken })
-          : await authService.oauthMicrosoft({ idToken });
-      if (res.data?.token && res.data?.user) {
-        completeLogin(res.data.token, res.data.user as unknown as Record<string, unknown>);
-      }
-    } catch (err: unknown) {
-      setError(getApiErrorMessage(err, `${provider === "google" ? "Google" : "Microsoft"} sign-in failed.`));
-    }
-  };
-
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <div>
         <h3 className="font-editorial text-xl font-normal text-slate-900">Sign in to your account</h3>
         <p className="mt-1 text-sm font-medium text-slate-500">Access your organization assessments</p>
@@ -130,7 +113,7 @@ export default function LoginPage() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/80 focus:border-blue-400"
-            placeholder="auditor@graice.io"
+            placeholder="Enter your email"
             suppressHydrationWarning
           />
         </div>
@@ -193,8 +176,6 @@ export default function LoginPage() {
           {loading ? "Signing in..." : showMfa ? "Verify & sign in" : "Sign in"}
         </button>
       </form>
-
-      <EnterpriseSsoPanel disabled={loading} onLiveSignIn={handleLiveSso} />
 
       <div className="border-t border-slate-200 pt-3 text-center">
         <p className="text-xs text-slate-500">

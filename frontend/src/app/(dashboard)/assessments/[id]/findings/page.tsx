@@ -4,7 +4,10 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { assessmentService } from "@/services/assessment.service";
-import { Finding } from "@/types/assessment.types";
+import {
+  AssessmentRecommendation,
+  Finding,
+} from "@/types/assessment.types";
 import { AssessmentConfidentialGate } from "@/components/features/assessments/AssessmentConfidentialGate";
 import { AssessmentFindingsSkeleton } from "@/components/shared/PageSkeletons";
 import { getUserFacingApiError } from "@/lib/authUser";
@@ -16,6 +19,8 @@ import {
   Filter,
   ExternalLink,
   RefreshCw,
+  Lightbulb,
+  FileText,
 } from "lucide-react";
 
 const SEVERITIES = ["All", "High", "Medium", "Low"] as const;
@@ -33,9 +38,16 @@ function AssessmentFindingsContent() {
   const assessmentId = typeof params?.id === "string" ? params.id : "";
 
   const [findings, setFindings] = useState<Finding[]>([]);
-  const [summary, setSummary] = useState<{ total: number; open: number } | null>(null);
+  const [recommendations, setRecommendations] = useState<AssessmentRecommendation[]>([]);
+  const [summary, setSummary] = useState<{
+    total: number;
+    open: number;
+    inProgress: number;
+    resolved: number;
+  } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [partialWarning, setPartialWarning] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [severity, setSeverity] = useState<(typeof SEVERITIES)[number]>("All");
 
@@ -43,11 +55,44 @@ function AssessmentFindingsContent() {
     if (!assessmentId) return;
     setLoading(true);
     setError(null);
+    setPartialWarning(null);
     try {
-      const res = await assessmentService.getFindings(assessmentId);
-      const data = res?.data;
-      setFindings(data?.findings ?? []);
-      setSummary(data?.summary ? { total: data.summary.total, open: data.summary.open } : null);
+      const [findResult, recResult] = await Promise.allSettled([
+        assessmentService.getFindings(assessmentId),
+        assessmentService.getRecommendations(assessmentId),
+      ]);
+
+      if (findResult.status === "fulfilled" && findResult.value?.data) {
+        const data = findResult.value.data;
+        setFindings(data.findings ?? []);
+        setSummary(
+          data.summary
+            ? {
+                total: data.summary.total,
+                open: data.summary.open,
+                inProgress: data.summary.inProgress,
+                resolved: data.summary.resolved,
+              }
+            : null
+        );
+      } else {
+        setFindings([]);
+        setSummary(null);
+        setError(
+          findResult.status === "rejected"
+            ? getUserFacingApiError(findResult.reason, "findings")
+            : "Findings unavailable."
+        );
+      }
+
+      if (recResult.status === "fulfilled" && recResult.value?.data) {
+        setRecommendations(recResult.value.data.recommendations ?? []);
+      } else {
+        setRecommendations([]);
+        if (findResult.status === "fulfilled") {
+          setPartialWarning("Remediation recommendations could not be loaded.");
+        }
+      }
     } catch (err: unknown) {
       setError(getUserFacingApiError(err, "findings"));
     } finally {
@@ -86,24 +131,41 @@ function AssessmentFindingsContent() {
           <ArrowLeft className="h-4 w-4" />
         </Link>
         <div className="flex-1">
-          <h1 className="page-title font-editorial">Findings &amp; exceptions</h1>
+          <h1 className="page-title font-editorial">Findings &amp; recommendations</h1>
           <p className="text-sm text-slate-500">
-            {summary ? `${summary.open} open of ${summary.total} findings` : "Backend-derived findings"}
+            {summary
+              ? `${summary.open} open · ${summary.inProgress} in progress · ${summary.resolved} resolved of ${summary.total}`
+              : "Backend-derived Auditor findings"}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={load}
-          className="text-xs font-semibold border border-slate-200 rounded-lg px-3 py-2 inline-flex gap-1"
-        >
-          <RefreshCw className="h-3.5 w-3.5" /> Refresh
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href={`/assessments/${assessmentId}/results`}
+            className="text-xs font-semibold border border-slate-200 rounded-lg px-3 py-2 inline-flex gap-1 items-center"
+          >
+            <FileText className="h-3.5 w-3.5" /> Results &amp; reports
+          </Link>
+          <button
+            type="button"
+            onClick={load}
+            className="text-xs font-semibold border border-slate-200 rounded-lg px-3 py-2 inline-flex gap-1"
+          >
+            <RefreshCw className="h-3.5 w-3.5" /> Refresh
+          </button>
+        </div>
       </div>
 
       {error && (
         <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 text-sm text-rose-800 flex gap-2">
           <AlertTriangle className="h-5 w-5 shrink-0" />
           {error}
+        </div>
+      )}
+
+      {partialWarning && (
+        <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900 flex gap-2">
+          <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+          {partialWarning}
         </div>
       )}
 
@@ -203,6 +265,12 @@ function AssessmentFindingsContent() {
                   {f.regulatoryAlignments.nistAiRmf && (
                     <p>NIST AI RMF: {f.regulatoryAlignments.nistAiRmf}</p>
                   )}
+                  {f.regulatoryAlignments.iso42001 && (
+                    <p>ISO 42001: {f.regulatoryAlignments.iso42001}</p>
+                  )}
+                  {f.regulatoryAlignments.oecdAi && (
+                    <p>OECD AI: {f.regulatoryAlignments.oecdAi}</p>
+                  )}
                 </div>
               )}
               <p className="text-xs text-slate-800 border-t border-slate-100 pt-3">
@@ -211,6 +279,57 @@ function AssessmentFindingsContent() {
             </li>
           ))}
         </ul>
+      )}
+
+      {recommendations.length > 0 && (
+        <section className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4">
+          <div>
+            <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
+              <Lightbulb className="h-4 w-4 text-amber-500" />
+              Remediation recommendations
+            </h2>
+            <p className="text-xs text-slate-500 mt-1">
+              {recommendations.length} prioritized remediation action
+              {recommendations.length === 1 ? "" : "s"} from the assessment API
+            </p>
+          </div>
+          <ol className="space-y-3">
+            {recommendations.map((r, i) => (
+              <li
+                key={r.recommendationId}
+                className="relative rounded-xl border border-slate-200 bg-slate-50/60 pl-4 pr-4 py-3.5 overflow-hidden"
+              >
+                <div
+                  className={cn(
+                    "absolute left-0 top-0 bottom-0 w-1",
+                    r.priority === "High" ? "bg-rose-500" : "bg-amber-400"
+                  )}
+                />
+                <div className="flex items-start gap-3">
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white border border-slate-200 text-xs font-bold text-slate-700">
+                    {i + 1}
+                  </span>
+                  <div className="min-w-0 space-y-1">
+                    <span
+                      className={cn(
+                        "text-[10px] font-bold uppercase tracking-wider",
+                        r.priority === "High" ? "text-rose-600" : "text-amber-700"
+                      )}
+                    >
+                      {r.priority} · {r.pillarName} · {r.questionId}
+                    </span>
+                    {r.controlText && (
+                      <p className="text-xs text-slate-500 line-clamp-2">{r.controlText}</p>
+                    )}
+                    <p className="text-sm font-medium text-slate-800 leading-snug">
+                      {r.recommendedAction}
+                    </p>
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ol>
+        </section>
       )}
     </div>
   );

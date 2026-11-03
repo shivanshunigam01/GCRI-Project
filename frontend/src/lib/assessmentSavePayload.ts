@@ -2,6 +2,7 @@ import { FrameworkQuestion } from "@/types/framework.types";
 import { SaveAnswerItemInput } from "@/types/assessment.types";
 import { loadAssessmentDraft } from "@/lib/assessmentDraftStorage";
 
+/** Light Assessment: option-code answers only. Full Assessment uses `fullAssessmentAnswers.ts`. */
 export function mergeDraftAnswers(
   serverAnswers: Record<string, string>,
   assessmentId: string
