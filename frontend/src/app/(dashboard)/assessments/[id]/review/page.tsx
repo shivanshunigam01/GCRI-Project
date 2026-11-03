@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { assessmentService } from "@/services/assessment.service";
 import { AssessmentConfidentialGate } from "@/components/features/assessments/AssessmentConfidentialGate";
+import { FullAssessmentReview } from "@/components/features/assessments/FullAssessmentReview";
 import { AssessmentReviewSkeleton } from "@/components/shared/PageSkeletons";
 import {
   organizationNameFromSession,
@@ -19,7 +20,7 @@ import {
 import { clearAssessmentDraft } from "@/lib/assessmentDraftStorage";
 import { getApiErrorMessage, getUserFacingApiError } from "@/lib/authUser";
 import { useToast } from "@/context/ToastContext";
-import { AssessmentSession } from "@/types/assessment.types";
+import { AssessmentSession, AssessmentType } from "@/types/assessment.types";
 import { FrameworkQuestion } from "@/types/framework.types";
 import {
   ArrowLeft,
@@ -29,21 +30,87 @@ import {
   Send,
   Paperclip,
   User,
+  RefreshCw,
 } from "lucide-react";
 
 export default function AssessmentReviewPage() {
   return (
     <AssessmentConfidentialGate>
-      <AssessmentReviewContent />
+      <AssessmentReviewRouter />
     </AssessmentConfidentialGate>
   );
 }
 
-function AssessmentReviewContent() {
+function AssessmentReviewRouter() {
   const params = useParams();
+  const assessmentId = typeof params?.id === "string" ? params.id : "";
+  const [assessmentType, setAssessmentType] = useState<AssessmentType | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const resolve = useCallback(async () => {
+    if (!assessmentId) {
+      setError("Invalid assessment link.");
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await assessmentService.getAssessmentById(assessmentId);
+      const type = res?.data?.session?.assessmentType;
+      if (!type) {
+        setError("Assessment session returned an unexpected format.");
+        setAssessmentType(null);
+        return;
+      }
+      setAssessmentType(type);
+    } catch (err: unknown) {
+      setError(getUserFacingApiError(err, "assessment review"));
+      setAssessmentType(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [assessmentId]);
+
+  useEffect(() => {
+    resolve();
+  }, [resolve]);
+
+  if (loading) return <AssessmentReviewSkeleton />;
+
+  if (error || !assessmentType) {
+    return (
+      <div className="max-w-xl mx-auto p-8 text-center space-y-3">
+        <AlertTriangle className="h-8 w-8 text-rose-500 mx-auto" />
+        <p className="text-sm text-slate-700">{error || "Assessment not found."}</p>
+        <div className="flex justify-center gap-3">
+          <Link href="/assessments" className="text-sm font-semibold text-slate-600">
+            Back
+          </Link>
+          <button
+            type="button"
+            onClick={resolve}
+            className="inline-flex items-center gap-1.5 text-sm font-semibold text-blue-700"
+          >
+            <RefreshCw className="h-4 w-4" /> Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (assessmentType === "Full") {
+    return <FullAssessmentReview assessmentId={assessmentId} />;
+  }
+
+  return <LightAssessmentReviewContent assessmentId={assessmentId} />;
+}
+
+/** Existing Light Assessment review — preserved behavior. */
+function LightAssessmentReviewContent({ assessmentId }: { assessmentId: string }) {
   const router = useRouter();
   const toast = useToast();
-  const assessmentId = typeof params?.id === "string" ? params.id : "";
 
   const [session, setSession] = useState<AssessmentSession | null>(null);
   const [questions, setQuestions] = useState<FrameworkQuestion[]>([]);
@@ -76,7 +143,10 @@ function AssessmentReviewContent() {
       setQuestions(qs);
 
       if (detail.session.status !== "Submitted" && qs.length > 0) {
-        const merged = mergeDraftAnswers(answersMapFromSession(detail.session.answers), assessmentId);
+        const merged = mergeDraftAnswers(
+          answersMapFromSession(detail.session.answers),
+          assessmentId
+        );
         const payload = buildSavePayloadFromAnswers(qs, merged);
         if (payload.length > 0) {
           await assessmentService.saveAnswers(assessmentId, payload);
@@ -147,7 +217,21 @@ function AssessmentReviewContent() {
       toast.success(`${msg} Status: ${status}${maturity ? ` · ${maturity}` : ""}.`);
       router.push(`/assessments/${assessmentId}/results`);
     } catch (err: unknown) {
+      const statusCode = (err as { status?: number })?.status;
       const msg = getApiErrorMessage(err, "Submission failed.");
+      if (!statusCode || statusCode >= 500 || statusCode === 408) {
+        try {
+          const check = await assessmentService.getAssessmentById(assessmentId);
+          if (check?.data?.session?.status === "Submitted") {
+            clearAssessmentDraft(assessmentId);
+            toast.info("Assessment was already submitted. Opening results.");
+            router.push(`/assessments/${assessmentId}/results`);
+            return;
+          }
+        } catch {
+          /* keep error */
+        }
+      }
       setSubmitResult(msg);
       toast.error(msg);
       setSubmitting(false);

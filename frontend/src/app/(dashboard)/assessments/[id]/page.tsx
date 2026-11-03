@@ -2,8 +2,8 @@
 
 import React from "react";
 import { useParams } from "next/navigation";
-import { AssessmentPlayer } from "@/components/features/assessments/AssessmentPlayer";
 import { AssessmentConfidentialGate } from "@/components/features/assessments/AssessmentConfidentialGate";
+import { AssessmentWorkspaceRouter } from "@/components/features/assessments/AssessmentWorkspaceRouter";
 
 export default function AssessmentWorkspacePage() {
   const params = useParams();
@@ -11,7 +11,7 @@ export default function AssessmentWorkspacePage() {
 
   return (
     <AssessmentConfidentialGate>
-      <AssessmentPlayer assessmentId={assessmentId} />
+      <AssessmentWorkspaceRouter assessmentId={assessmentId} />
     </AssessmentConfidentialGate>
   );
 }

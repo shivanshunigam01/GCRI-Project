@@ -14,7 +14,10 @@ import {
   SubmitAssessmentResponse,
   GenerateReportResponse,
 } from "@/types/assessment.types";
-import { downloadAssessmentExcel } from "@/lib/assessmentDownloads";
+import {
+  downloadAssessmentExcel,
+  downloadAssessmentPdf,
+} from "@/lib/assessmentDownloads";
 import { downloadGraiceBrandedAssessmentPdf } from "@/lib/graiceAssessmentReportPdf";
 
 export const assessmentService = {
@@ -55,19 +58,32 @@ export const assessmentService = {
     id: string,
     payload: { questionId: string; fileName: string; contentType: string }
   ) =>
-    apiClient.post<{ presignedUrl: string; key: string }>(
-      `/assessments/${id}/evidence/presigned-url`,
-      payload
-    ),
+    apiClient.post<{
+      uploadUrl: string;
+      fileUrl: string;
+      s3Key: string;
+      expiresIn?: number;
+    }>(`/assessments/${id}/evidence/presigned-url`, payload),
 
+  /**
+   * Direct multipart upload — backend attaches URL when an answer row already exists.
+   * Caller should also persist evidenceAttachmentUrl/s3Key via saveAnswers for reliability.
+   */
   uploadEvidence: (id: string, questionId: string, file: File) => {
     const formData = new FormData();
     formData.append("questionId", questionId);
     formData.append("file", file);
-    return apiClient.post<{ message: string; url: string; key: string }>(
-      `/assessments/${id}/evidence/upload`,
-      formData
-    );
+    return apiClient.post<{
+      message: string;
+      upload: {
+        fileUrl: string;
+        s3Key: string;
+        fileName: string;
+        fileSizeBytes: number;
+        mimeType: string;
+        storageType: "s3" | "local";
+      };
+    }>(`/assessments/${id}/evidence/upload`, formData);
   },
 
   getFindings: (id: string) =>
@@ -82,10 +98,20 @@ export const assessmentService = {
   getPillars: (id: string) =>
     apiClient.get<AssessmentPillarsResponse>(`/assessments/${id}/pillars`),
 
+  /** Backend PDFKit report — creates/updates reportMetadata on the session */
   generateReport: (id: string) =>
     apiClient.post<GenerateReportResponse>(`/assessments/${id}/report`),
 
-  /** Branded GRAICE PDF (all pillars + control detail) — used by Generate/Download flows */
+  /** Authenticated GET of the server-generated PDF (`GET /assessments/:id/report`) */
+  downloadServerReportPdf: (id: string) => downloadAssessmentPdf(id),
+
+  /**
+   * Client-side branded GRAICE PDF (jsPDF) built from live assessment APIs.
+   * Does not replace the backend report service.
+   */
+  downloadBrandedReportPdf: (id: string) => downloadGraiceBrandedAssessmentPdf(id),
+
+  /** @deprecated Prefer downloadServerReportPdf or downloadBrandedReportPdf */
   downloadReportPdf: (id: string) => downloadGraiceBrandedAssessmentPdf(id),
 
   downloadExportExcel: (id: string) => downloadAssessmentExcel(id),

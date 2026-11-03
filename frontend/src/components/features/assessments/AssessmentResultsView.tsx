@@ -325,13 +325,22 @@ export function AssessmentResultsView({
         </button>
       </div>
 
-      {summary.status !== "Submitted" && (
+      {summary.status === "Submitted" ? (
+        <div className="surface-panel rounded-2xl p-4 flex gap-3 items-start border-emerald-200/70 bg-gradient-to-r from-emerald-50/90 to-white">
+          <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0 mt-0.5" />
+          <div className="text-sm text-emerald-950">
+            <span className="font-semibold">Submitted · read-only</span> — scores, findings, and
+            recommendations are locked from backend scoring. Framework v
+            {summary.frameworkVersion}.
+          </div>
+        </div>
+      ) : (
         <div className="surface-panel rounded-2xl p-4 flex gap-3 items-start border-amber-200/60 bg-gradient-to-r from-amber-50/90 to-white">
           <ShieldAlert className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
           <div className="text-sm text-amber-950">
             <span className="font-semibold">Draft scores</span> — status is{" "}
             <span className="font-bold">{summary.status}</span>. Figures update as you answer; submit
-            from review to lock the official record.
+            from review to lock the official record. Framework v{summary.frameworkVersion}.
           </div>
         </div>
       )}
@@ -652,8 +661,18 @@ export function AssessmentResultsView({
                         {g.questionId}
                       </span>
                       <span className="text-[10px] font-semibold text-slate-500">{g.pillarName}</span>
+                      {g.exceptionStatus && (
+                        <span className="text-[10px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-full">
+                          {g.exceptionStatus}
+                        </span>
+                      )}
                     </div>
                     <p className="text-sm text-slate-700 leading-relaxed line-clamp-3">{g.questionText}</p>
+                    {g.evidenceNotes?.trim() && (
+                      <p className="text-[11px] text-slate-500 mt-2 line-clamp-2">
+                        Notes: {g.evidenceNotes}
+                      </p>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -735,7 +754,11 @@ export function AssessmentResultsView({
         </Link>
       </div>
 
-      <AssessmentReportsPanel assessmentId={assessmentId} className="surface-panel rounded-3xl p-6" />
+      <AssessmentReportsPanel
+        assessmentId={assessmentId}
+        isFullAssessment={!isLight}
+        className="surface-panel rounded-3xl p-6"
+      />
     </div>
   );
 }
