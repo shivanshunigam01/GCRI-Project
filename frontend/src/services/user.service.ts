@@ -42,6 +42,38 @@ export const userService = {
       payload
     ),
 
+  uploadMyAvatar: (file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return apiClient.post<{
+      avatar: { url: string; publicId: string };
+      user: { _id: string; name: string; email: string; avatar?: User["avatar"] };
+    }>("/users/me/avatar", form);
+  },
+
+  deleteMyAvatar: () =>
+    apiClient.delete<{
+      message: string;
+      avatar: null;
+      user: { _id: string; name: string; email: string; avatar: null };
+    }>("/users/me/avatar"),
+
+  uploadUserAvatar: (id: string, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return apiClient.post<{
+      avatar: { url: string; publicId: string };
+      user: { _id: string; name: string; email: string; avatar?: User["avatar"] };
+    }>(`/users/${id}/avatar`, form);
+  },
+
+  deleteUserAvatar: (id: string) =>
+    apiClient.delete<{
+      message: string;
+      avatar: null;
+      user: { _id: string; name: string; email: string; avatar: null };
+    }>(`/users/${id}/avatar`),
+
   getUsers: (params?: {
     page?: number;
     limit?: number;

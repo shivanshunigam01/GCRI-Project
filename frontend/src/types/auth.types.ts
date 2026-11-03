@@ -8,6 +8,12 @@ export interface UserCompany {
   domain?: string;
   verificationStatus?: string;
   status?: string;
+  logo?: { url: string; publicId?: string } | null;
+}
+
+export interface UserImageAsset {
+  url: string;
+  publicId?: string;
 }
 
 export interface User {
@@ -20,6 +26,7 @@ export interface User {
   status: UserStatus;
   isActive?: boolean;
   authProvider?: AuthProvider;
+  avatar?: UserImageAsset | null;
   mfa: {
     enabled: boolean;
   };

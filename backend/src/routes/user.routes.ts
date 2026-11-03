@@ -11,8 +11,15 @@ import {
   adminResetPassword,
   adminUpdateUser,
 } from "../controllers/user.controller.js";
+import {
+  uploadMyAvatar,
+  deleteMyAvatar,
+  uploadUserAvatar,
+  deleteUserAvatar,
+} from "../controllers/userAvatar.controller.js";
 import { authenticate, authorize } from "../middlewares/auth.js";
 import { validateRequest } from "../middlewares/validate.js";
+import { handleImageUpload } from "../middlewares/imageUpload.js";
 import {
   UpdateProfileSchema,
   InviteUserSchema,
@@ -73,6 +80,54 @@ router.get("/me", authenticate, getMe);
  *         description: Unauthorized
  */
 router.patch("/me", authenticate, validateRequest(UpdateProfileSchema), updateMe);
+
+/**
+ * @openapi
+ * /api/v1/users/me/avatar:
+ *   post:
+ *     summary: Upload or replace own profile photo
+ *     description: |
+ *       Authenticated Cloudinary upload (JPEG/PNG/WebP, max 5 MB).
+ *       Does not change role or organization. Returns 503 when Cloudinary is not configured.
+ *     tags:
+ *       - User Management
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - file
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       200:
+ *         description: Avatar uploaded
+ *       400:
+ *         description: Invalid image
+ *       401:
+ *         description: Unauthorized
+ *       503:
+ *         description: Cloudinary not configured
+ *   delete:
+ *     summary: Remove own profile photo
+ *     tags:
+ *       - User Management
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Avatar removed
+ *       401:
+ *         description: Unauthorized
+ */
+router.post("/me/avatar", authenticate, handleImageUpload, uploadMyAvatar);
+router.delete("/me/avatar", authenticate, deleteMyAvatar);
 
 /**
  * @openapi
@@ -232,6 +287,75 @@ router.get(
   authorize("SuperAdmin", "Admin"),
   validateRequest(UserParamSchema),
   getUserById
+);
+
+/**
+ * @openapi
+ * /api/v1/users/{id}/avatar:
+ *   post:
+ *     summary: Admin upload or replace a user's profile photo
+ *     description: SuperAdmin any user; Admin only users in the same organization. Self uploads should use /users/me/avatar.
+ *     tags:
+ *       - Admin User Management
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - file
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       200:
+ *         description: Avatar uploaded
+ *       403:
+ *         description: Forbidden
+ *       503:
+ *         description: Cloudinary not configured
+ *   delete:
+ *     summary: Admin remove a user's profile photo
+ *     tags:
+ *       - Admin User Management
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Avatar removed
+ *       403:
+ *         description: Forbidden
+ */
+router.post(
+  "/:id/avatar",
+  authenticate,
+  authorize("SuperAdmin", "Admin"),
+  validateRequest(UserParamSchema),
+  handleImageUpload,
+  uploadUserAvatar
+);
+router.delete(
+  "/:id/avatar",
+  authenticate,
+  authorize("SuperAdmin", "Admin"),
+  validateRequest(UserParamSchema),
+  deleteUserAvatar
 );
 
 /**

@@ -3,6 +3,11 @@ import { Schema, model, Document, Types } from "mongoose";
 export type UserRole = "SuperAdmin" | "Admin" | "Assessor" | "MembershipApprover";
 export type UserStatus = "Active" | "Deactivated";
 
+export interface IUserImageAsset {
+  url: string;
+  publicId: string;
+}
+
 export interface IUser extends Document {
   email: string;
   passwordHash?: string;
@@ -13,6 +18,8 @@ export interface IUser extends Document {
   companyId?: Types.ObjectId;
   authProvider?: "credentials" | "google" | "microsoft";
   oauthId?: string;
+  /** Optional profile photo stored on Cloudinary */
+  avatar?: IUserImageAsset;
   mfa: {
     enabled: boolean;
     secret?: string;
@@ -57,6 +64,11 @@ const UserSchema = new Schema<IUser>(
       index: true,
     },
     oauthId: { type: String, index: true },
+    avatar: {
+      _id: false,
+      url: { type: String, trim: true },
+      publicId: { type: String, trim: true },
+    },
     mfa: {
       enabled: { type: Boolean, default: false },
       secret: { type: String },

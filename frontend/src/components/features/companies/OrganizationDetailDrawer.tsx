@@ -39,6 +39,8 @@ import { userService } from "@/services/user.service";
 import { companyService } from "@/services/company.service";
 import Modal, { ConfirmationVariant } from "@/components/ui/Modal";
 import { ScreenBusyOverlay } from "@/components/shared/ScreenBusyOverlay";
+import { EntityImage } from "@/components/shared/EntityImage";
+import { ImageUploader } from "@/components/shared/ImageUploader";
 
 interface OrganizationDetailDrawerProps {
   company: Company | null;
@@ -344,10 +346,14 @@ export default function OrganizationDetailDrawer({
       <div className="p-4 border-b border-slate-200/80 bg-slate-50/40">
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
-            {/* Logo Avatar */}
-            <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-teal-500 via-cyan-600 to-blue-600 text-white font-extrabold text-sm flex items-center justify-center shrink-0 shadow-2xs">
-              {company.name.slice(0, 2).toUpperCase()}
-            </div>
+            <EntityImage
+              src={company.logo?.url}
+              name={company.name}
+              variant="logo"
+              size="md"
+              cacheKey={company.updatedAt || company.logo?.publicId}
+              className="h-10 w-10"
+            />
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <h2 className="font-extrabold text-slate-900 text-sm truncate leading-tight">
@@ -481,6 +487,40 @@ export default function OrganizationDetailDrawer({
                   {isEditing ? "Cancel" : "Edit"}
                 </button>
               </div>
+
+              {isAdmin && company?._id && (
+                <ImageUploader
+                  variant="logo"
+                  label="Organization logo"
+                  name={company.name}
+                  currentUrl={company.logo?.url}
+                  cacheKey={company.updatedAt || company.logo?.publicId}
+                  onUpload={async (file) => {
+                    const res = await companyService.uploadLogo(company._id, file);
+                    setCompany((prev) =>
+                      prev
+                        ? {
+                            ...prev,
+                            logo: res.data?.logo || prev.logo,
+                            updatedAt: new Date().toISOString(),
+                          }
+                        : prev
+                    );
+                    onRefreshCompany?.();
+                    setEditSuccess(true);
+                    setTimeout(() => setEditSuccess(false), 3000);
+                  }}
+                  onRemove={async () => {
+                    await companyService.deleteLogo(company._id);
+                    setCompany((prev) =>
+                      prev ? { ...prev, logo: null, updatedAt: new Date().toISOString() } : prev
+                    );
+                    onRefreshCompany?.();
+                    setEditSuccess(true);
+                    setTimeout(() => setEditSuccess(false), 3000);
+                  }}
+                />
+              )}
 
               {isEditing ? (
                 /* Direct Inline Form - No Popup Dialog */

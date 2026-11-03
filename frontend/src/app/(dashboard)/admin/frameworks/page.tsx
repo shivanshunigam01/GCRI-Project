@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import { adminFrameworkService } from "@/services/adminFramework.service";
 import { FrameworkListSkeleton, DataTableSkeleton } from "@/components/shared/PageSkeletons";
+import { ListPagination } from "@/components/shared/ListPagination";
+import { useClientPagination } from "@/hooks/useClientPagination";
 import {
   Layers,
   Plus,
@@ -266,6 +268,8 @@ export default function AdminFrameworksPage() {
     }
   };
 
+  const frameworksPagination = useClientPagination(frameworks);
+
   if (!isSuperAdmin) {
     return (
       <div className="max-w-md mx-auto my-12 p-8 surface-panel text-center space-y-3 shadow-xs">
@@ -331,9 +335,9 @@ export default function AdminFrameworksPage() {
       {/* Main Framework Cards List */}
       {loading ? (
         <FrameworkListSkeleton />
-      ) : frameworks.length > 0 ? (
+      ) : frameworksPagination.total > 0 ? (
         <div className="space-y-4">
-          {frameworks.map((fw) => {
+          {frameworksPagination.pageItems.map((fw) => {
             const isPublished = fw.status === "Published";
             const isDraft = fw.status === "Draft";
             const isArchived = fw.status === "Archived";
@@ -439,6 +443,19 @@ export default function AdminFrameworksPage() {
               </div>
             );
           })}
+          <div className="rounded-xl border border-slate-200 overflow-hidden bg-white">
+            <ListPagination
+              page={frameworksPagination.page}
+              totalPages={frameworksPagination.totalPages}
+              total={frameworksPagination.total}
+              from={frameworksPagination.from}
+              to={frameworksPagination.to}
+              onPrevious={frameworksPagination.goPrev}
+              onNext={frameworksPagination.goNext}
+              itemLabel="frameworks"
+              className="border-t-0"
+            />
+          </div>
         </div>
       ) : (
         <div className="bg-white rounded-xl border border-slate-200 p-12 text-center space-y-3">

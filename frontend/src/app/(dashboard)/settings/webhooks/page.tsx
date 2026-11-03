@@ -10,6 +10,8 @@ import {
 import { companyService } from "@/services/company.service";
 import { Company } from "@/types/company.types";
 import { WebhooksPageSkeleton, DataTableSkeleton } from "@/components/shared/PageSkeletons";
+import { ListPagination } from "@/components/shared/ListPagination";
+import { useClientPagination } from "@/hooks/useClientPagination";
 import {
   SlidersHorizontal,
   Plus,
@@ -215,6 +217,8 @@ export default function WebhooksPage() {
     setTimeout(() => setSecretCopied(false), 2500);
   };
 
+  const webhooksPagination = useClientPagination(webhooks);
+
   if (loading && webhooks.length === 0 && !error) {
     return <WebhooksPageSkeleton />;
   }
@@ -317,7 +321,8 @@ export default function WebhooksPage() {
             </p>
           </div>
           <span className="text-xs font-medium text-slate-500">
-            {webhooks.length} {webhooks.length === 1 ? "subscription" : "subscriptions"}
+            {webhooksPagination.total}{" "}
+            {webhooksPagination.total === 1 ? "subscription" : "subscriptions"}
           </span>
         </div>
 
@@ -326,7 +331,7 @@ export default function WebhooksPage() {
             <div className="p-4">
               <DataTableSkeleton rows={4} columns={5} className="border-0 shadow-none" />
             </div>
-          ) : webhooks.length === 0 ? (
+          ) : webhooksPagination.total === 0 ? (
             <div className="p-12 text-center text-slate-400 text-xs">
               <Activity className="h-8 w-8 text-slate-300 mx-auto mb-2" />
               <p className="font-medium text-slate-600">No webhook endpoints configured.</p>
@@ -335,6 +340,7 @@ export default function WebhooksPage() {
               </p>
             </div>
           ) : (
+            <>
             <table className="w-full text-left text-xs">
               <thead className="bg-slate-50/50 text-slate-500 font-semibold border-b border-slate-200">
                 <tr>
@@ -347,7 +353,7 @@ export default function WebhooksPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-slate-700">
-                {webhooks.map((w) => {
+                {webhooksPagination.pageItems.map((w) => {
                   const companyName =
                     companies.find((c) => c._id === w.companyId)?.name || "All Orgs";
 
@@ -436,6 +442,18 @@ export default function WebhooksPage() {
                 })}
               </tbody>
             </table>
+            <ListPagination
+              page={webhooksPagination.page}
+              totalPages={webhooksPagination.totalPages}
+              total={webhooksPagination.total}
+              from={webhooksPagination.from}
+              to={webhooksPagination.to}
+              onPrevious={webhooksPagination.goPrev}
+              onNext={webhooksPagination.goNext}
+              itemLabel="webhooks"
+              disabled={loading}
+            />
+            </>
           )}
         </div>
       </div>

@@ -38,6 +38,8 @@ import {
 } from "@/context/DashboardScopeContext";
 import { DashboardShellContentSkeleton } from "@/components/shared/PageSkeletons";
 import { BrandLogo } from "@/components/shared/BrandLogo";
+import { ThemeToggle } from "@/components/shared/ThemeToggle";
+import { EntityImage } from "@/components/shared/EntityImage";
 import { useApiLoading } from "@/context/ApiLoadingContext";
 
 export default function DashboardLayout({
@@ -277,7 +279,7 @@ function DashboardLayoutContent({
             <button
               type="button"
               onClick={() => setMobileMenuOpen(true)}
-              className="lg:hidden p-2 -ml-1 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition shrink-0"
+              className="lg:hidden p-2 -ml-1 text-slate-600 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-300 dark:hover:text-white dark:hover:bg-slate-800 rounded-lg transition shrink-0"
               aria-label="Open sidebar"
             >
               <Menu className="h-5 w-5" />
@@ -291,13 +293,15 @@ function DashboardLayoutContent({
 
           {/* Right Action Icons & User Profile */}
           <div className="flex items-center gap-2 sm:gap-4 shrink-0">
+            <ThemeToggle />
+
             {/* Notification Bell */}
-            <button className="relative p-2 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-full transition">
+            <button className="relative p-2 text-slate-500 hover:text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:text-white dark:hover:bg-slate-800 rounded-full transition">
               <Bell className="h-5 w-5" />
             </button>
 
             {/* Help Icon - hidden on very small screens */}
-            <button className="hidden sm:flex p-2 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-full transition">
+            <button className="hidden sm:flex p-2 text-slate-500 hover:text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:text-white dark:hover:bg-slate-800 rounded-full transition">
               <HelpCircle className="h-5 w-5" />
             </button>
 
@@ -305,16 +309,21 @@ function DashboardLayoutContent({
             <div className="relative">
               <button
                 onClick={() => setShowProfileMenu(!showProfileMenu)}
-                className="flex items-center gap-2 sm:gap-3 pl-1 sm:pl-2 pr-1 py-1 rounded-lg hover:bg-slate-100 transition text-left"
+                className="flex items-center gap-2 sm:gap-3 pl-1 sm:pl-2 pr-1 py-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition text-left"
               >
-                <div className="h-8 w-8 sm:h-9 sm:w-9 rounded-full bg-gradient-to-tr from-slate-700 to-slate-900 text-white font-semibold flex items-center justify-center text-xs sm:text-sm border border-slate-200 shrink-0">
-                  {user?.name ? user.name.slice(0, 2).toUpperCase() : "U"}
-                </div>
+                <EntityImage
+                  src={user?.avatar?.url}
+                  name={user?.name}
+                  variant="avatar"
+                  size="md"
+                  cacheKey={user?.updatedAt || user?.avatar?.publicId}
+                  className="h-8 w-8 sm:h-9 sm:w-9 border border-slate-200 dark:border-slate-600"
+                />
                 <div className="hidden md:block">
-                  <div className="text-sm font-semibold text-slate-900 leading-tight">
+                  <div className="text-sm font-semibold text-slate-900 dark:text-slate-100 leading-tight">
                     {user?.name || "User"}
                   </div>
-                  <div className="text-xs text-slate-500 leading-tight">
+                  <div className="text-xs text-slate-500 dark:text-slate-400 leading-tight">
                     {isSuperAdmin ? "Super Admin" : isOrgAdmin ? "Org Admin" : "Auditor"}
                   </div>
                 </div>
@@ -322,31 +331,31 @@ function DashboardLayoutContent({
               </button>
 
               {showProfileMenu && (
-                <div className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-lg border border-slate-200 py-1.5 z-50 animate-in fade-in zoom-in-95">
-                  <div className="px-4 py-2 border-b border-slate-100">
-                    <p className="text-xs font-medium text-slate-500">Signed in as</p>
-                    <p className="text-sm font-semibold text-slate-900 truncate">
+                <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-slate-900 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 py-1.5 z-50 animate-in fade-in zoom-in-95">
+                  <div className="px-4 py-2 border-b border-slate-100 dark:border-slate-800">
+                    <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Signed in as</p>
+                    <p className="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate">
                       {user?.email || "user@graice.io"}
                     </p>
                   </div>
                   <Link
                     href="/settings/profile"
                     onClick={() => setShowProfileMenu(false)}
-                    className="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                    className="block px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
                   >
                     Profile Settings
                   </Link>
                   <Link
                     href="/settings/security"
                     onClick={() => setShowProfileMenu(false)}
-                    className="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                    className="block px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
                   >
                     Security &amp; 2FA
                   </Link>
-                  <div className="border-t border-slate-100 my-1" />
+                  <div className="border-t border-slate-100 dark:border-slate-800 my-1" />
                   <button
                     onClick={logout}
-                    className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+                    className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40"
                   >
                     <LogOut className="h-4 w-4" /> Sign Out
                   </button>
@@ -420,10 +429,10 @@ function SearchableScopeSelector({ activeRoleView }: { activeRoleView: "Admin" |
         onClick={() => setIsOpen(!isOpen)}
         className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border transition-all text-xs font-semibold shadow-2xs select-none ${
           isOpen
-            ? "bg-white border-blue-500 ring-2 ring-blue-100 text-slate-900"
+            ? "bg-white dark:bg-slate-900 border-blue-500 ring-2 ring-blue-100 dark:ring-blue-900/50 text-slate-900 dark:text-slate-100"
             : selectedOrgFilter !== "all"
-            ? "bg-blue-50/80 border-blue-200 text-blue-900 hover:bg-blue-100/70"
-            : "bg-slate-50 border-slate-200/90 text-slate-800 hover:bg-slate-100/80"
+            ? "bg-blue-50/80 dark:bg-blue-950/40 border-blue-200 dark:border-blue-800 text-blue-900 dark:text-blue-200 hover:bg-blue-100/70 dark:hover:bg-blue-950/60"
+            : "bg-slate-50 dark:bg-slate-800 border-slate-200/90 dark:border-slate-600 text-slate-800 dark:text-slate-100 hover:bg-slate-100/80 dark:hover:bg-slate-700"
         }`}
       >
         <Building2

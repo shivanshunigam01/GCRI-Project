@@ -6,6 +6,8 @@ import { apiKeyService, ApiKeyItem } from "@/services/apiKey.service";
 import { companyService } from "@/services/company.service";
 import { Company } from "@/types/company.types";
 import { ApiKeysPageSkeleton, DataTableSkeleton } from "@/components/shared/PageSkeletons";
+import { ListPagination } from "@/components/shared/ListPagination";
+import { useClientPagination } from "@/hooks/useClientPagination";
 import {
   Lock,
   Key,
@@ -22,6 +24,8 @@ import {
   CheckCircle2,
   X,
 } from "lucide-react";
+import { MetricListModal, MetricListRow } from "@/components/shared/MetricListModal";
+import { SummaryMetricTile } from "@/components/shared/SummaryMetricTile";
 
 export default function ApiKeysPage() {
   const { user, isAdmin } = useAuth();
@@ -49,6 +53,7 @@ export default function ApiKeysPage() {
 
   // Revoke Key State
   const [revokingId, setRevokingId] = useState<string | null>(null);
+  const [metricModal, setMetricModal] = useState<"all" | "active" | "revoked" | null>(null);
 
   const loadData = async () => {
     try {
@@ -158,6 +163,37 @@ export default function ApiKeysPage() {
   const activeKeysCount = keys.filter((k) => k.isActive).length;
   const revokedKeysCount = keys.filter((k) => !k.isActive).length;
 
+  const toKeyRow = (k: ApiKeyItem): MetricListRow => ({
+    id: k._id,
+    title: k.name || k.prefix || "API Key",
+    subtitle: k.prefix ? `Prefix ${k.prefix}` : undefined,
+    meta: k.companyId
+      ? typeof k.companyId === "object"
+        ? (k.companyId as any).name
+        : String(k.companyId)
+      : k.role,
+    badge: k.isActive ? "Active" : "Revoked",
+    badgeTone: k.isActive ? "success" : "warning",
+    imageVariant: "logo",
+    imageName: k.name,
+  });
+
+  const metricModalRows =
+    metricModal === "active"
+      ? keys.filter((k) => k.isActive).map(toKeyRow)
+      : metricModal === "revoked"
+        ? keys.filter((k) => !k.isActive).map(toKeyRow)
+        : keys.map(toKeyRow);
+
+  const metricModalTitle =
+    metricModal === "active"
+      ? "Active Live Credentials"
+      : metricModal === "revoked"
+        ? "Revoked / Inactive Keys"
+        : "All Provisioned Keys";
+
+  const keysPagination = useClientPagination(keys);
+
   if (loading && keys.length === 0 && !error) {
     return <ApiKeysPageSkeleton />;
   }
@@ -215,38 +251,42 @@ export default function ApiKeysPage() {
         </div>
       )}
 
-      {/* Stat Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-        <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs flex items-center gap-4">
-          <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
-            <Key className="h-6 w-6" />
-          </div>
-          <div>
-            <div className="text-2xl font-bold text-slate-900">{keys.length}</div>
-            <div className="text-xs font-medium text-slate-500">Total Provisioned Keys</div>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs flex items-center gap-4">
-          <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl">
-            <CheckCircle2 className="h-6 w-6" />
-          </div>
-          <div>
-            <div className="text-2xl font-bold text-slate-900">{activeKeysCount}</div>
-            <div className="text-xs font-medium text-slate-500">Active Live Credentials</div>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs flex items-center gap-4">
-          <div className="p-3 bg-slate-100 text-slate-500 rounded-xl">
-            <EyeOff className="h-6 w-6" />
-          </div>
-          <div>
-            <div className="text-2xl font-bold text-slate-900">{revokedKeysCount}</div>
-            <div className="text-xs font-medium text-slate-500">Revoked / Inactive Keys</div>
-          </div>
-        </div>
+      {/* Stat Cards (click → list popup) */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <SummaryMetricTile
+          tone="blue"
+          icon={Key}
+          value={keys.length}
+          label="Total Provisioned Keys"
+          subtext="Click to list"
+          onClick={() => setMetricModal("all")}
+        />
+        <SummaryMetricTile
+          tone="emerald"
+          icon={CheckCircle2}
+          value={activeKeysCount}
+          label="Active Live Credentials"
+          subtext="Click to list"
+          onClick={() => setMetricModal("active")}
+        />
+        <SummaryMetricTile
+          tone="slate"
+          icon={EyeOff}
+          value={revokedKeysCount}
+          label="Revoked / Inactive Keys"
+          subtext="Click to list"
+          onClick={() => setMetricModal("revoked")}
+        />
       </div>
+
+      <MetricListModal
+        open={metricModal !== null}
+        onClose={() => setMetricModal(null)}
+        title={metricModalTitle}
+        description="API credentials matching this summary metric"
+        emptyMessage="No API keys match this metric."
+        rows={metricModalRows}
+      />
 
       {/* Keys Directory Table */}
       <div className="surface-panel overflow-hidden shadow-xs">
@@ -264,13 +304,14 @@ export default function ApiKeysPage() {
             <div className="p-4">
               <DataTableSkeleton rows={5} columns={5} className="border-0 shadow-none" />
             </div>
-          ) : keys.length === 0 ? (
+          ) : keysPagination.total === 0 ? (
             <div className="p-12 text-center text-slate-400 text-xs">
               <Key className="h-8 w-8 text-slate-300 mx-auto mb-2" />
               <p className="font-medium text-slate-600">No M2M API keys created yet.</p>
               <p className="text-slate-400 mt-0.5">Generate a key to authorize automated external services.</p>
             </div>
           ) : (
+            <>
             <table className="w-full text-left text-xs">
               <thead className="bg-slate-50/50 text-slate-500 font-semibold border-b border-slate-200">
                 <tr>
@@ -284,7 +325,7 @@ export default function ApiKeysPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-slate-700">
-                {keys.map((k) => {
+                {keysPagination.pageItems.map((k) => {
                   const companyName =
                     typeof k.companyId === "object" && k.companyId?.name
                       ? k.companyId.name
@@ -370,6 +411,18 @@ export default function ApiKeysPage() {
                 })}
               </tbody>
             </table>
+            <ListPagination
+              page={keysPagination.page}
+              totalPages={keysPagination.totalPages}
+              total={keysPagination.total}
+              from={keysPagination.from}
+              to={keysPagination.to}
+              onPrevious={keysPagination.goPrev}
+              onNext={keysPagination.goNext}
+              itemLabel="API keys"
+              disabled={loading}
+            />
+            </>
           )}
         </div>
       </div>

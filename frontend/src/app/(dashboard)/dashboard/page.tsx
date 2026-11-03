@@ -11,7 +11,11 @@ import {
 import { companyService } from "@/services/company.service";
 import { StatCard } from "@/components/shared/StatCard";
 import { DashboardPageSkeleton } from "@/components/shared/PageSkeletons";
+import { ListPagination } from "@/components/shared/ListPagination";
+import { MetricListModal, MetricListRow } from "@/components/shared/MetricListModal";
+import { useClientPagination } from "@/hooks/useClientPagination";
 import { AnimatedNumber } from "@/components/ui/AnimatedNumber";
+import { userService } from "@/services/user.service";
 import {
   AuditorDashboardSummary,
   AdminDashboardSummary,
@@ -106,7 +110,7 @@ export default function DashboardPage() {
         const [sumResult, assessResult, compResult] = await Promise.allSettled([
           dashboardService.getAdminSummary(),
           dashboardService.getAdminAssessments({ limit: 100 }),
-          companyService.getCompanies({ limit: 200 }),
+          companyService.getCompanies({ limit: 100 }),
         ]);
 
         const partialErrors: string[] = [];
@@ -145,6 +149,7 @@ export default function DashboardPage() {
               industry: c.industry,
               status: c.status,
               activePlan: c.activePlan || c.subscription?.plan || "Bronze",
+              logoUrl: c.logo?.url || null,
             }))
           );
         } else if (sumResult.value?.data?.recentOrganizations) {
@@ -374,6 +379,7 @@ function AuditorDashboardContent({
   const [hoveredPillarIndex, setHoveredPillarIndex] = useState<number | null>(null);
   const [lifecycleHover, setLifecycleHover] = useState<"Completed" | "InProgress" | "NotStarted" | null>(null);
   const [frameworkHover, setFrameworkHover] = useState<"Full" | "Light" | null>(null);
+  const [metricModal, setMetricModal] = useState<"orgs" | "pipeline" | "findings" | "pillars" | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setIsMounted(true), 60);
@@ -694,6 +700,10 @@ function AuditorDashboardContent({
     });
   }, [scopedAssessments, pipelineSearch]);
 
+  const pipelinePagination = useClientPagination(filteredPipeline);
+  const orgsPagination = useClientPagination(organizations);
+  const findingsPagination = useClientPagination(latestFindings);
+
   return (
     <div className="space-y-6">
       {/* -------------------------------------------------------------------- */}
@@ -736,7 +746,7 @@ function AuditorDashboardContent({
           icon={FileCheck2}
           theme="blue"
           delay={0}
-          onClick={() => setPipelineFilter("All")}
+          onClick={() => setMetricModal("pipeline")}
         />
         <StatCard
           label="My Organizations"
@@ -746,6 +756,7 @@ function AuditorDashboardContent({
           icon={Building2}
           theme="purple"
           delay={70}
+          onClick={() => setMetricModal("orgs")}
         />
         <StatCard
           label="Governance Assurance"
@@ -756,6 +767,7 @@ function AuditorDashboardContent({
           icon={Award}
           theme="emerald"
           delay={140}
+          onClick={() => setMetricModal("pillars")}
         />
         <StatCard
           label="Compliance Findings"
@@ -765,8 +777,97 @@ function AuditorDashboardContent({
           icon={AlertTriangle}
           theme={findingsCount > 0 ? "rose" : "teal"}
           delay={210}
+          onClick={() => setMetricModal("findings")}
         />
       </div>
+
+      <MetricListModal
+        open={metricModal === "orgs"}
+        onClose={() => setMetricModal(null)}
+        title="My Organizations"
+        description="Assigned client tenants in your assurance portfolio"
+        footerHref="/organizations"
+        footerLabel="Open Organizations"
+        emptyMessage="No organizations assigned to your auditor account yet."
+        rows={organizations.map((org): MetricListRow => ({
+          id: org._id,
+          title: org.name,
+          subtitle: org.domain || org.industry,
+          meta: `${org.assessmentsSummary?.total ?? 0} assessments · ${org.activePlan || "Bronze"}`,
+          badge: org.status,
+          badgeTone: org.status === "Active" ? "success" : "warning",
+          imageUrl: org.logo?.url,
+          imageName: org.name,
+          imageVariant: "logo",
+          href: `/organizations/${org._id}`,
+        }))}
+      />
+
+      <MetricListModal
+        open={metricModal === "pipeline"}
+        onClose={() => setMetricModal(null)}
+        title="Assessments Pipeline"
+        description="Assessments in your current scope"
+        footerHref="/assessments"
+        footerLabel="Open Assessments"
+        emptyMessage="No assessments in the pipeline yet."
+        rows={scopedAssessments.map((a): MetricListRow => ({
+          id: a._id,
+          title: (a.organization as any)?.name || "Organization",
+          subtitle: `${a.assessmentType} · ${a.status}`,
+          meta: a.submittedAt
+            ? `Submitted ${new Date(a.submittedAt).toLocaleDateString()}`
+            : `Updated ${new Date(a.updatedAt).toLocaleDateString()}`,
+          badge: a.status === "Submitted" ? "Completed" : a.status,
+          badgeTone:
+            a.status === "Submitted" ? "success" : a.status === "InProgress" ? "info" : "neutral",
+          imageUrl: (a.organization as any)?.logo?.url,
+          imageName: (a.organization as any)?.name,
+          imageVariant: "logo",
+          href: `/assessments/${a._id}`,
+        }))}
+      />
+
+      <MetricListModal
+        open={metricModal === "findings"}
+        onClose={() => setMetricModal(null)}
+        title="Compliance Findings"
+        description="Latest findings requiring attention"
+        emptyMessage="No compliance findings recorded."
+        rows={latestFindings.map((f): MetricListRow => ({
+          id: f.findingId,
+          title: f.title || f.controlId,
+          subtitle: f.organizationName,
+          meta: `${f.severity} · ${f.status}`,
+          badge: f.severity,
+          badgeTone:
+            f.severity === "High" ? "danger" : f.severity === "Medium" ? "warning" : "neutral",
+          imageVariant: "logo",
+          imageName: f.organizationName,
+        }))}
+      />
+
+      <MetricListModal
+        open={metricModal === "pillars"}
+        onClose={() => setMetricModal(null)}
+        title="Governance Assurance · Pillars"
+        description={`${derivedPillarData.maturityTier} · overall ${derivedPillarData.overallAvgScore}%`}
+        emptyMessage="No pillar performance data available."
+        rows={(derivedPillarData.pillars || []).map((p: any, idx: number): MetricListRow => ({
+          id: p.pillarId || p.canonicalPillarId || `pillar-${idx}`,
+          title: p.name || `Pillar ${p.pillarNumber || idx + 1}`,
+          subtitle: `Completion ${Math.round(p.completionPercentage ?? 0)}%`,
+          badge: `${Math.round(p.completionPercentage ?? 0)}%`,
+          badgeTone:
+            (p.completionPercentage ?? 0) >= 75
+              ? "success"
+              : (p.completionPercentage ?? 0) >= 40
+                ? "warning"
+                : "danger",
+          imageVariant: "logo",
+          imageName: p.name,
+        }))}
+      />
 
       {/* -------------------------------------------------------------------- */}
       {/* ROW 2: 7 GRAICE PILLARS RADAR + PILLAR BREAKDOWN (SAME ROW, 2 CARDS) */}
@@ -1314,7 +1415,7 @@ function AuditorDashboardContent({
           </div>
 
           <div className="py-2 flex-1 flex flex-col justify-center">
-            {latestFindings.length > 0 ? (
+            {findingsPagination.total > 0 ? (
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs">
                   <thead className="text-[10px] font-semibold text-slate-400 uppercase border-b border-slate-100">
@@ -1326,7 +1427,7 @@ function AuditorDashboardContent({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {latestFindings.map((fnd, idx) => (
+                    {findingsPagination.pageItems.map((fnd, idx) => (
                       <tr key={idx} className="hover:bg-slate-50 transition">
                         <td className="py-2 font-mono text-[11px] text-slate-700 font-medium truncate max-w-[110px]">
                           {fnd.findingId || fnd.controlId}
@@ -1356,6 +1457,16 @@ function AuditorDashboardContent({
                     ))}
                   </tbody>
                 </table>
+                <ListPagination
+                  page={findingsPagination.page}
+                  totalPages={findingsPagination.totalPages}
+                  total={findingsPagination.total}
+                  from={findingsPagination.from}
+                  to={findingsPagination.to}
+                  onPrevious={findingsPagination.goPrev}
+                  onNext={findingsPagination.goNext}
+                  itemLabel="findings"
+                />
               </div>
             ) : (
               <div className="py-6 flex flex-col items-center justify-center text-center space-y-2">
@@ -1480,7 +1591,8 @@ function AuditorDashboardContent({
           </div>
 
           <div className="overflow-x-auto flex-1">
-            {organizations.length > 0 ? (
+            {orgsPagination.total > 0 ? (
+              <>
               <table className="w-full text-left text-xs">
                 <thead className="text-[10px] font-semibold text-slate-400 uppercase border-b border-slate-100">
                   <tr>
@@ -1492,7 +1604,7 @@ function AuditorDashboardContent({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {organizations.map((org) => (
+                  {orgsPagination.pageItems.map((org) => (
                     <tr
                       key={org._id}
                       onClick={() => setSelectedOrgFilter(org._id)}
@@ -1533,6 +1645,17 @@ function AuditorDashboardContent({
                   ))}
                 </tbody>
               </table>
+              <ListPagination
+                page={orgsPagination.page}
+                totalPages={orgsPagination.totalPages}
+                total={orgsPagination.total}
+                from={orgsPagination.from}
+                to={orgsPagination.to}
+                onPrevious={orgsPagination.goPrev}
+                onNext={orgsPagination.goNext}
+                itemLabel="organizations"
+              />
+              </>
             ) : (
               <div className="py-8 text-center text-xs text-slate-400">
                 No organizations assigned to your auditor account yet.
@@ -1546,10 +1669,10 @@ function AuditorDashboardContent({
       {/* ROW 5: INTERACTIVE ASSESSMENT PIPELINE EXPLORER & FILTERABLE TABLE    */}
       {/* -------------------------------------------------------------------- */}
       <div className="surface-panel p-5 shadow-xs space-y-4">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-700">
           <div>
             <h3 className="section-heading">Assessment Pipeline Explorer</h3>
-            <p className="text-[11px] text-slate-500 mt-0.5">
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
               Filterable ledger of live evaluations, compliance scores, and reports
             </p>
           </div>
@@ -1563,20 +1686,20 @@ function AuditorDashboardContent({
                 placeholder="Search audits..."
                 value={pipelineSearch}
                 onChange={(e) => setPipelineSearch(e.target.value)}
-                className="pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 w-44"
+                className="pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 w-44"
               />
             </div>
 
             {/* Filter pills */}
-            <div className="flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200 text-xs">
+            <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg border border-slate-200 dark:border-slate-600 text-xs">
               {(["All", "InProgress", "Submitted", "Light", "Full"] as const).map((tab) => (
                 <button
                   key={tab}
                   onClick={() => setPipelineFilter(tab)}
                   className={`px-2.5 py-1 rounded-md font-medium transition ${
                     pipelineFilter === tab
-                      ? "bg-white text-slate-900 shadow-2xs font-semibold"
-                      : "text-slate-500 hover:text-slate-900"
+                      ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-2xs font-semibold"
+                      : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                   }`}
                 >
                   {tab === "InProgress" ? "In Progress" : tab}
@@ -1589,31 +1712,32 @@ function AuditorDashboardContent({
         <div
           className={`overflow-x-auto transition-opacity ${assessmentsLoading ? "opacity-60 pointer-events-none" : ""}`}
         >
-          {assessmentsLoading && filteredPipeline.length === 0 ? (
-            <div className="py-8 text-center text-xs text-slate-500 flex items-center justify-center gap-2">
+          {assessmentsLoading && pipelinePagination.total === 0 ? (
+            <div className="py-8 text-center text-xs text-slate-500 dark:text-slate-400 flex items-center justify-center gap-2">
               <RefreshCw className="h-4 w-4 animate-spin" />
               Loading assessments…
             </div>
-          ) : filteredPipeline.length > 0 ? (
-            <table className="w-full text-left text-xs">
-              <thead className="text-[10px] font-semibold text-slate-400 uppercase border-b border-slate-100">
+          ) : pipelinePagination.total > 0 ? (
+            <>
+            <table className="w-full text-left text-xs text-slate-800 dark:text-slate-100">
+              <thead className="text-[10px] font-semibold text-slate-500 dark:text-slate-300 uppercase border-b border-slate-100 dark:border-slate-700">
                 <tr>
-                  <th className="py-2.5">Organization</th>
-                  <th className="py-2.5">Framework</th>
-                  <th className="py-2.5">Status</th>
-                  <th className="py-2.5 text-center">Score &amp; Maturity</th>
-                  <th className="py-2.5">Last Updated</th>
-                  <th className="py-2.5 text-right">Action</th>
+                  <th className="py-2.5 text-slate-500 dark:text-slate-300">Organization</th>
+                  <th className="py-2.5 text-slate-500 dark:text-slate-300">Framework</th>
+                  <th className="py-2.5 text-slate-500 dark:text-slate-300">Status</th>
+                  <th className="py-2.5 text-center text-slate-500 dark:text-slate-300">Score &amp; Maturity</th>
+                  <th className="py-2.5 text-slate-500 dark:text-slate-300">Last Updated</th>
+                  <th className="py-2.5 text-right text-slate-500 dark:text-slate-300">Action</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
-                {filteredPipeline.map((a) => (
-                  <tr key={a._id} className="hover:bg-slate-50 transition">
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+                {pipelinePagination.pageItems.map((a) => (
+                  <tr key={a._id} className="hover:bg-slate-50 dark:hover:bg-slate-800/60 transition">
                     <td className="py-3">
-                      <div className="font-semibold text-slate-900">
+                      <div className="font-semibold text-slate-900 dark:text-white">
                         {(a.organization as any)?.name || "Assigned Company"}
                       </div>
-                      <div className="text-[10px] text-slate-400">
+                      <div className="text-[10px] text-slate-400 dark:text-slate-400">
                         {(a.organization as any)?.domain || (a.organization as any)?.industry || "Enterprise"}
                       </div>
                     </td>
@@ -1621,8 +1745,8 @@ function AuditorDashboardContent({
                       <span
                         className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
                           a.assessmentType === "Full"
-                            ? "bg-indigo-50 text-indigo-700 border border-indigo-200"
-                            : "bg-sky-50 text-sky-700 border border-sky-200"
+                            ? "bg-indigo-50 text-indigo-700 border border-indigo-200 dark:bg-indigo-950/50 dark:text-indigo-200 dark:border-indigo-700"
+                            : "bg-sky-50 text-sky-700 border border-sky-200 dark:bg-sky-950/50 dark:text-sky-200 dark:border-sky-700"
                         }`}
                       >
                         {a.assessmentType} Assessment
@@ -1632,8 +1756,8 @@ function AuditorDashboardContent({
                       <span
                         className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold ${
                           a.status === "Submitted"
-                            ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                            : "bg-blue-50 text-blue-700 border border-blue-200"
+                            ? "bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-200 dark:border-emerald-700"
+                            : "bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/50 dark:text-blue-200 dark:border-blue-700"
                         }`}
                       >
                         <span
@@ -1646,26 +1770,26 @@ function AuditorDashboardContent({
                     </td>
                     <td className="py-3 text-center">
                       {a.scoreSnapshot ? (
-                        <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-slate-100 text-slate-800 text-[11px] font-bold">
+                        <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-100 text-[11px] font-bold">
                           <span>{a.scoreSnapshot.overallPercentage}%</span>
                           <span className="text-slate-400">•</span>
-                          <span className="text-[10px] font-semibold text-blue-700">
+                          <span className="text-[10px] font-semibold text-blue-700 dark:text-blue-300">
                             {a.scoreSnapshot.maturityLevel}
                           </span>
                         </div>
                       ) : (
-                        <span className="text-[11px] text-slate-400 font-medium">
+                        <span className="text-[11px] text-slate-400 dark:text-slate-300 font-medium">
                           {a.completionPercentage}% Done
                         </span>
                       )}
                     </td>
-                    <td className="py-3 text-slate-500">
+                    <td className="py-3 text-slate-500 dark:text-slate-300">
                       {new Date(a.submittedAt || a.updatedAt || a.createdAt).toLocaleDateString()}
                     </td>
                     <td className="py-3 text-right">
                       <Link
                         href={`/assessments/${a._id}`}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 text-[11px] font-semibold transition"
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-white text-[11px] font-semibold transition"
                       >
                         <span>{a.status === "Submitted" ? "View Results" : "Resume"}</span>
                         <ArrowUpRight className="h-3 w-3" />
@@ -1675,8 +1799,20 @@ function AuditorDashboardContent({
                 ))}
               </tbody>
             </table>
+            <ListPagination
+              page={pipelinePagination.page}
+              totalPages={pipelinePagination.totalPages}
+              total={pipelinePagination.total}
+              from={pipelinePagination.from}
+              to={pipelinePagination.to}
+              onPrevious={pipelinePagination.goPrev}
+              onNext={pipelinePagination.goNext}
+              itemLabel="assessments"
+              disabled={assessmentsLoading}
+            />
+            </>
           ) : (
-            <div className="py-8 text-center text-xs text-slate-400 space-y-2">
+            <div className="py-8 text-center text-xs text-slate-400 dark:text-slate-300 space-y-2">
               <p>No assessment records match the selected filter.</p>
               <button
                 onClick={() => {
@@ -1684,7 +1820,7 @@ function AuditorDashboardContent({
                   setPipelineSearch("");
                   setSelectedOrgFilter("all");
                 }}
-                className="text-blue-600 font-semibold hover:underline"
+                className="text-blue-600 dark:text-cyan-300 font-semibold hover:underline"
               >
                 Reset Filters
               </button>
@@ -1892,10 +2028,48 @@ function AdminDashboardContent({
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("All");
   const [adminStatusHover, setAdminStatusHover] = useState<string | null>(null);
+  const [metricModal, setMetricModal] = useState<
+    "users" | "auditors" | "orgs" | "pipeline" | "evidence" | "reports" | "framework" | null
+  >(null);
+  const [userModalRows, setUserModalRows] = useState<MetricListRow[]>([]);
+  const [userModalLoading, setUserModalLoading] = useState(false);
 
   useEffect(() => {
     const t = setTimeout(() => setIsMounted(true), 60);
     return () => clearTimeout(t);
+  }, []);
+
+  const openUserMetricModal = useCallback(async (kind: "users" | "auditors") => {
+    setMetricModal(kind);
+    setUserModalLoading(true);
+    try {
+      const res = await userService.getUsers({
+        limit: 100,
+        ...(kind === "auditors" ? { role: "Assessor" } : {}),
+      });
+      const list = Array.isArray(res?.data) ? res.data : [];
+      setUserModalRows(
+        list.map((u): MetricListRow => ({
+          id: u._id,
+          title: u.name || "Unnamed User",
+          subtitle: u.email,
+          meta:
+            typeof u.companyId === "object" && u.companyId?.name
+              ? u.companyId.name
+              : u.role,
+          badge: u.role,
+          badgeTone: u.role === "SuperAdmin" || u.role === "Admin" ? "info" : "neutral",
+          imageUrl: u.avatar?.url,
+          imageName: u.name || u.email,
+          imageVariant: "avatar",
+          href: "/admin/users",
+        }))
+      );
+    } catch {
+      setUserModalRows([]);
+    } finally {
+      setUserModalLoading(false);
+    }
   }, []);
 
   const isScoped = selectedOrgFilter !== "all";
@@ -1967,6 +2141,9 @@ function AdminDashboardContent({
     }
     return true;
   });
+
+  const adminAssessmentsPagination = useClientPagination(filteredAssessments);
+  const recentOrgsPagination = useClientPagination(recentOrgs);
 
   const completedPct = byStatus.total > 0 ? Math.round((byStatus.completed / byStatus.total) * 100) : 0;
   const inProgressPct = byStatus.total > 0 ? Math.round((byStatus.inProgress / byStatus.total) * 100) : 0;
@@ -2050,6 +2227,7 @@ function AdminDashboardContent({
           icon={Users}
           theme="blue"
           delay={0}
+          onClick={() => void openUserMetricModal("users")}
         />
 
         {/* Card 2: Auditors */}
@@ -2076,6 +2254,7 @@ function AdminDashboardContent({
           icon={UserCheck}
           theme="emerald"
           delay={25}
+          onClick={() => void openUserMetricModal("auditors")}
         />
 
         {/* Card 3: Client Organizations */}
@@ -2087,6 +2266,7 @@ function AdminDashboardContent({
           icon={Building2}
           theme="purple"
           delay={50}
+          onClick={() => setMetricModal("orgs")}
         />
 
         {/* Card 4: Evaluation Criteria — real API value; never invent 95 */}
@@ -2098,6 +2278,7 @@ function AdminDashboardContent({
           icon={BookOpen}
           theme="amber"
           delay={75}
+          onClick={() => setMetricModal("framework")}
         />
 
         {/* Card 5: Assessments Pipeline */}
@@ -2109,7 +2290,7 @@ function AdminDashboardContent({
           icon={FileCheck2}
           theme="teal"
           delay={100}
-          onClick={() => setStatusFilter("All")}
+          onClick={() => setMetricModal("pipeline")}
         />
 
         {/* Card 6: Compliance Framework */}
@@ -2122,6 +2303,7 @@ function AdminDashboardContent({
           icon={Layers}
           theme="sky"
           delay={125}
+          onClick={() => setMetricModal("framework")}
         />
 
         {/* Card 7: Evidence Vault — API-only when unscoped; scoped uses submitted count (metadata only) */}
@@ -2137,6 +2319,7 @@ function AdminDashboardContent({
           icon={FolderLock}
           theme="rose"
           delay={150}
+          onClick={() => setMetricModal("evidence")}
         />
 
         {/* Card 8: Reports & Security Logs */}
@@ -2152,8 +2335,135 @@ function AdminDashboardContent({
           icon={ShieldCheck}
           theme="slate"
           delay={175}
+          onClick={() => setMetricModal("reports")}
         />
       </div>
+
+      <MetricListModal
+        open={metricModal === "users" || metricModal === "auditors"}
+        onClose={() => setMetricModal(null)}
+        title={metricModal === "auditors" ? (isSuperAdmin ? "Accredited Auditors" : "Organization Assessors") : (isSuperAdmin ? "Platform Users" : "Organization Users")}
+        description={userModalLoading ? "Loading directory…" : "Click a row to open user management"}
+        footerHref="/admin/users"
+        footerLabel="Open Users"
+        emptyMessage={userModalLoading ? "Loading…" : "No users found."}
+        rows={userModalRows}
+      />
+
+      <MetricListModal
+        open={metricModal === "orgs"}
+        onClose={() => setMetricModal(null)}
+        title={isSuperAdmin ? "Client Organizations" : "Your Organization"}
+        description="Organizations visible in your admin scope"
+        footerHref="/organizations"
+        footerLabel="Open Organizations"
+        emptyMessage="No organizations available."
+        rows={(isScoped && scopedOrg ? [scopedOrg] : organizations).map((org): MetricListRow => ({
+          id: org._id,
+          title: org.name,
+          subtitle: org.domain || org.industry,
+          meta: org.activePlan ? `${org.activePlan} plan` : undefined,
+          badge: org.status,
+          badgeTone: org.status === "Active" ? "success" : "warning",
+          imageUrl: org.logoUrl,
+          imageName: org.name,
+          imageVariant: "logo",
+          href: `/organizations/${org._id}`,
+        }))}
+      />
+
+      <MetricListModal
+        open={metricModal === "pipeline"}
+        onClose={() => setMetricModal(null)}
+        title="Assessments Pipeline"
+        description="Assessments in the current dashboard scope"
+        footerHref="/assessments"
+        footerLabel="Open Assessments"
+        emptyMessage="No assessments found."
+        rows={scopedAssessments.map((a): MetricListRow => ({
+          id: a._id,
+          title: (a.organization as any)?.name || "Organization",
+          subtitle: `${a.assessmentType} · ${a.status}`,
+          meta: (a.auditor as any)?.name ? `Assessor: ${(a.auditor as any).name}` : undefined,
+          badge: a.status,
+          badgeTone:
+            a.status === "Submitted" ? "success" : a.status === "InProgress" ? "info" : "neutral",
+          imageUrl: (a.organization as any)?.logo?.url,
+          imageName: (a.organization as any)?.name,
+          imageVariant: "logo",
+          href: `/assessments/${a._id}`,
+        }))}
+      />
+
+      <MetricListModal
+        open={metricModal === "evidence" || metricModal === "reports"}
+        onClose={() => setMetricModal(null)}
+        title={metricModal === "reports" ? "Reports & Submitted Sessions" : "Audit Evidence Sessions"}
+        description="Submitted assessments in the current scope"
+        footerHref={metricModal === "reports" ? "/admin/audit-logs" : "/assessments"}
+        footerLabel={metricModal === "reports" ? "Open Audit Trail" : "Open Assessments"}
+        emptyMessage="No submitted sessions in scope."
+        rows={scopedAssessments
+          .filter((a) => a.status === "Submitted")
+          .map((a): MetricListRow => ({
+            id: a._id,
+            title: (a.organization as any)?.name || "Organization",
+            subtitle: `${a.assessmentType} · Submitted`,
+            meta: a.submittedAt
+              ? new Date(a.submittedAt).toLocaleString()
+              : undefined,
+            badge: "Submitted",
+            badgeTone: "success",
+            imageUrl: (a.organization as any)?.logo?.url,
+            imageName: (a.organization as any)?.name,
+            imageVariant: "logo",
+            href: `/assessments/${a._id}`,
+          }))}
+      />
+
+      <MetricListModal
+        open={metricModal === "framework"}
+        onClose={() => setMetricModal(null)}
+        title="Compliance Framework Snapshot"
+        description="Framework inventory summary from dashboard KPIs"
+        footerHref="/admin/frameworks"
+        footerLabel="Open Frameworks"
+        emptyMessage="No framework metadata available."
+        rows={[
+          {
+            id: "versions",
+            title: "Framework versions",
+            subtitle: `${summary?.stats?.frameworkVersions ?? 0} registered version(s)`,
+            badge: "Framework",
+            badgeTone: "info",
+            href: "/admin/frameworks",
+          },
+          {
+            id: "pillars",
+            title: "GRAICE pillars",
+            subtitle: `${summary?.stats?.pillarsCount ?? 7} pillars`,
+            badge: "Pillars",
+            badgeTone: "success",
+            href: "/admin/frameworks",
+          },
+          {
+            id: "controls",
+            title: "Controls",
+            subtitle: `${summary?.stats?.controlsCount ?? 0} controls`,
+            badge: "Controls",
+            badgeTone: "neutral",
+            href: "/admin/frameworks",
+          },
+          {
+            id: "questions",
+            title: "Evaluation criteria / questions",
+            subtitle: `${summary?.stats?.questionsCount ?? 0} questions`,
+            badge: "Questions",
+            badgeTone: "warning",
+            href: "/admin/frameworks",
+          },
+        ]}
+      />
 
       {/* -------------------------------------------------------------------- */}
       {/* ROW 2: 2 DISTINCT ANALYTICS CARDS (1 DONUT + 1 SAAS MATRIX)          */}
@@ -2452,7 +2762,8 @@ function AdminDashboardContent({
           </div>
 
           <div className="overflow-x-auto">
-            {recentOrgs.length > 0 ? (
+            {recentOrgsPagination.total > 0 ? (
+              <>
               <table className="w-full text-left text-xs">
                 <thead className="text-[11px] font-semibold text-slate-400 uppercase border-b border-slate-100">
                   <tr>
@@ -2465,7 +2776,7 @@ function AdminDashboardContent({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {recentOrgs.map((o) => {
+                  {recentOrgsPagination.pageItems.map((o) => {
                     const isSelected = isScoped && o._id === selectedOrgFilter;
                     return (
                       <tr
@@ -2517,6 +2828,17 @@ function AdminDashboardContent({
                   })}
                 </tbody>
               </table>
+              <ListPagination
+                page={recentOrgsPagination.page}
+                totalPages={recentOrgsPagination.totalPages}
+                total={recentOrgsPagination.total}
+                from={recentOrgsPagination.from}
+                to={recentOrgsPagination.to}
+                onPrevious={recentOrgsPagination.goPrev}
+                onNext={recentOrgsPagination.goNext}
+                itemLabel="organizations"
+              />
+              </>
             ) : (
               <div className="py-8 text-center text-xs text-slate-400">
                 No client organizations registered on the platform yet.
@@ -2574,11 +2896,9 @@ function AdminDashboardContent({
               <h3 className="section-heading">
                 {isScoped ? `${scopedOrg?.name} Assessment Pipeline` : "Platform Assessment Pipeline"}
               </h3>
-              {filteredAssessments.length > 10 && (
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
-                  Top 10 of {filteredAssessments.length}
-                </span>
-              )}
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                {adminAssessmentsPagination.total} total
+              </span>
             </div>
             <p className="text-[11px] text-slate-500 mt-0.5">
               {isScoped
@@ -2619,7 +2939,8 @@ function AdminDashboardContent({
         </div>
 
         <div className="overflow-x-auto">
-          {filteredAssessments.length > 0 ? (
+          {adminAssessmentsPagination.total > 0 ? (
+            <>
             <table className="w-full text-left text-xs">
               <thead className="text-[11px] font-semibold text-slate-400 uppercase border-b border-slate-100">
                 <tr>
@@ -2632,7 +2953,7 @@ function AdminDashboardContent({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filteredAssessments.slice(0, 10).map((a) => (
+                {adminAssessmentsPagination.pageItems.map((a) => (
                   <tr key={a._id} className="hover:bg-slate-50/80 transition-colors">
                     <td className="py-2.5 font-semibold text-slate-800">
                       {a.organization?.name || "Client Org"}
@@ -2675,6 +2996,17 @@ function AdminDashboardContent({
                 ))}
               </tbody>
             </table>
+            <ListPagination
+              page={adminAssessmentsPagination.page}
+              totalPages={adminAssessmentsPagination.totalPages}
+              total={adminAssessmentsPagination.total}
+              from={adminAssessmentsPagination.from}
+              to={adminAssessmentsPagination.to}
+              onPrevious={adminAssessmentsPagination.goPrev}
+              onNext={adminAssessmentsPagination.goNext}
+              itemLabel="assessments"
+            />
+            </>
           ) : (
             <div className="py-8 text-center text-xs text-slate-400">
               {isScoped
@@ -2683,18 +3015,6 @@ function AdminDashboardContent({
             </div>
           )}
         </div>
-
-        {filteredAssessments.length > 10 && (
-          <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
-            <span>Showing top 10 most recent assessments</span>
-            <Link
-              href="/assessments"
-              className="font-semibold text-blue-600 hover:text-blue-800 transition inline-flex items-center gap-1"
-            >
-              View all {filteredAssessments.length} assessments &rarr;
-            </Link>
-          </div>
-        )}
       </div>
     </div>
   );

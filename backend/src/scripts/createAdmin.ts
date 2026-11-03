@@ -52,7 +52,7 @@ async function createAdmin() {
         recoveryCodes: hashedRecoveryCodes,
       };
       await superAdminUser.save();
-      console.log(`✅ Super Admin account updated!`);
+      console.log(`✅ Super Admin account updated!`); 
     } else {
       superAdminUser = await User.create({
         email: superAdminEmail,

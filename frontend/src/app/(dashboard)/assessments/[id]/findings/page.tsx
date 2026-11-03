@@ -10,6 +10,8 @@ import {
 } from "@/types/assessment.types";
 import { AssessmentConfidentialGate } from "@/components/features/assessments/AssessmentConfidentialGate";
 import { AssessmentFindingsSkeleton } from "@/components/shared/PageSkeletons";
+import { ListPagination } from "@/components/shared/ListPagination";
+import { useClientPagination } from "@/hooks/useClientPagination";
 import { getUserFacingApiError } from "@/lib/authUser";
 import { cn } from "@/lib/utils";
 import {
@@ -119,6 +121,9 @@ function AssessmentFindingsContent() {
     });
   }, [findings, search, severity]);
 
+  const findingsPagination = useClientPagination(filtered);
+  const recommendationsPagination = useClientPagination(recommendations);
+
   if (loading) return <AssessmentFindingsSkeleton />;
 
   return (
@@ -195,7 +200,7 @@ function AssessmentFindingsContent() {
         </div>
       </div>
 
-      {filtered.length === 0 ? (
+      {findingsPagination.total === 0 ? (
         <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center">
           <p className="text-sm font-semibold text-slate-800">No findings match your filters</p>
           <p className="text-xs text-slate-500 mt-2">
@@ -205,8 +210,9 @@ function AssessmentFindingsContent() {
           </p>
         </div>
       ) : (
+        <>
         <ul className="space-y-4">
-          {filtered.map((f) => (
+          {findingsPagination.pageItems.map((f) => (
             <li key={f.findingId} className="bg-white rounded-2xl border border-slate-200 p-5 space-y-3">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>
@@ -279,9 +285,23 @@ function AssessmentFindingsContent() {
             </li>
           ))}
         </ul>
+        <div className="rounded-2xl border border-slate-200 overflow-hidden bg-white">
+          <ListPagination
+            page={findingsPagination.page}
+            totalPages={findingsPagination.totalPages}
+            total={findingsPagination.total}
+            from={findingsPagination.from}
+            to={findingsPagination.to}
+            onPrevious={findingsPagination.goPrev}
+            onNext={findingsPagination.goNext}
+            itemLabel="findings"
+            className="border-t-0"
+          />
+        </div>
+        </>
       )}
 
-      {recommendations.length > 0 && (
+      {recommendationsPagination.total > 0 && (
         <section className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4">
           <div>
             <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
@@ -289,12 +309,12 @@ function AssessmentFindingsContent() {
               Remediation recommendations
             </h2>
             <p className="text-xs text-slate-500 mt-1">
-              {recommendations.length} prioritized remediation action
-              {recommendations.length === 1 ? "" : "s"} from the assessment API
+              {recommendationsPagination.total} prioritized remediation action
+              {recommendationsPagination.total === 1 ? "" : "s"} from the assessment API
             </p>
           </div>
           <ol className="space-y-3">
-            {recommendations.map((r, i) => (
+            {recommendationsPagination.pageItems.map((r, i) => (
               <li
                 key={r.recommendationId}
                 className="relative rounded-xl border border-slate-200 bg-slate-50/60 pl-4 pr-4 py-3.5 overflow-hidden"
@@ -307,7 +327,7 @@ function AssessmentFindingsContent() {
                 />
                 <div className="flex items-start gap-3">
                   <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white border border-slate-200 text-xs font-bold text-slate-700">
-                    {i + 1}
+                    {recommendationsPagination.from + i}
                   </span>
                   <div className="min-w-0 space-y-1">
                     <span
@@ -329,6 +349,17 @@ function AssessmentFindingsContent() {
               </li>
             ))}
           </ol>
+          <ListPagination
+            page={recommendationsPagination.page}
+            totalPages={recommendationsPagination.totalPages}
+            total={recommendationsPagination.total}
+            from={recommendationsPagination.from}
+            to={recommendationsPagination.to}
+            onPrevious={recommendationsPagination.goPrev}
+            onNext={recommendationsPagination.goNext}
+            itemLabel="recommendations"
+            className="rounded-xl border border-slate-200"
+          />
         </section>
       )}
     </div>

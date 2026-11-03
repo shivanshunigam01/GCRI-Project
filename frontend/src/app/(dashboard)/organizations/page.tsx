@@ -36,6 +36,10 @@ import { Company, CompanyStatus, VerificationStatus, SubscriptionTier } from "@/
 import OrganizationDetailDrawer from "@/components/features/companies/OrganizationDetailDrawer";
 import Modal, { ConfirmationVariant } from "@/components/ui/Modal";
 import { AnimatedNumber } from "@/components/ui/AnimatedNumber";
+import { EntityImage } from "@/components/shared/EntityImage";
+import { ImageUploader } from "@/components/shared/ImageUploader";
+import { MetricListModal, MetricListRow } from "@/components/shared/MetricListModal";
+import { SummaryMetricTile } from "@/components/shared/SummaryMetricTile";
 
 export default function OrganizationsPage() {
   // Live Data State
@@ -65,10 +69,10 @@ export default function OrganizationsPage() {
 
   // Pagination & Filtering
   const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(20);
+  const [limit, setLimit] = useState(10);
   const [paginationMeta, setPaginationMeta] = useState({
     page: 1,
-    limit: 20,
+    limit: 10,
     total: 0,
     totalPages: 1,
   });
@@ -90,6 +94,7 @@ export default function OrganizationsPage() {
     industry: "",
     subscriptionTier: "Gold" as SubscriptionTier,
   });
+  const [onboardLogoFile, setOnboardLogoFile] = useState<File | null>(null);
 
   const { user: currentUser, isSuperAdmin, isAdmin } = useAuth();
 
@@ -98,6 +103,8 @@ export default function OrganizationsPage() {
 
   // Selected Company for Interactive Side Drawer (Matching Screen 4)
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
+
+  const [metricModal, setMetricModal] = useState<"all" | "active" | "verified" | "gold" | null>(null);
 
   // Debounce Search
   useEffect(() => {
@@ -329,7 +336,7 @@ export default function OrganizationsPage() {
       // CreateCompanySchema accepts name, domain, registrationNumber, country, industry, user.
       // activePlan is NOT accepted by the registered schema and is ignored by createCompany —
       // new orgs default to Bronze on the backend until a plan API exists.
-      await companyService.createCompany({
+      const created = await companyService.createCompany({
         name: onboardForm.name.trim(),
         domain: cleanDomain,
         registrationNumber: onboardForm.registrationNumber.trim() || undefined,
@@ -337,9 +344,20 @@ export default function OrganizationsPage() {
         industry: onboardForm.industry.trim() || undefined,
       });
 
+      const companyId = created?.data?.company?._id;
+      let logoNote = "";
+      if (companyId && onboardLogoFile) {
+        try {
+          await companyService.uploadLogo(companyId, onboardLogoFile);
+        } catch (logoErr: any) {
+          logoNote = ` Logo upload failed: ${logoErr?.message || "unknown error"}. You can retry from the organization profile.`;
+        }
+      }
+
       setOnboardModalOpen(false);
+      setOnboardLogoFile(null);
       setActionSuccess(
-        `Organization ${onboardForm.name} onboarded successfully. Subscription defaults to Bronze until a plan is assigned.`
+        `Organization ${onboardForm.name} onboarded successfully. Subscription defaults to Bronze until a plan is assigned.${logoNote}`
       );
       setTimeout(() => setActionSuccess(null), 5000);
       fetchCompanies();
@@ -439,6 +457,51 @@ export default function OrganizationsPage() {
   const verifiedCount = companies.filter((c) => c.verificationStatus === "Verified").length;
   const goldCount = companies.filter((c) => c.activePlan === "Gold").length;
 
+  const metricModalRows = (() => {
+    const source =
+      metricModal === "active"
+        ? companies.filter((c) => c.status === "Active")
+        : metricModal === "verified"
+          ? companies.filter((c) => c.verificationStatus === "Verified")
+          : metricModal === "gold"
+            ? companies.filter((c) => c.activePlan === "Gold")
+            : companies;
+
+    return source.map(
+      (c): MetricListRow => ({
+        id: c._id,
+        title: c.name,
+        subtitle: c.domain,
+        meta: `${c.industry || "General"} · ${c.country || "Global"}`,
+        badge:
+          metricModal === "verified"
+            ? c.verificationStatus
+            : metricModal === "gold"
+              ? c.activePlan
+              : c.status,
+        badgeTone:
+          c.status === "Active" || c.verificationStatus === "Verified"
+            ? "success"
+            : c.status === "Suspended"
+              ? "warning"
+              : "neutral",
+        imageUrl: c.logo?.url,
+        imageName: c.name,
+        imageVariant: "logo",
+        onClick: () => setSelectedCompany(c),
+      })
+    );
+  })();
+
+  const metricModalTitle =
+    metricModal === "active"
+      ? "Active Clients"
+      : metricModal === "verified"
+        ? "DNS Verified Organizations"
+        : metricModal === "gold"
+          ? "Gold Subscriptions"
+          : "All Organizations";
+
   return (
     <div className="flex-1 flex flex-col h-full min-h-0 space-y-3 overflow-hidden">
       {/* Global Alerts */}
@@ -464,68 +527,50 @@ export default function OrganizationsPage() {
         </div>
       )}
 
-      {/* Compact 4-Card Metric Grid (Fixed Top - Logo Inspired Colors) */}
+      {/* Compact 4-Card Metric Grid (click → list popup) */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 shrink-0">
-        {/* Card 1: Total Organizations - Ocean Blue */}
-        <div className="group relative overflow-hidden bg-white rounded-xl border border-slate-200/90 p-3.5 shadow-xs transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-[0_12px_24px_-6px_rgba(15,23,42,0.08),0_4px_8px_-2px_rgba(15,23,42,0.03)] hover:border-cyan-300/80 flex items-center gap-3">
-          <div className="absolute top-0 inset-x-0 h-0.75 bg-gradient-to-r from-transparent via-cyan-500/70 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
-          <div className="h-10 w-10 rounded-2xl bg-cyan-50 text-cyan-700 flex items-center justify-center shrink-0 border border-cyan-100 shadow-2xs transition-all duration-300 ease-out group-hover:scale-105 group-hover:ring-4 group-hover:ring-cyan-100/70">
-            <Building2 className="h-5 w-5" strokeWidth={1.85} />
-          </div>
-          <div className="min-w-0">
-            <div className="text-xl font-extrabold text-slate-900 leading-tight tracking-tight group-hover:text-slate-950 transition-colors">
-              <AnimatedNumber value={totalCount} delay={0} />
-            </div>
-            <div className="text-[11px] font-medium text-slate-500 truncate mt-0.5 group-hover:text-slate-600 transition-colors">Total Organizations</div>
-            <div className="text-[10px] font-semibold text-teal-600 mt-0.5">▲ Live in DB</div>
-          </div>
-        </div>
-
-        {/* Card 2: Active Clients - Emerald/Teal */}
-        <div className="group relative overflow-hidden bg-white rounded-xl border border-slate-200/90 p-3.5 shadow-xs transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-[0_12px_24px_-6px_rgba(15,23,42,0.08),0_4px_8px_-2px_rgba(15,23,42,0.03)] hover:border-emerald-300/80 flex items-center gap-3">
-          <div className="absolute top-0 inset-x-0 h-0.75 bg-gradient-to-r from-transparent via-emerald-500/70 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
-          <div className="h-10 w-10 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 border border-emerald-100 shadow-2xs transition-all duration-300 ease-out group-hover:scale-105 group-hover:ring-4 group-hover:ring-emerald-100/70">
-            <CheckCircle2 className="h-5 w-5" strokeWidth={1.85} />
-          </div>
-          <div className="min-w-0">
-            <div className="text-xl font-extrabold text-slate-900 leading-tight tracking-tight group-hover:text-slate-950 transition-colors">
-              <AnimatedNumber value={activeCount} delay={70} />
-            </div>
-            <div className="text-[11px] font-medium text-slate-500 truncate mt-0.5 group-hover:text-slate-600 transition-colors">Active Clients</div>
-            <div className="text-[10px] font-semibold text-emerald-600 mt-0.5">● On this page</div>
-          </div>
-        </div>
-
-        {/* Card 3: DNS Verified - Teal */}
-        <div className="group relative overflow-hidden bg-white rounded-xl border border-slate-200/90 p-3.5 shadow-xs transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-[0_12px_24px_-6px_rgba(15,23,42,0.08),0_4px_8px_-2px_rgba(15,23,42,0.03)] hover:border-teal-300/80 flex items-center gap-3">
-          <div className="absolute top-0 inset-x-0 h-0.75 bg-gradient-to-r from-transparent via-teal-500/70 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
-          <div className="h-10 w-10 rounded-2xl bg-teal-50 text-teal-700 flex items-center justify-center shrink-0 border border-teal-100 shadow-2xs transition-all duration-300 ease-out group-hover:scale-105 group-hover:ring-4 group-hover:ring-teal-100/70">
-            <ShieldCheck className="h-5 w-5" strokeWidth={1.85} />
-          </div>
-          <div className="min-w-0">
-            <div className="text-xl font-extrabold text-slate-900 leading-tight tracking-tight group-hover:text-slate-950 transition-colors">
-              <AnimatedNumber value={verifiedCount} delay={140} />
-            </div>
-            <div className="text-[11px] font-medium text-slate-500 truncate mt-0.5 group-hover:text-slate-600 transition-colors">DNS Verified</div>
-            <div className="text-[10px] font-semibold text-teal-600 mt-0.5">Cryptographic Check</div>
-          </div>
-        </div>
-
-        {/* Card 4: Gold Tier Subscribers - Amber/Royal */}
-        <div className="group relative overflow-hidden bg-white rounded-xl border border-slate-200/90 p-3.5 shadow-xs transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-[0_12px_24px_-6px_rgba(15,23,42,0.08),0_4px_8px_-2px_rgba(15,23,42,0.03)] hover:border-amber-300/80 flex items-center gap-3">
-          <div className="absolute top-0 inset-x-0 h-0.75 bg-gradient-to-r from-transparent via-amber-500/70 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
-          <div className="h-10 w-10 rounded-2xl bg-amber-50 text-amber-700 flex items-center justify-center shrink-0 border border-amber-100 shadow-2xs transition-all duration-300 ease-out group-hover:scale-105 group-hover:ring-4 group-hover:ring-amber-100/70">
-            <Crown className="h-5 w-5" strokeWidth={1.85} />
-          </div>
-          <div className="min-w-0">
-            <div className="text-xl font-extrabold text-slate-900 leading-tight tracking-tight group-hover:text-slate-950 transition-colors">
-              <AnimatedNumber value={goldCount} delay={210} />
-            </div>
-            <div className="text-[11px] font-medium text-slate-500 truncate mt-0.5 group-hover:text-slate-600 transition-colors">Gold Subscriptions</div>
-            <div className="text-[10px] font-semibold text-amber-600 mt-0.5">Enterprise Tier</div>
-          </div>
-        </div>
+        <SummaryMetricTile
+          tone="cyan"
+          icon={Building2}
+          value={<AnimatedNumber value={totalCount} delay={0} />}
+          label="Total Organizations"
+          subtext="▲ Live in DB · Click to list"
+          onClick={() => setMetricModal("all")}
+        />
+        <SummaryMetricTile
+          tone="emerald"
+          icon={CheckCircle2}
+          value={<AnimatedNumber value={activeCount} delay={70} />}
+          label="Active Clients"
+          subtext="● On this page · Click to list"
+          onClick={() => setMetricModal("active")}
+        />
+        <SummaryMetricTile
+          tone="teal"
+          icon={ShieldCheck}
+          value={<AnimatedNumber value={verifiedCount} delay={140} />}
+          label="DNS Verified"
+          subtext="Cryptographic Check · Click to list"
+          onClick={() => setMetricModal("verified")}
+        />
+        <SummaryMetricTile
+          tone="amber"
+          icon={Crown}
+          value={<AnimatedNumber value={goldCount} delay={210} />}
+          label="Gold Subscriptions"
+          subtext="Enterprise Tier · Click to list"
+          onClick={() => setMetricModal("gold")}
+        />
       </div>
+
+      <MetricListModal
+        open={metricModal !== null}
+        onClose={() => setMetricModal(null)}
+        title={metricModalTitle}
+        description="Organizations matching this metric on the current list"
+        emptyMessage="No organizations match this metric."
+        rows={metricModalRows}
+      />
 
       {/* Filter & Action Toolbar (Fixed) */}
       <div className="bg-white rounded-xl border border-slate-200/90 p-2.5 shadow-xs flex flex-col md:flex-row md:items-center md:justify-between gap-2.5 shrink-0">
@@ -638,6 +683,7 @@ export default function OrganizationsPage() {
                   industry: "",
                   subscriptionTier: "Bronze",
                 });
+                setOnboardLogoFile(null);
                 setOnboardError(null);
                 setOnboardModalOpen(true);
               }}
@@ -727,9 +773,14 @@ export default function OrganizationsPage() {
                       {/* Organization Column */}
                       <td className="py-2.5 px-3.5">
                         <div className="flex items-center gap-2.5">
-                          <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-teal-500 via-cyan-600 to-blue-600 text-white font-bold text-[11px] flex items-center justify-center shrink-0 shadow-2xs">
-                            {c.name.slice(0, 2).toUpperCase()}
-                          </div>
+                          <EntityImage
+                            src={c.logo?.url}
+                            name={c.name}
+                            variant="logo"
+                            size="md"
+                            cacheKey={c.updatedAt || c.logo?.publicId}
+                            className="h-8 w-8 rounded-lg"
+                          />
                           <div>
                             <button
                               type="button"
@@ -893,6 +944,7 @@ export default function OrganizationsPage() {
                 }}
                 className="py-0.5 px-2 text-xs font-semibold bg-white border border-slate-300 rounded-md text-slate-700 hover:border-slate-400 focus:outline-none focus:ring-1 focus:ring-teal-500 cursor-pointer"
               >
+                <option value={10}>10</option>
                 <option value={20}>20</option>
                 <option value={50}>50</option>
                 <option value={100}>100</option>
@@ -986,6 +1038,17 @@ export default function OrganizationsPage() {
                   className="w-full text-xs py-2 px-3 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 transition"
                 />
               </div>
+
+              <ImageUploader
+                variant="logo"
+                label="Organization logo (optional)"
+                name={onboardForm.name || "Organization"}
+                stagedOnly
+                autoUpload={false}
+                onUpload={async () => undefined}
+                onStageChange={(file) => setOnboardLogoFile(file)}
+                hint="Selected after create · JPEG, PNG, or WebP · max 5 MB"
+              />
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">

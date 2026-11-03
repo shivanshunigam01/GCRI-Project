@@ -4,6 +4,11 @@ export type CompanyStatus = "Active" | "Suspended";
 export type VerificationStatus = "Verified" | "Pending" | "Rejected";
 export type SubscriptionTier = "Bronze" | "Silver" | "Gold";
 
+export interface ICompanyImageAsset {
+  url: string;
+  publicId: string;
+}
+
 export interface ICompany extends Document {
   name: string;
   domain: string;
@@ -14,6 +19,8 @@ export interface ICompany extends Document {
   activePlan?: SubscriptionTier;
   verificationStatus: VerificationStatus;
   status: CompanyStatus;
+  /** Optional organization logo stored on Cloudinary */
+  logo?: ICompanyImageAsset;
   verificationAuditTrail?: {
     verifiedAt?: Date;
     verifiedBy?: string;
@@ -49,6 +56,11 @@ const CompanySchema = new Schema<ICompany>(
       enum: ["Active", "Suspended"],
       default: "Active",
       index: true,
+    },
+    logo: {
+      _id: false,
+      url: { type: String, trim: true },
+      publicId: { type: String, trim: true },
     },
     verificationAuditTrail: {
       verifiedAt: { type: Date },

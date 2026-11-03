@@ -18,6 +18,8 @@ import {
 } from "lucide-react";
 
 import { ProfileSettingsSkeleton } from "@/components/shared/PageSkeletons";
+import { ImageUploader } from "@/components/shared/ImageUploader";
+import { EntityImage } from "@/components/shared/EntityImage";
 
 export default function ProfileSettingsPage() {
   const { user, loading: authLoading, refreshUser } = useAuth();
@@ -108,9 +110,14 @@ export default function ProfileSettingsPage() {
       <div className="surface-panel shadow-xs overflow-hidden">
         {/* User Identity Header */}
         <div className="p-6 bg-slate-50/70 border-b border-slate-100 flex items-center gap-4">
-          <div className="h-16 w-16 rounded-2xl bg-gradient-to-tr from-slate-800 to-slate-950 text-white font-bold flex items-center justify-center text-xl shadow-xs border border-slate-700/20">
-            {user?.name ? user.name.slice(0, 2).toUpperCase() : "U"}
-          </div>
+          <EntityImage
+            src={user?.avatar?.url}
+            name={user?.name}
+            variant="avatar"
+            size="xl"
+            cacheKey={user?.updatedAt || user?.avatar?.publicId}
+            className="rounded-2xl border border-slate-700/20"
+          />
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-lg font-bold text-slate-900">{user?.name || "User Profile"}</h2>
@@ -124,6 +131,26 @@ export default function ProfileSettingsPage() {
 
         {/* Edit Form */}
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
+          <ImageUploader
+            variant="avatar"
+            label="Profile photo"
+            name={user?.name}
+            currentUrl={user?.avatar?.url}
+            cacheKey={user?.updatedAt || user?.avatar?.publicId}
+            onUpload={async (file) => {
+              await userService.uploadMyAvatar(file);
+              await refreshUser();
+              setSuccessMessage("Profile photo updated.");
+              setTimeout(() => setSuccessMessage(null), 4000);
+            }}
+            onRemove={async () => {
+              await userService.deleteMyAvatar();
+              await refreshUser();
+              setSuccessMessage("Profile photo removed.");
+              setTimeout(() => setSuccessMessage(null), 4000);
+            }}
+          />
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
             {/* Full Name */}
             <div>

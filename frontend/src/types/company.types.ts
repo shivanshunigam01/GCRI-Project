@@ -18,6 +18,11 @@ export interface VerificationAuditTrail {
   dnsCheckResult?: boolean;
 }
 
+export interface CompanyImageAsset {
+  url: string;
+  publicId?: string;
+}
+
 export interface Company {
   _id: string;
   name: string;
@@ -29,6 +34,7 @@ export interface Company {
   status: CompanyStatus;
   verificationStatus: VerificationStatus;
   activePlan: SubscriptionTier;
+  logo?: CompanyImageAsset | null;
   clientUser?: ClientUserSummary | null;
   verificationAuditTrail?: VerificationAuditTrail;
   createdAt?: string;
