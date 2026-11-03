@@ -4,6 +4,7 @@ import React, { createContext, useContext, useEffect, useState, useCallback } fr
 import { User } from "@/types/auth.types";
 import { storage } from "@/lib/storage";
 import { userService } from "@/services/user.service";
+import { normalizeLoginUser } from "@/lib/authUser";
 
 interface AuthContextType {
   user: User | null;
@@ -34,9 +35,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     try {
       const res = await userService.getCurrentUser();
-      if (res && res.data) {
-        setUser(res.data);
-        storage.setUser(res.data);
+      const normalized = normalizeLoginUser(
+        res?.data as unknown as Record<string, unknown>
+      );
+      if (normalized) {
+        // Preserve richer MFA flags from /users/me beyond login shape
+        const mfaRaw = (res.data as User)?.mfa;
+        const enriched: User = {
+          ...normalized,
+          mfa: {
+            enabled: Boolean(mfaRaw?.enabled ?? normalized.mfa.enabled),
+            authenticatorConfigured: Boolean(mfaRaw?.authenticatorConfigured),
+            recoveryCodesRemaining: mfaRaw?.recoveryCodesRemaining,
+          },
+          mfaEnabled: Boolean(mfaRaw?.enabled ?? normalized.mfaEnabled),
+          avatar: (res.data as User)?.avatar ?? normalized.avatar,
+          phone: (res.data as User)?.phone ?? normalized.phone,
+          companyId: (res.data as User)?.companyId ?? normalized.companyId,
+        };
+        setUser(enriched);
+        storage.setUser(enriched);
       } else {
         storage.clear();
         setUser(null);
