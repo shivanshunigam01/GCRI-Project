@@ -214,18 +214,71 @@ export interface AssessmentPillarsResponse {
 
 export interface AssessmentProgressResponse {
   assessmentId: string;
-  overallPercentage: number;
-  answeredCount: number;
-  totalCount: number;
-  pillarProgress: {
-    pillarId: string;
-    pillarNumber?: number;
-    pillarName: string;
-    totalQuestions: number;
-    completedQuestions: number;
-    inProgressQuestions: number;
-    notStartedQuestions: number;
-    exceptionsNoted: number;
-    completionPercentage: number;
-  }[];
+  assessmentType?: AssessmentType;
+  status?: AssessmentStatus;
+  totalQuestions: number;
+  completedQuestions: number;
+  overallCompletionPercentage: number;
+  pillarBreakdown: AssessmentPillarProgressItem[];
+  /** @deprecated legacy shape — use fields above */
+  overallPercentage?: number;
+  answeredCount?: number;
+  totalCount?: number;
+  pillarProgress?: AssessmentPillarProgressItem[];
+}
+
+export interface AssessmentPillarProgressItem {
+  pillarId: string;
+  pillarNumber?: number;
+  pillarName: string;
+  total: number;
+  complete: number;
+  inProgress: number;
+  notStarted: number;
+  exceptionsNoted: number;
+  noExceptions?: number;
+  completionPercentage: number;
+}
+
+export interface GovernanceGapItem {
+  questionId: string;
+  pillarId: string;
+  pillarName: string;
+  questionText: string;
+  controlDescription?: string;
+  exceptionStatus?: string;
+  scoreValue?: number;
+  evidenceNotes?: string;
+  regulatoryAlignments?: Finding["regulatoryAlignments"];
+}
+
+export interface AssessmentGapsResponse {
+  assessmentId: string;
+  assessmentType: AssessmentType;
+  totalGapsIdentified: number;
+  gaps: GovernanceGapItem[];
+}
+
+export interface SubmitAssessmentResponse {
+  message: string;
+  session: AssessmentSession;
+  scoreSnapshot: ScoreSnapshot;
+}
+
+export interface GenerateReportResponse {
+  message: string;
+  report: ReportMetadata;
+}
+
+export interface AssessmentFrameworkSnapshot {
+  title?: string;
+  version: string;
+  pillars: import("./framework.types").FrameworkPillar[];
+  questions: import("./framework.types").FrameworkQuestion[];
+  maturityThresholds?: import("./framework.types").MaturityThresholds;
+}
+
+export interface AssessmentDetailResponse {
+  session: AssessmentSession;
+  framework: AssessmentFrameworkSnapshot | null;
 }

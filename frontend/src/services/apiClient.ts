@@ -62,7 +62,13 @@ export async function apiRequest<T = any>(
 
     if (response.status === 401 && typeof window !== "undefined") {
       const currentPath = window.location.pathname;
-      if (!currentPath.startsWith("/login") && !currentPath.startsWith("/accept-invite")) {
+      if (
+        !currentPath.startsWith("/login") &&
+        !currentPath.startsWith("/accept-invite") &&
+        !currentPath.startsWith("/mfa-enroll") &&
+        !currentPath.startsWith("/forgot-password") &&
+        !currentPath.startsWith("/reset-password")
+      ) {
         storage.clear();
       }
     }

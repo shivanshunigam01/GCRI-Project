@@ -29,7 +29,7 @@ export default function AuthLayout({
         <div className="flex justify-center bg-transparent py-1">
           <BrandLogo variant="auth" />
         </div>
-        <h2 className="font-editorial mt-5 text-center text-2xl sm:text-[1.75rem] font-normal tracking-tight text-white drop-shadow-sm">
+        <h2 className="font-editorial auth-display-title mt-5 text-center text-2xl sm:text-[1.75rem] text-white">
           GCRAI Assessment Platform
         </h2>
         <p className="mt-2 text-center text-sm font-medium leading-relaxed text-slate-200/95 max-w-sm mx-auto">
@@ -38,7 +38,7 @@ export default function AuthLayout({
       </div>
 
       <div className="relative z-10 mt-8 sm:mx-auto sm:w-full sm:max-w-md px-4">
-        <div className="bg-white/95 backdrop-blur-md py-8 px-5 shadow-2xl border border-white/40 sm:rounded-2xl sm:px-10 ring-1 ring-slate-900/5">
+        <div className="surface-panel sm:rounded-2xl py-8 px-5 shadow-2xl sm:px-10 ring-1 ring-white/50 backdrop-blur-md">
           {children}
         </div>
       </div>

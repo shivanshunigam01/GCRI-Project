@@ -94,7 +94,7 @@ export default function AssessmentsPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-200 pb-5">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900 font-editorial">
+            <h1 className="page-title font-editorial">
               Assessments Workspace
             </h1>
             <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
@@ -352,12 +352,20 @@ export default function AssessmentsPage() {
                           </Link>
                         </>
                       ) : (
-                        <Link
-                          href={`/assessments/${item._id}`}
-                          className="w-full inline-flex items-center justify-center gap-1.5 py-2 px-3 bg-[#0c162c] hover:bg-slate-800 text-white text-xs font-semibold rounded-lg shadow-2xs transition"
-                        >
-                          Resume Evaluation <ArrowRight className="h-3.5 w-3.5" />
-                        </Link>
+                        <div className="flex flex-col sm:flex-row gap-2 w-full">
+                          <Link
+                            href={`/assessments/${item._id}`}
+                            className="flex-1 inline-flex items-center justify-center gap-1.5 py-2 px-3 bg-[#0c162c] hover:bg-slate-800 text-white text-xs font-semibold rounded-lg shadow-2xs transition"
+                          >
+                            Resume <ArrowRight className="h-3.5 w-3.5" />
+                          </Link>
+                          <Link
+                            href={`/assessments/${item._id}/review`}
+                            className="flex-1 inline-flex items-center justify-center gap-1.5 py-2 px-3 border border-slate-200 bg-white hover:bg-slate-50 text-slate-800 text-xs font-semibold rounded-lg transition"
+                          >
+                            Review &amp; submit
+                          </Link>
+                        </div>
                       )}
                     </div>
                   </div>

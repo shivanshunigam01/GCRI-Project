@@ -210,6 +210,8 @@ export default function OrganizationDetailDrawer({
     setEditError(null);
 
     try {
+      // UpdateCompanySchema: name, registrationNumber, country, industry only.
+      // Domain, size, and activePlan are not mutable via this endpoint.
       const updatedRes = await companyService.updateCompany(company._id, {
         name: editForm.name.trim(),
         industry: editForm.industry.trim() || undefined,
@@ -221,7 +223,6 @@ export default function OrganizationDetailDrawer({
         setCompany((prev) => ({
           ...updatedRes.data,
           clientUser: prev?.clientUser || updatedRes.data.clientUser,
-          size: editForm.size.trim() || updatedRes.data.size,
         }));
       } else {
         setCompany((prev) =>
@@ -229,12 +230,9 @@ export default function OrganizationDetailDrawer({
             ? {
                 ...prev,
                 name: editForm.name.trim(),
-                domain: editForm.domain.trim().toLowerCase(),
                 industry: editForm.industry.trim() || undefined,
                 country: editForm.country.trim() || undefined,
-                size: editForm.size.trim() || undefined,
                 registrationNumber: editForm.registrationNumber.trim() || undefined,
-                activePlan: editForm.subscriptionTier as any,
               }
             : null
         );
@@ -508,53 +506,35 @@ export default function OrganizationDetailDrawer({
 
                   <div>
                     <label className="block text-[11px] font-semibold text-slate-700 mb-0.5">
-                      Primary Domain *
+                      Primary Domain (read-only)
                     </label>
-                    <input
-                      type="text"
-                      required
-                      value={editForm.domain}
-                      onChange={(e) => setEditForm({ ...editForm, domain: e.target.value })}
-                      className="w-full text-xs px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg font-mono focus:outline-none focus:ring-1 focus:ring-teal-500 focus:border-teal-500"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-700 mb-0.5">
-                        Industry
-                      </label>
-                      <input
-                        type="text"
-                        value={editForm.industry}
-                        onChange={(e) => setEditForm({ ...editForm, industry: e.target.value })}
-                        placeholder="e.g. Technology"
-                        className="w-full text-xs px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-teal-500 focus:border-teal-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-700 mb-0.5">
-                        Company Size
-                      </label>
-                      <input
-                        type="text"
-                        value={editForm.size}
-                        onChange={(e) => setEditForm({ ...editForm, size: e.target.value })}
-                        placeholder="e.g. 500 - 1,000 employees"
-                        className="w-full text-xs px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-teal-500 focus:border-teal-500"
-                      />
+                    <div className="w-full text-xs px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg font-mono text-slate-600">
+                      {company.domain}
                     </div>
                   </div>
 
                   <div>
                     <label className="block text-[11px] font-semibold text-slate-700 mb-0.5">
-                      Country / Address
+                      Industry
+                    </label>
+                    <input
+                      type="text"
+                      value={editForm.industry}
+                      onChange={(e) => setEditForm({ ...editForm, industry: e.target.value })}
+                      placeholder="e.g. Technology"
+                      className="w-full text-xs px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-teal-500 focus:border-teal-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-700 mb-0.5">
+                      Country
                     </label>
                     <input
                       type="text"
                       value={editForm.country}
                       onChange={(e) => setEditForm({ ...editForm, country: e.target.value })}
-                      placeholder="e.g. 123 Business Ave, New York, USA"
+                      placeholder="e.g. United States"
                       className="w-full text-xs px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-teal-500 focus:border-teal-500"
                     />
                   </div>
@@ -574,19 +554,11 @@ export default function OrganizationDetailDrawer({
                     </div>
                     <div>
                       <label className="block text-[11px] font-semibold text-slate-700 mb-0.5">
-                        Tier
+                        Tier (read-only)
                       </label>
-                      <select
-                        value={editForm.subscriptionTier}
-                        onChange={(e) =>
-                          setEditForm({ ...editForm, subscriptionTier: e.target.value as SubscriptionTier })
-                        }
-                        className="w-full text-xs px-2 py-1.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-teal-500 focus:border-teal-500 cursor-pointer"
-                      >
-                        <option value="Gold">Gold</option>
-                        <option value="Silver">Silver</option>
-                        <option value="Bronze">Bronze</option>
-                      </select>
+                      <div className="w-full text-xs px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-600">
+                        {company.activePlan || "Bronze"}
+                      </div>
                     </div>
                   </div>
 

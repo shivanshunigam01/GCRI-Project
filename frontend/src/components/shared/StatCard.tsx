@@ -136,16 +136,16 @@ export function StatCard({
   return (
     <div
       onClick={onClick}
-      className={`group relative overflow-hidden bg-white rounded-xl border border-slate-200/90 p-4 sm:p-5 shadow-xs transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-[0_12px_24px_-6px_rgba(15,23,42,0.08),0_4px_8px_-2px_rgba(15,23,42,0.03)] ${
+      className={`group surface-card rounded-xl p-4 sm:p-5 transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-[0_16px_32px_-8px_rgba(15,23,42,0.12),0_4px_10px_-2px_rgba(15,23,42,0.04)] ${
         styles.borderHover
       } ${onClick ? "cursor-pointer" : "cursor-default"} select-none ${className}`}
     >
-      {/* Ambient Top Glow Sheen */}
+      {/* Theme accent sheen */}
       <div
-        className={`absolute top-0 inset-x-0 h-0.75 bg-gradient-to-r from-transparent ${styles.topSheen} to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none`}
+        className={`absolute top-0 inset-x-0 z-[1] h-0.75 bg-gradient-to-r from-transparent ${styles.topSheen} to-transparent opacity-40 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none`}
       />
 
-      <div className="flex items-center gap-3.5">
+      <div className="relative z-[2] flex items-center gap-3.5">
         {/* Icon with refined hover micro-interaction */}
         {Icon && (
           <div
@@ -157,7 +157,7 @@ export function StatCard({
 
         <div className="min-w-0 flex-1">
           {/* Animated Value */}
-          <div className="text-2xl font-extrabold text-slate-900 leading-tight tracking-tight group-hover:text-slate-950 transition-colors">
+          <div className="text-2xl font-black text-slate-900 leading-tight tracking-tight drop-shadow-[0_1px_0_rgba(255,255,255,0.9)] group-hover:text-slate-950 transition-colors">
             {animate ? (
               <AnimatedNumber
                 value={value}

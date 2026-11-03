@@ -41,7 +41,9 @@ export interface CreateCompanyPayload {
   registrationNumber?: string;
   country?: string;
   industry?: string;
+  /** Not accepted by CreateCompanySchema — kept optional for typing only; do not send. */
   size?: string;
+  /** Not accepted by CreateCompanySchema / createCompany controller — do not send. */
   activePlan?: SubscriptionTier;
   user?: {
     name?: string;

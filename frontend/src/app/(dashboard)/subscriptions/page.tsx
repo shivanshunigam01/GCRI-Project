@@ -162,7 +162,7 @@ export default function SubscriptionsPage() {
             <CreditCard className="h-4 w-4" />
             <span>Platform Assurance Capacity &amp; Tiers</span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">
+          <h1 className="page-title page-title-lg">
             Subscription Tiers &amp; Assurance Limits
           </h1>
           <p className="text-sm text-slate-500 mt-1">
@@ -284,7 +284,7 @@ export default function SubscriptionsPage() {
       </div>
 
       {/* Feature Comparison Matrix */}
-      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
+      <div className="surface-panel overflow-hidden shadow-xs">
         <div className="px-6 py-4 border-b border-slate-200 bg-slate-50/70 flex items-center justify-between">
           <div>
             <h2 className="text-base font-bold text-slate-900">Assurance Capabilities Comparison Matrix</h2>
@@ -414,7 +414,7 @@ export default function SubscriptionsPage() {
       </div>
 
       {/* Active Client Organizations by Assurance Tier */}
-      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
+      <div className="surface-panel overflow-hidden shadow-xs">
         <div className="p-6 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h2 className="text-base font-bold text-slate-900">Client Organization Assurance Coverage</h2>

@@ -64,7 +64,7 @@ export default function AdminAuditLogsPage() {
 
   if (!isAdmin) {
     return (
-      <div className="max-w-md mx-auto my-12 p-8 bg-white rounded-2xl border border-slate-200 text-center space-y-3">
+      <div className="max-w-md mx-auto my-12 p-8 surface-panel text-center space-y-3">
         <Shield className="h-8 w-8 text-rose-500 mx-auto" />
         <h2 className="text-base font-bold text-slate-900">Access Restricted</h2>
         <p className="text-xs text-slate-500">Only Platform Administrators have access to the immutable security audit trail.</p>
@@ -78,7 +78,7 @@ export default function AdminAuditLogsPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-200 pb-4">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900 font-editorial">
+            <h1 className="page-title font-editorial">
               Security Audit Trail Explorer
             </h1>
             <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">

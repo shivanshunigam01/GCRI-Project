@@ -82,7 +82,7 @@ export default function ProfileSettingsPage() {
           <UserIcon className="h-4 w-4" />
           <span>Account Settings</span>
         </div>
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900">Personal Profile</h1>
+        <h1 className="page-title">Personal Profile</h1>
         <p className="text-sm text-slate-500 mt-1">
           Manage your personal identity, contact numbers, and view platform authorization details.
         </p>
@@ -105,7 +105,7 @@ export default function ProfileSettingsPage() {
       )}
 
       {/* Profile Form Card */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+      <div className="surface-panel shadow-xs overflow-hidden">
         {/* User Identity Header */}
         <div className="p-6 bg-slate-50/70 border-b border-slate-100 flex items-center gap-4">
           <div className="h-16 w-16 rounded-2xl bg-gradient-to-tr from-slate-800 to-slate-950 text-white font-bold flex items-center justify-center text-xl shadow-xs border border-slate-700/20">

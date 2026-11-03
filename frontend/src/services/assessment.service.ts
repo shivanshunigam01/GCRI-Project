@@ -9,7 +9,13 @@ import {
   AssessmentRecommendationsResponse,
   AssessmentProgressResponse,
   AssessmentFindingsResponse,
+  AssessmentDetailResponse,
+  AssessmentGapsResponse,
+  SubmitAssessmentResponse,
+  GenerateReportResponse,
 } from "@/types/assessment.types";
+import { downloadAssessmentExcel } from "@/lib/assessmentDownloads";
+import { downloadGraiceBrandedAssessmentPdf } from "@/lib/graiceAssessmentReportPdf";
 
 export const assessmentService = {
   createAssessment: (payload: CreateAssessmentPayload) =>
@@ -28,7 +34,7 @@ export const assessmentService = {
     apiClient.get<AssessmentSession[]>(`/assessments/company/${companyId}`),
 
   getAssessmentById: (id: string) =>
-    apiClient.get<{ session: AssessmentSession; framework?: any }>(`/assessments/${id}`),
+    apiClient.get<AssessmentDetailResponse>(`/assessments/${id}`),
 
   saveAnswers: (id: string, answers: SaveAnswerItemInput[]) =>
     apiClient.put<{ message: string; savedCount: number; totalAnswered: number }>(
@@ -40,12 +46,10 @@ export const assessmentService = {
     apiClient.get<AssessmentProgressResponse>(`/assessments/${id}/progress`),
 
   getGaps: (id: string) =>
-    apiClient.get<any[]>(`/assessments/${id}/gaps`),
+    apiClient.get<AssessmentGapsResponse>(`/assessments/${id}/gaps`),
 
   submitAssessment: (id: string) =>
-    apiClient.post<{ message: string; session: AssessmentSession; scoreSnapshot: any }>(
-      `/assessments/${id}/submit`
-    ),
+    apiClient.post<SubmitAssessmentResponse>(`/assessments/${id}/submit`),
 
   getPresignedUrl: (
     id: string,
@@ -79,9 +83,12 @@ export const assessmentService = {
     apiClient.get<AssessmentPillarsResponse>(`/assessments/${id}/pillars`),
 
   generateReport: (id: string) =>
-    apiClient.post<{ message: string; reportUrl: string; fileName: string }>(
-      `/assessments/${id}/report`
-    ),
+    apiClient.post<GenerateReportResponse>(`/assessments/${id}/report`),
+
+  /** Branded GRAICE PDF (all pillars + control detail) — used by Generate/Download flows */
+  downloadReportPdf: (id: string) => downloadGraiceBrandedAssessmentPdf(id),
+
+  downloadExportExcel: (id: string) => downloadAssessmentExcel(id),
 
   sendReminder: (id: string) =>
     apiClient.post<{ message: string }>(`/assessments/${id}/remind`),

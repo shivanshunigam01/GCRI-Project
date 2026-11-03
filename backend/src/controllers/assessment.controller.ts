@@ -904,6 +904,20 @@ export async function getAssessmentSummary(req: Request, res: Response, next: Ne
     }
 
     const snapshot = session.scoreSnapshot || ScoringService.calculateScores(session, framework);
+    const gaps = ScoringService.extractGaps(session, framework);
+
+    // Light snapshots omit exception/control-assessed totals; never fall back to overallScore
+    // (0–120 points) as a control count — that produced "61 controls assessed" vs 26 in pillars.
+    const totalExceptionsNoted =
+      typeof snapshot.totalExceptionsNoted === "number"
+        ? snapshot.totalExceptionsNoted
+        : gaps.length;
+    const totalControlsAssessed =
+      typeof snapshot.totalControlsAssessed === "number"
+        ? snapshot.totalControlsAssessed
+        : session.answers.filter(
+            (a) => a.testStatus === "Complete" || !!a.selectedOptionCode
+          ).length;
 
     return sendSuccess(res, {
       assessmentId: session._id,
@@ -917,10 +931,10 @@ export async function getAssessmentSummary(req: Request, res: Response, next: Ne
       overallPercentage: snapshot.overallPercentage,
       compliancePercentage: snapshot.compliancePercentage,
       maturityLevel: snapshot.maturityLevel,
-      totalExceptionsNoted: snapshot.totalExceptionsNoted || 0,
+      totalExceptionsNoted,
       totalNoExceptionsNoted: snapshot.totalNoExceptionsNoted || 0,
       totalNotAssessed: snapshot.totalNotAssessed || 0,
-      totalControlsAssessed: snapshot.totalControlsAssessed || snapshot.overallScore,
+      totalControlsAssessed,
       submittedAt: session.submittedAt,
       calculatedAt: snapshot.calculatedAt,
     });
@@ -1169,20 +1183,27 @@ export async function generateAssessmentReport(req: Request, res: Response, next
       return sendError(res, "Access denied. You are not assigned to this organization.", 403, "CROSS_COMPANY_ACCESS_DENIED");
     }
 
-    const [company, framework, auditor] = await Promise.all([
+    const [company, framework, auditor, conductedBy] = await Promise.all([
       Company.findById(session.companyId),
       AssessmentFramework.findOne({
         version: session.frameworkVersion,
         assessmentType: session.assessmentType,
       }),
       User.findById(req.user.userId),
+      User.findById(session.conductedByUserId),
     ]);
 
     if (!company || !framework || !auditor) {
       return sendError(res, "Required assessment context not found", 404, "CONTEXT_NOT_FOUND");
     }
 
-    const reportResult = await ReportService.generateAssessmentReport(session, company, framework, auditor);
+    const reportResult = await ReportService.generateAssessmentReport(
+      session,
+      company,
+      framework,
+      auditor,
+      conductedBy
+    );
 
     session.reportMetadata = reportResult.metadata;
     await session.save();
@@ -1244,26 +1265,32 @@ export async function downloadAssessmentReport(req: Request, res: Response, next
       return sendError(res, "Access denied. You are not assigned to this organization.", 403, "CROSS_COMPANY_ACCESS_DENIED");
     }
 
-    // If report already generated and exists on disk
+    // Prefer stored report when available; otherwise generate on demand.
     if (session.reportMetadata?.filePath && fs.existsSync(session.reportMetadata.filePath)) {
       return res.download(session.reportMetadata.filePath, session.reportMetadata.fileName);
     }
 
-    // If not generated yet, generate on-demand
-    const [company, framework, auditor] = await Promise.all([
+    const [company, framework, auditor, conductedBy] = await Promise.all([
       Company.findById(session.companyId),
       AssessmentFramework.findOne({
         version: session.frameworkVersion,
         assessmentType: session.assessmentType,
       }),
       User.findById(req.user.userId),
+      User.findById(session.conductedByUserId),
     ]);
 
     if (!company || !framework || !auditor) {
       return sendError(res, "Required assessment context not found", 404, "CONTEXT_NOT_FOUND");
     }
 
-    const reportResult = await ReportService.generateAssessmentReport(session, company, framework, auditor);
+    const reportResult = await ReportService.generateAssessmentReport(
+      session,
+      company,
+      framework,
+      auditor,
+      conductedBy
+    );
     session.reportMetadata = reportResult.metadata;
     await session.save();
 

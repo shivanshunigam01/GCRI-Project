@@ -120,7 +120,7 @@ function DashboardLayoutContent({
   ];
 
   return (
-    <div className="h-screen w-screen overflow-hidden bg-[#f8fafc] flex">
+    <div className="h-screen w-screen overflow-hidden app-canvas flex">
       {/* Mobile Backdrop Overlay */}
       {mobileMenuOpen && (
         <div
@@ -271,7 +271,7 @@ function DashboardLayoutContent({
       {/* Main Column */}
       <div className="flex-1 flex flex-col h-screen min-w-0 overflow-hidden">
         {/* Top Navbar - Fixed at top, never scrolls */}
-        <header className="h-16 bg-white border-b border-slate-200/80 px-4 sm:px-6 lg:px-8 flex items-center justify-between shrink-0 z-30">
+        <header className="glass-header h-16 px-4 sm:px-6 lg:px-8 flex items-center justify-between shrink-0 z-30">
           <div className="flex items-center gap-3 flex-1 min-w-0 mr-4">
             {/* Hamburger Button for Mobile */}
             <button
@@ -358,7 +358,7 @@ function DashboardLayoutContent({
 
         {/* Workspace Canvas */}
         <main
-          className={`flex-1 bg-[#f8fafc] ${
+          className={`flex-1 app-canvas ${
             pathname?.includes("/admin/assessors") ||
             pathname?.includes("/admin/users") ||
             pathname?.includes("/admin/auditor-mappings") ||
