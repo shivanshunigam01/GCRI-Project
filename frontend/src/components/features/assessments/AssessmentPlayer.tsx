@@ -21,6 +21,7 @@ import {
   ArrowLeft,
   AlertCircle,
   CheckCircle2,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Loader2,
@@ -101,6 +102,7 @@ export function AssessmentPlayer({ assessmentId }: AssessmentPlayerProps) {
   const [skippedQuestionIds, setSkippedQuestionIds] = useState<Set<string>>(new Set());
   const [currentIndex, setCurrentIndex] = useState(0);
   const [navLockMessage, setNavLockMessage] = useState<string | null>(null);
+  const [expandedSectionKeys, setExpandedSectionKeys] = useState<Set<string>>(new Set());
 
   const [saving, setSaving] = useState(false);
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
@@ -263,6 +265,28 @@ export function AssessmentPlayer({ assessmentId }: AssessmentPlayerProps) {
     });
     return order.map((k) => map.get(k)!);
   }, [questions]);
+
+  // Keep the active pillar/section accordion open
+  useEffect(() => {
+    const q = questions[currentIndex];
+    if (!q) return;
+    const key = sectionKeyForQuestion(q);
+    setExpandedSectionKeys((prev) => {
+      if (prev.has(key)) return prev;
+      const next = new Set(prev);
+      next.add(key);
+      return next;
+    });
+  }, [currentIndex, questions]);
+
+  const toggleSectionExpanded = (key: string) => {
+    setExpandedSectionKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
 
   const firstIncompleteIndex = useMemo(() => {
     for (let i = 0; i < questions.length; i++) {
@@ -553,75 +577,158 @@ export function AssessmentPlayer({ assessmentId }: AssessmentPlayerProps) {
         <aside className="lg:col-span-4 space-y-3 lg:sticky lg:top-4">
           <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden">
             <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/80">
-              <h2 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Sections</h2>
-              <p className="text-[11px] text-slate-500 mt-0.5">Progress by module · locked until sequential completion</p>
+              <h2 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                Pillars / sections
+              </h2>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Expand a pillar to jump to its questions
+              </p>
             </div>
-            <ul className="max-h-[420px] overflow-y-auto p-2 space-y-1">
+            <ul className="max-h-[520px] overflow-y-auto p-2 space-y-1.5">
               {sections.map((section) => {
                 const stats = sectionStats(section);
                 const sectionComplete = stats.remaining === 0 && stats.skipped === 0;
                 const containsCurrent = section.questionIndices.includes(currentIndex);
                 const firstInSection = section.questionIndices[0];
                 const isSectionAccessible = isSubmitted || firstInSection <= maxNavigableIndex;
+                const expanded = expandedSectionKeys.has(section.key);
 
                 return (
-                  <li key={section.key}>
+                  <li
+                    key={section.key}
+                    className={cn(
+                      "rounded-xl border transition-all",
+                      containsCurrent
+                        ? "border-blue-500/40 bg-blue-50/50 shadow-sm ring-1 ring-blue-500/10"
+                        : "border-slate-100 bg-white hover:border-slate-200",
+                      !isSectionAccessible && "opacity-60"
+                    )}
+                  >
                     <button
                       type="button"
-                      disabled={!isSectionAccessible}
+                      aria-expanded={expanded}
                       onClick={() => {
                         if (!isSectionAccessible) {
                           showNavLock("Complete earlier questions before opening this section.");
                           return;
                         }
-                        const target =
-                          section.questionIndices.find(
-                            (i) =>
-                              isSubmitted ||
-                              i <= maxNavigableIndex ||
-                              answersByQuestionId[questions[i].questionId]
-                          ) ?? firstInSection;
-                        tryNavigateToIndex(target);
+                        toggleSectionExpanded(section.key);
                       }}
                       className={cn(
-                        "w-full text-left rounded-xl px-3 py-2.5 transition-all duration-200 border",
-                        containsCurrent
-                          ? "border-blue-500/40 bg-blue-50/60 shadow-sm ring-1 ring-blue-500/10"
-                          : "border-transparent hover:bg-slate-50",
-                        !isSectionAccessible && "opacity-50 cursor-not-allowed"
+                        "w-full text-left px-3 py-2.5",
+                        !isSectionAccessible && "cursor-not-allowed"
                       )}
                     >
-                      <div className="flex items-start justify-between gap-2">
-                        <span className="text-xs font-semibold text-slate-800 line-clamp-2">{section.label}</span>
-                        {!isSectionAccessible ? (
-                          <Lock className="h-3.5 w-3.5 text-slate-400 shrink-0 mt-0.5" />
-                        ) : sectionComplete ? (
-                          <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0 mt-0.5" />
-                        ) : null}
-                      </div>
-                      <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] font-medium text-slate-600">
-                        <span className="px-1.5 py-0.5 rounded bg-slate-100">{stats.total} total</span>
-                        <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800">
-                          {stats.answered} done
-                        </span>
-                        {stats.skipped > 0 && (
-                          <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-900">
-                            {stats.skipped} skipped
-                          </span>
-                        )}
-                        <span className="px-1.5 py-0.5 rounded bg-sky-100 text-sky-900">
-                          {stats.remaining} left
-                        </span>
-                      </div>
-                      <div className="mt-2 h-1 rounded-full bg-slate-100 overflow-hidden">
-                        <div
-                          className="h-full bg-emerald-500 transition-all duration-500"
-                          style={{
-                            width: `${stats.total ? (stats.answered / stats.total) * 100 : 0}%`,
-                          }}
+                      <div className="flex items-start gap-2">
+                        <ChevronDown
+                          className={cn(
+                            "h-3.5 w-3.5 text-slate-400 shrink-0 mt-0.5 transition-transform duration-200",
+                            expanded && isSectionAccessible && "rotate-180 text-blue-600"
+                          )}
                         />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-start justify-between gap-2">
+                            <span className="text-xs font-semibold text-slate-800 line-clamp-2">
+                              {section.label}
+                            </span>
+                            {!isSectionAccessible ? (
+                              <Lock className="h-3.5 w-3.5 text-slate-400 shrink-0 mt-0.5" />
+                            ) : sectionComplete ? (
+                              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0 mt-0.5" />
+                            ) : null}
+                          </div>
+                          <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] font-medium text-slate-600">
+                            <span className="px-1.5 py-0.5 rounded bg-slate-100">
+                              {stats.total} total
+                            </span>
+                            <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800">
+                              {stats.answered} done
+                            </span>
+                            {stats.skipped > 0 && (
+                              <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-900">
+                                {stats.skipped} skipped
+                              </span>
+                            )}
+                            <span className="px-1.5 py-0.5 rounded bg-sky-100 text-sky-900">
+                              {stats.remaining} left
+                            </span>
+                          </div>
+                          <div className="mt-2 h-1 rounded-full bg-slate-100 overflow-hidden">
+                            <div
+                              className="h-full bg-emerald-500 transition-all duration-500"
+                              style={{
+                                width: `${stats.total ? (stats.answered / stats.total) * 100 : 0}%`,
+                              }}
+                            />
+                          </div>
+                        </div>
                       </div>
                     </button>
+
+                    {expanded && isSectionAccessible && (
+                      <ul className="px-2 pb-2 space-y-1 border-t border-slate-100/80 pt-1.5 mt-0.5">
+                        {section.questionIndices.map((qi) => {
+                          const q = questions[qi];
+                          const answered = Boolean(answersByQuestionId[q.questionId]);
+                          const skipped =
+                            skippedQuestionIds.has(q.questionId) && !answered;
+                          const locked = !isSubmitted && qi > maxNavigableIndex;
+                          const isCurrent = qi === currentIndex;
+                          return (
+                            <li key={q.questionId}>
+                              <button
+                                type="button"
+                                disabled={locked}
+                                onClick={() => tryNavigateToIndex(qi)}
+                                className={cn(
+                                  "w-full text-left rounded-lg px-2.5 py-2 transition-all border",
+                                  isCurrent
+                                    ? "border-blue-400 bg-white shadow-sm ring-1 ring-blue-500/15"
+                                    : "border-transparent hover:bg-white/80 hover:border-slate-100",
+                                  locked && "opacity-50 cursor-not-allowed"
+                                )}
+                              >
+                                <div className="flex items-start gap-2">
+                                  <span
+                                    className={cn(
+                                      "mt-0.5 h-2 w-2 rounded-full shrink-0",
+                                      answered && "bg-emerald-500",
+                                      skipped && !answered && "bg-amber-400",
+                                      locked && !answered && !skipped && "bg-slate-200",
+                                      !answered &&
+                                        !skipped &&
+                                        !locked &&
+                                        "bg-slate-300"
+                                    )}
+                                  />
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                      <span className="text-[10px] font-bold text-blue-700 tabular-nums">
+                                        Q{qi + 1}
+                                      </span>
+                                      <span className="text-[10px] font-medium text-slate-500">
+                                        {q.questionId}
+                                      </span>
+                                      {isCurrent && (
+                                        <span className="text-[9px] font-semibold uppercase tracking-wide text-blue-600">
+                                          Current
+                                        </span>
+                                      )}
+                                      {locked && (
+                                        <Lock className="h-3 w-3 text-slate-400" />
+                                      )}
+                                    </div>
+                                    <p className="text-[11px] text-slate-600 leading-snug line-clamp-2 mt-0.5">
+                                      {q.text}
+                                    </p>
+                                  </div>
+                                </div>
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
                   </li>
                 );
               })}
