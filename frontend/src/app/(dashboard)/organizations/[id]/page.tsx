@@ -53,6 +53,18 @@ export default function OrganizationProfileFullPage({
 
   const [activeTab, setActiveTab] = useState<"overview" | "assessments" | "people" | "documents">("overview");
 
+  // Inline profile edit (PATCH /companies/:id — name, registrationNumber, country, industry only)
+  const [isEditing, setIsEditing] = useState(false);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [editSuccess, setEditSuccess] = useState(false);
+  const [editForm, setEditForm] = useState({
+    name: "",
+    industry: "",
+    country: "",
+    registrationNumber: "",
+  });
+
   // People & Auditor Mappings State
   const [auditors, setAuditors] = useState<OrgAuditorItem[]>([]);
   const [auditorsLoading, setAuditorsLoading] = useState(false);
@@ -94,6 +106,12 @@ export default function OrganizationProfileFullPage({
       const res = await companyService.getCompanyById(id);
       if (res?.data) {
         setCompany(res.data);
+        setEditForm({
+          name: res.data.name || "",
+          industry: res.data.industry || "",
+          country: res.data.country || "",
+          registrationNumber: res.data.registrationNumber || "",
+        });
       }
     } catch (err: any) {
       console.error("Failed to load company profile:", err);
@@ -102,6 +120,39 @@ export default function OrganizationProfileFullPage({
       setLoading(false);
     }
   }, [id]);
+
+  const handleSaveProfileEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!company?._id) return;
+    setSavingEdit(true);
+    setEditError(null);
+    try {
+      const updatedRes = await companyService.updateCompany(company._id, {
+        name: editForm.name.trim(),
+        industry: editForm.industry.trim() || undefined,
+        country: editForm.country.trim() || undefined,
+        registrationNumber: editForm.registrationNumber.trim() || undefined,
+      });
+      if (updatedRes?.data) {
+        setCompany((prev) =>
+          prev
+            ? {
+                ...prev,
+                ...updatedRes.data,
+                clientUser: prev.clientUser ?? updatedRes.data.clientUser,
+              }
+            : updatedRes.data
+        );
+      }
+      setIsEditing(false);
+      setEditSuccess(true);
+      setTimeout(() => setEditSuccess(false), 3000);
+    } catch (err: any) {
+      setEditError(err?.message || "Failed to update organization profile.");
+    } finally {
+      setSavingEdit(false);
+    }
+  };
 
   // Fetch Assigned Auditors
   const fetchAssignedAuditors = useCallback(async () => {
@@ -432,22 +483,112 @@ export default function OrganizationProfileFullPage({
         {activeTab === "overview" && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="bg-white rounded-xl border border-slate-200/90 p-5 shadow-2xs space-y-4 md:col-span-2">
-              <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
-                <Building2 className="h-4 w-4 text-teal-600" />
-                Organization Profile
-              </h3>
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
+                  <Building2 className="h-4 w-4 text-teal-600" />
+                  Organization Profile
+                </h3>
+                {isAdmin && !isEditing && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditForm({
+                        name: company.name || "",
+                        industry: company.industry || "",
+                        country: company.country || "",
+                        registrationNumber: company.registrationNumber || "",
+                      });
+                      setEditError(null);
+                      setIsEditing(true);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-200 rounded-lg transition"
+                  >
+                    <Edit3 className="h-3 w-3" /> Edit Profile
+                  </button>
+                )}
+              </div>
+
+              {editSuccess && (
+                <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+                  Organization profile updated.
+                </p>
+              )}
+              {editError && (
+                <p className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">
+                  {editError}
+                </p>
+              )}
+
+              {isEditing ? (
+                <form onSubmit={handleSaveProfileEdit} className="grid grid-cols-2 gap-3 text-xs">
+                  <div className="col-span-2">
+                    <label className="text-slate-400 block text-[11px] uppercase font-semibold mb-1">Name</label>
+                    <input
+                      required
+                      value={editForm.name}
+                      onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                      className="w-full text-sm py-2 px-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-slate-400 block text-[11px] uppercase font-semibold mb-1">Industry</label>
+                    <input
+                      value={editForm.industry}
+                      onChange={(e) => setEditForm({ ...editForm, industry: e.target.value })}
+                      className="w-full text-sm py-2 px-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-slate-400 block text-[11px] uppercase font-semibold mb-1">Country</label>
+                    <input
+                      value={editForm.country}
+                      onChange={(e) => setEditForm({ ...editForm, country: e.target.value })}
+                      className="w-full text-sm py-2 px-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500"
+                    />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="text-slate-400 block text-[11px] uppercase font-semibold mb-1">
+                      Registration Number
+                    </label>
+                    <input
+                      value={editForm.registrationNumber}
+                      onChange={(e) => setEditForm({ ...editForm, registrationNumber: e.target.value })}
+                      className="w-full text-sm py-2 px-3 border border-slate-300 rounded-lg font-mono focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500"
+                    />
+                  </div>
+                  <div className="col-span-2 flex items-center justify-end gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsEditing(false);
+                        setEditError(null);
+                      }}
+                      className="px-3 py-1.5 text-xs font-semibold text-slate-700 border border-slate-300 rounded-lg hover:bg-slate-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={savingEdit}
+                      className="px-3.5 py-1.5 text-xs font-semibold text-white bg-gradient-to-r from-teal-600 to-blue-600 rounded-lg disabled:opacity-50"
+                    >
+                      {savingEdit ? "Saving..." : "Save Changes"}
+                    </button>
+                  </div>
+                </form>
+              ) : (
               <div className="grid grid-cols-2 gap-4 text-xs">
                 <div>
                   <span className="text-slate-400 block text-[11px] uppercase font-semibold">Industry</span>
-                  <span className="font-semibold text-slate-800 text-sm">{company.industry || "Technology"}</span>
+                  <span className="font-semibold text-slate-800 text-sm">{company.industry || "—"}</span>
                 </div>
                 <div>
-                  <span className="text-slate-400 block text-[11px] uppercase font-semibold">Size</span>
-                  <span className="font-semibold text-slate-800 text-sm">{company.size || "500 - 1,000 employees"}</span>
+                  <span className="text-slate-400 block text-[11px] uppercase font-semibold">Domain</span>
+                  <span className="font-semibold text-slate-800 text-sm">{company.domain || "—"}</span>
                 </div>
                 <div>
                   <span className="text-slate-400 block text-[11px] uppercase font-semibold">Contact Person</span>
-                  <span className="font-semibold text-slate-900 text-sm">{company.clientUser?.name || "John Anderson"}</span>
+                  <span className="font-semibold text-slate-900 text-sm">{company.clientUser?.name || "—"}</span>
                 </div>
                 <div>
                   <span className="text-slate-400 block text-[11px] uppercase font-semibold">Email</span>
@@ -456,16 +597,16 @@ export default function OrganizationProfileFullPage({
                       {company.clientUser.email}
                     </a>
                   ) : (
-                    <span className="font-semibold text-teal-600 text-sm">{`contact@${company.domain}`}</span>
+                    <span className="font-semibold text-slate-500 text-sm">—</span>
                   )}
                 </div>
                 <div>
                   <span className="text-slate-400 block text-[11px] uppercase font-semibold">Phone</span>
-                  <span className="font-semibold text-slate-800 text-sm">{company.clientUser?.phone || "+1 212 555 0100"}</span>
+                  <span className="font-semibold text-slate-800 text-sm">{company.clientUser?.phone || "—"}</span>
                 </div>
                 <div>
-                  <span className="text-slate-400 block text-[11px] uppercase font-semibold">Address</span>
-                  <span className="font-semibold text-slate-800 text-sm">{company.country || "123 Business Ave, New York, USA"}</span>
+                  <span className="text-slate-400 block text-[11px] uppercase font-semibold">Country</span>
+                  <span className="font-semibold text-slate-800 text-sm">{company.country || "—"}</span>
                 </div>
                 <div>
                   <span className="text-slate-400 block text-[11px] uppercase font-semibold">Registration Number</span>
@@ -477,12 +618,25 @@ export default function OrganizationProfileFullPage({
                 </div>
                 <div className="col-span-2">
                   <span className="text-slate-400 block text-[11px] uppercase font-semibold">DNS Verification</span>
-                  <span className="inline-flex items-center gap-1.5 text-emerald-700 font-semibold text-sm mt-0.5">
-                    <ShieldCheck className="h-4 w-4 text-emerald-600" />
-                    {company.verificationStatus === "Verified" ? "Verified Domain" : "Pending Check"}
+                  <span
+                    className={`inline-flex items-center gap-1.5 font-semibold text-sm mt-0.5 ${
+                      company.verificationStatus === "Verified"
+                        ? "text-emerald-700"
+                        : company.verificationStatus === "Rejected"
+                          ? "text-rose-700"
+                          : "text-amber-700"
+                    }`}
+                  >
+                    <ShieldCheck className="h-4 w-4" />
+                    {company.verificationStatus === "Verified"
+                      ? "Verified Domain"
+                      : company.verificationStatus === "Rejected"
+                        ? "Verification Rejected"
+                        : "Pending Check"}
                   </span>
                 </div>
               </div>
+              )}
             </div>
 
             <div className="space-y-4">

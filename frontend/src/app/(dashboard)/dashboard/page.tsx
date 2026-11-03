@@ -69,6 +69,8 @@ import {
 export default function DashboardPage() {
   const { user, isSuperAdmin, isAdmin } = useAuth();
   const { setOrganizations, refreshTrigger } = useDashboardScope();
+  // SuperAdmin and Org Admin share the admin dashboard APIs (isAdmin includes SuperAdmin).
+  // Assessor never hits /dashboard/admin/* — that was the historical SuperAdmin→Auditor bug.
   const roleView: "Admin" | "Auditor" = isAdmin ? "Admin" : "Auditor";
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -101,17 +103,42 @@ export default function DashboardPage() {
     setDashboardWarning(null);
     try {
       if (roleView === "Admin") {
-        const [sumRes, assessRes, compRes] = await Promise.all([
+        const [sumResult, assessResult, compResult] = await Promise.allSettled([
           dashboardService.getAdminSummary(),
           dashboardService.getAdminAssessments({ limit: 100 }),
-          companyService.getCompanies({ limit: 200 }).catch(() => null),
+          companyService.getCompanies({ limit: 200 }),
         ]);
-        if (sumRes?.data) {
-          setAdminSummary(sumRes.data);
+
+        const partialErrors: string[] = [];
+
+        if (sumResult.status === "fulfilled" && sumResult.value?.data) {
+          setAdminSummary(sumResult.value.data);
+        } else {
+          const msg =
+            sumResult.status === "rejected"
+              ? getUserFacingApiError(sumResult.reason, "admin dashboard summary")
+              : "Admin dashboard summary returned an unexpected format.";
+          setAdminSummary(null);
+          setError(msg);
+          return;
         }
-        if (compRes?.data && Array.isArray(compRes.data)) {
+
+        if (assessResult.status === "fulfilled") {
+          const assessments = assessResult.value?.data?.assessments;
+          setAdminAssessments(Array.isArray(assessments) ? assessments : []);
+          if (assessResult.value?.data && !Array.isArray(assessments)) {
+            partialErrors.push("Some assessment metadata could not be loaded.");
+          }
+        } else {
+          setAdminAssessments([]);
+          partialErrors.push(
+            getUserFacingApiError(assessResult.reason, "admin assessments")
+          );
+        }
+
+        if (compResult.status === "fulfilled" && Array.isArray(compResult.value?.data)) {
           setOrganizations(
-            compRes.data.map((c: any) => ({
+            compResult.value.data.map((c: any) => ({
               _id: c._id,
               name: c.name,
               domain: c.domain,
@@ -120,10 +147,25 @@ export default function DashboardPage() {
               activePlan: c.activePlan || c.subscription?.plan || "Bronze",
             }))
           );
-        } else if (sumRes?.data?.recentOrganizations) {
-          setOrganizations(sumRes.data.recentOrganizations);
+        } else if (sumResult.value?.data?.recentOrganizations) {
+          setOrganizations(sumResult.value.data.recentOrganizations);
+          if (compResult.status === "rejected") {
+            partialErrors.push(
+              getUserFacingApiError(compResult.reason, "organization directory")
+            );
+          }
+        } else {
+          setOrganizations([]);
+          if (compResult.status === "rejected") {
+            partialErrors.push(
+              getUserFacingApiError(compResult.reason, "organization directory")
+            );
+          }
         }
-        if (assessRes?.data?.assessments) setAdminAssessments(assessRes.data.assessments);
+
+        if (partialErrors.length > 0) {
+          setDashboardWarning(partialErrors.join(" "));
+        }
       } else {
         const [sumResult, assessResult, orgsResult] = await Promise.allSettled([
           dashboardService.getAuditorSummary(),
@@ -217,7 +259,7 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      {dashboardWarning && roleView === "Auditor" && (
+      {dashboardWarning && (
         <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 flex items-start gap-3 text-sm text-amber-900">
           <AlertTriangle className="h-5 w-5 shrink-0 text-amber-600 mt-0.5" />
           <div className="flex-1 space-y-2">
@@ -1995,11 +2037,15 @@ function AdminDashboardContent({
       {/* ROW 1 & 2: 8 DISTINCT EXECUTIVE OPERATIONAL STAT CARDS (MAX 4/ROW)   */}
       {/* -------------------------------------------------------------------- */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Card 1: Users */}
+        {/* Card 1: Users — API value only (scoped filter does not invent user counts) */}
         <StatCard
-          label={isScoped ? "Tenant Registered Users" : "Total Platform Users"}
-          value={isScoped ? (scopedAssessments[0]?.clientContact ? 1 : 1) : (summary?.stats?.totalUsers ?? 0)}
-          trend={isScoped ? `${scopedOrg?.name} Assured` : `${summary?.stats?.totalAuditors ?? 0} Accredited Auditors`}
+          label={isScoped ? "Platform Users (unscoped KPI)" : isSuperAdmin ? "Total Platform Users" : "Organization Users"}
+          value={summary?.stats?.totalUsers ?? 0}
+          trend={
+            isScoped
+              ? `Scope: ${scopedOrg?.name || "tenant"} — user KPI remains API summary`
+              : `${summary?.stats?.totalAuditors ?? 0} Accredited Auditors`
+          }
           trendType="neutral"
           icon={Users}
           theme="blue"
@@ -2008,9 +2054,24 @@ function AdminDashboardContent({
 
         {/* Card 2: Auditors */}
         <StatCard
-          label={isScoped ? "Assigned Assessor" : "Accredited Auditors"}
-          value={isScoped ? (scopedAssessments.find((a) => a.auditor)?.auditor?.name ? 1 : 0) : (summary?.stats?.totalAuditors ?? 0)}
-          trend={isScoped ? (scopedAssessments.find((a) => a.auditor)?.auditor?.name || "Assessor Active") : "Certified Assessors Active"}
+          label={isSuperAdmin ? "Accredited Auditors" : "Organization Assessors"}
+          value={summary?.stats?.totalAuditors ?? 0}
+          trend={
+            isScoped
+              ? (() => {
+                  const names = Array.from(
+                    new Set(
+                      scopedAssessments
+                        .map((a) => (a.auditor as any)?.name)
+                        .filter(Boolean)
+                    )
+                  );
+                  return names.length > 0
+                    ? `${names.length} assessor(s) in scoped audits`
+                    : "No assessors in scoped audits";
+                })()
+              : "Certified Assessors Active"
+          }
           trendType="neutral"
           icon={UserCheck}
           theme="emerald"
@@ -2019,19 +2080,19 @@ function AdminDashboardContent({
 
         {/* Card 3: Client Organizations */}
         <StatCard
-          label={isScoped ? "Scoped Enterprise Tenant" : "Client Organizations"}
+          label={isScoped ? "Scoped Tenant" : isSuperAdmin ? "Client Organizations" : "Your Organization"}
           value={isScoped ? 1 : (summary?.stats?.totalOrganizations ?? 0)}
-          trend={isScoped ? `${scopedOrg?.domain || "Isolated Tenant"}` : "Active Multi-Tenant Directory"}
+          trend={isScoped ? `${scopedOrg?.domain || scopedOrg?.name || "Tenant"}` : "Active Multi-Tenant Directory"}
           trendType="neutral"
           icon={Building2}
           theme="purple"
           delay={50}
         />
 
-        {/* Card 4: Evaluation Criteria (Distinct from Subscriptions, eliminates redundancy) */}
+        {/* Card 4: Evaluation Criteria — real API value; never invent 95 */}
         <StatCard
           label="Evaluation Criteria"
-          value={summary?.stats?.questionsCount ?? 95}
+          value={summary?.stats?.questionsCount ?? 0}
           trend="Standardized Control Questions"
           trendType="neutral"
           icon={BookOpen}
@@ -2054,20 +2115,24 @@ function AdminDashboardContent({
         {/* Card 6: Compliance Framework */}
         <StatCard
           label="Compliance Framework"
-          value={summary?.stats?.frameworkVersions ?? 1}
+          value={summary?.stats?.frameworkVersions ?? 0}
           prefix="v"
-          trend={`${summary?.stats?.controlsCount ?? 65} Controls • 7 Pillars`}
+          trend={`${summary?.stats?.controlsCount ?? 0} Controls • ${summary?.stats?.pillarsCount ?? 7} Pillars`}
           trendType="neutral"
           icon={Layers}
           theme="sky"
           delay={125}
         />
 
-        {/* Card 7: Evidence Vault */}
+        {/* Card 7: Evidence Vault — API-only when unscoped; scoped uses submitted count (metadata only) */}
         <StatCard
           label="Audit Evidence Vault"
-          value={isScoped ? (scopedAssessments.length > 0 ? 1 : 0) : (summary?.stats?.evidenceItemsCount ?? 0)}
-          trend="Cryptographic Proofs Locked"
+          value={
+            isScoped
+              ? scopedAssessments.filter((a) => a.status === "Submitted").length
+              : (summary?.stats?.evidenceItemsCount ?? 0)
+          }
+          trend={isScoped ? "Submitted sessions in scope (metadata)" : "Evidence-bearing sessions"}
           trendType="neutral"
           icon={FolderLock}
           theme="rose"
@@ -2077,7 +2142,11 @@ function AdminDashboardContent({
         {/* Card 8: Reports & Security Logs */}
         <StatCard
           label="Reports & Security Logs"
-          value={isScoped ? scopedAssessments.filter((a) => a.status === "Submitted").length : (summary?.stats?.reportsCount ?? 0)}
+          value={
+            isScoped
+              ? scopedAssessments.filter((a) => a.status === "Submitted").length
+              : (summary?.stats?.reportsCount ?? 0)
+          }
           trend={`${recentActivity.length} Recent Security Events`}
           trendType="neutral"
           icon={ShieldCheck}

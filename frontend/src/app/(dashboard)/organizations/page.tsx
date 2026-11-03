@@ -142,13 +142,14 @@ export default function OrganizationsPage() {
         return;
       }
 
-      // For Admin: Fetch platform-wide companies
+      // SuperAdmin: global directory. Org Admin: tenant-scoped via backend companyId filter.
+      // Backend supports: page, limit, search, status, verificationStatus — NOT tier.
       const params: {
         page: number;
         limit: number;
         search?: string;
         status?: string;
-        tier?: string;
+        verificationStatus?: string;
       } = {
         page,
         limit,
@@ -160,16 +161,16 @@ export default function OrganizationsPage() {
       if (statusFilter !== "all") {
         params.status = statusFilter;
       }
-      if (tierFilter !== "all") {
-        params.tier = tierFilter;
+      if (verificationFilter !== "all") {
+        params.verificationStatus = verificationFilter;
       }
 
       const res = await companyService.getCompanies(params);
       if (res && res.data) {
-        let dataList = res.data;
-        // Client-side filter for DNS verification status if specified
-        if (verificationFilter !== "all") {
-          dataList = dataList.filter((c) => c.verificationStatus === verificationFilter);
+        let dataList = Array.isArray(res.data) ? res.data : [];
+        // Tier is not a registered list filter — apply client-side only
+        if (tierFilter !== "all") {
+          dataList = dataList.filter((c) => (c.activePlan || "Bronze") === tierFilter);
         }
 
         setCompanies(dataList);
@@ -290,7 +291,9 @@ export default function OrganizationsPage() {
           setConfirmModal((prev) => ({ ...prev, isOpen: false, loading: false }));
           fetchCompanies();
           if (selectedCompany?._id === company._id) {
-            setSelectedCompany((prev) => (prev ? { ...prev, dnsVerificationStatus: "Verified" } : null));
+            setSelectedCompany((prev) =>
+              prev ? { ...prev, verificationStatus: "Verified" } : null
+            );
           }
         } catch (err: any) {
           setError(err?.message || `DNS verification failed for ${company.domain}`);
@@ -323,18 +326,22 @@ export default function OrganizationsPage() {
     setOnboardLoading(true);
 
     try {
+      // CreateCompanySchema accepts name, domain, registrationNumber, country, industry, user.
+      // activePlan is NOT accepted by the registered schema and is ignored by createCompany —
+      // new orgs default to Bronze on the backend until a plan API exists.
       await companyService.createCompany({
         name: onboardForm.name.trim(),
         domain: cleanDomain,
         registrationNumber: onboardForm.registrationNumber.trim() || undefined,
         country: onboardForm.country.trim() || undefined,
         industry: onboardForm.industry.trim() || undefined,
-        activePlan: onboardForm.subscriptionTier,
       });
 
       setOnboardModalOpen(false);
-      setActionSuccess(`Organization ${onboardForm.name} onboarded successfully!`);
-      setTimeout(() => setActionSuccess(null), 4000);
+      setActionSuccess(
+        `Organization ${onboardForm.name} onboarded successfully. Subscription defaults to Bronze until a plan is assigned.`
+      );
+      setTimeout(() => setActionSuccess(null), 5000);
       fetchCompanies();
     } catch (err: any) {
       console.error("Onboard organization error:", err);
@@ -620,24 +627,26 @@ export default function OrganizationsPage() {
             <span className="hidden sm:inline">Refresh</span>
           </button>
 
-          <button
-            onClick={() => {
-              setOnboardForm({
-                name: "",
-                domain: "",
-                registrationNumber: "",
-                country: "",
-                industry: "",
-                subscriptionTier: "Gold",
-              });
-              setOnboardError(null);
-              setOnboardModalOpen(true);
-            }}
-            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-gradient-to-r from-teal-600 to-blue-600 hover:from-teal-700 hover:to-blue-700 text-white font-semibold text-xs rounded-lg shadow-xs transition"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            <span>Onboard Organization</span>
-          </button>
+          {isSuperAdmin && (
+            <button
+              onClick={() => {
+                setOnboardForm({
+                  name: "",
+                  domain: "",
+                  registrationNumber: "",
+                  country: "",
+                  industry: "",
+                  subscriptionTier: "Bronze",
+                });
+                setOnboardError(null);
+                setOnboardModalOpen(true);
+              }}
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-gradient-to-r from-teal-600 to-blue-600 hover:from-teal-700 hover:to-blue-700 text-white font-semibold text-xs rounded-lg shadow-xs transition"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              <span>Onboard Organization</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -1013,17 +1022,12 @@ export default function OrganizationsPage() {
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
                     Subscription Tier
                   </label>
-                  <select
-                    value={onboardForm.subscriptionTier}
-                    onChange={(e) =>
-                      setOnboardForm({ ...onboardForm, subscriptionTier: e.target.value as SubscriptionTier })
-                    }
-                    className="w-full text-xs py-2 px-2.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 transition cursor-pointer"
-                  >
-                    <option value="Gold">Gold Enterprise</option>
-                    <option value="Silver">Silver Scale</option>
-                    <option value="Bronze">Bronze Starter</option>
-                  </select>
+                  <div className="w-full text-xs py-2 px-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-600">
+                    Defaults to <span className="font-semibold text-slate-800">Bronze</span>
+                    <span className="block text-[10px] text-slate-400 mt-0.5">
+                      Plan is not settable via onboard API yet
+                    </span>
+                  </div>
                 </div>
               </div>
 
