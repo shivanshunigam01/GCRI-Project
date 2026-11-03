@@ -236,6 +236,8 @@ export async function login(req: Request, res: Response, next: NextFunction) {
 
 /**
  * Step 1: Initiate MFA Setup (Generates TOTP secret and QR Code)
+ * Works for first-time enrollment and for Admin/SuperAdmin authenticator (re)configuration
+ * when MFA is already flagged enabled via recovery-code seed.
  */
 export async function setupMfa(req: Request, res: Response, next: NextFunction) {
   try {
@@ -243,6 +245,10 @@ export async function setupMfa(req: Request, res: Response, next: NextFunction) 
     const user = await User.findById(userId);
     if (!user) {
       return sendError(res, "User not found", 404, "USER_NOT_FOUND");
+    }
+
+    if (!user.mfa) {
+      user.mfa = { enabled: false };
     }
 
     const secret = generateSecret();
@@ -263,6 +269,10 @@ export async function setupMfa(req: Request, res: Response, next: NextFunction) 
       qrCodeUrl,
       issuer: serviceName,
       account: user.email,
+      reconfigure: Boolean(user.mfa.secret),
+      message: user.mfa.secret
+        ? "Scan the new QR code to reconfigure your authenticator. Confirm with a 6-digit code to activate."
+        : "Scan the QR code with your authenticator app, then confirm with a 6-digit code.",
     });
   } catch (err) {
     next(err);

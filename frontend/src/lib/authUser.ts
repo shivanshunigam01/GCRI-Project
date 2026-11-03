@@ -7,9 +7,14 @@ export function normalizeLoginUser(raw: Record<string, unknown> | null | undefin
   const id = raw._id ?? raw.userId ?? raw.id;
   if (id == null || id === "") return null;
 
-  const mfaEnabled = Boolean(
-    (raw.mfa as { enabled?: boolean } | undefined)?.enabled ?? raw.mfaEnabled
-  );
+  const mfaRaw = raw.mfa as
+    | {
+        enabled?: boolean;
+        authenticatorConfigured?: boolean;
+        recoveryCodesRemaining?: number;
+      }
+    | undefined;
+  const mfaEnabled = Boolean(mfaRaw?.enabled ?? raw.mfaEnabled);
 
   return {
     _id: String(id),
@@ -18,7 +23,14 @@ export function normalizeLoginUser(raw: Record<string, unknown> | null | undefin
     email: String(raw.email ?? ""),
     role: raw.role as User["role"],
     status: (raw.status as User["status"]) ?? "Active",
-    mfa: { enabled: mfaEnabled },
+    mfa: {
+      enabled: mfaEnabled,
+      authenticatorConfigured: Boolean(mfaRaw?.authenticatorConfigured),
+      recoveryCodesRemaining:
+        typeof mfaRaw?.recoveryCodesRemaining === "number"
+          ? mfaRaw.recoveryCodesRemaining
+          : undefined,
+    },
     mfaEnabled,
     companyId: (raw.companyId as User["companyId"]) ?? null,
     authProvider: raw.authProvider as User["authProvider"],

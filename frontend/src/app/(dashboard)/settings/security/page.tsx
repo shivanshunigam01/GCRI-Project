@@ -56,7 +56,10 @@ export default function SecuritySettingsPage() {
   const [disableError, setDisableError] = useState<string | null>(null);
 
   const isMfaActive = Boolean(user?.mfa?.enabled || user?.mfaEnabled);
+  const authenticatorConfigured = Boolean(user?.mfa?.authenticatorConfigured);
+  const recoveryCodesRemaining = user?.mfa?.recoveryCodesRemaining;
   const mfaMandatory = isMfaMandatoryRole(user?.role);
+  const needsAuthenticatorSetup = mfaMandatory && !authenticatorConfigured;
 
   // Handle Password Change
   const handlePasswordChange = async (e: React.FormEvent) => {
@@ -136,6 +139,8 @@ export default function SecuritySettingsPage() {
       }
       if (res.data?.recoveryCodes) {
         setRecoveryCodes(res.data.recoveryCodes);
+      } else {
+        setSetupModalOpen(false);
       }
       await refreshUser();
     } catch (err: unknown) {
@@ -203,18 +208,38 @@ export default function SecuritySettingsPage() {
         </p>
       </div>
 
-      {mfaMandatory && !isMfaActive && (
+      {(mfaMandatory && !isMfaActive) || needsAuthenticatorSetup ? (
         <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl flex gap-3 text-sm text-amber-950">
           <AlertCircle className="h-5 w-5 shrink-0 text-amber-600" />
-          <div>
-            <p className="font-semibold">MFA required for your role</p>
-            <p className="text-xs mt-1 text-amber-800/90">
-              Super Admin and Org Admin accounts must enable two-factor authentication before using
-              administrative features. Complete setup below.
+          <div className="flex-1 min-w-0">
+            <p className="font-semibold">
+              {needsAuthenticatorSetup
+                ? "Generate your authenticator app (QR)"
+                : "MFA required for your role"}
             </p>
+            <p className="text-xs mt-1 text-amber-800/90">
+              {needsAuthenticatorSetup
+                ? "Your Admin / Super Admin account can sign in with a recovery code today. Generate a TOTP secret, scan the QR in Google or Microsoft Authenticator, then confirm the 6-digit code so authenticator login works too."
+                : "Super Admin and Org Admin accounts must enable two-factor authentication before using administrative features. Complete setup below."}
+            </p>
+            {needsAuthenticatorSetup && (
+              <button
+                type="button"
+                onClick={handleStartMfaSetup}
+                disabled={setupLoading}
+                className="mt-3 inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition shadow-xs disabled:opacity-50"
+              >
+                {setupLoading ? (
+                  <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <QrCode className="h-3.5 w-3.5" />
+                )}
+                Generate MFA QR &amp; secret
+              </button>
+            )}
           </div>
         </div>
-      )}
+      ) : null}
 
       {/* Two-Factor Authentication Card */}
       <div className="surface-panel shadow-xs p-6 space-y-5">
@@ -222,13 +247,21 @@ export default function SecuritySettingsPage() {
           <div className="flex items-start gap-3.5">
             <div
               className={`p-3 rounded-xl shrink-0 ${
-                isMfaActive ? "bg-emerald-50 text-emerald-600" : "bg-amber-50 text-amber-600"
+                authenticatorConfigured
+                  ? "bg-emerald-50 text-emerald-600"
+                  : isMfaActive
+                    ? "bg-sky-50 text-sky-600"
+                    : "bg-amber-50 text-amber-600"
               }`}
             >
-              {isMfaActive ? <ShieldCheck className="h-6 w-6" /> : <Smartphone className="h-6 w-6" />}
+              {authenticatorConfigured ? (
+                <ShieldCheck className="h-6 w-6" />
+              ) : (
+                <Smartphone className="h-6 w-6" />
+              )}
             </div>
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <h3 className="text-base font-bold text-slate-900">
                   Two-Factor Authentication (TOTP)
                 </h3>
@@ -239,41 +272,70 @@ export default function SecuritySettingsPage() {
                       : "bg-amber-100 text-amber-800 border-amber-200"
                   }`}
                 >
-                  {isMfaActive ? "Enabled & Active" : "Disabled"}
+                  {isMfaActive ? "MFA enabled" : "Disabled"}
+                </span>
+                <span
+                  className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${
+                    authenticatorConfigured
+                      ? "bg-teal-100 text-teal-800 border-teal-200"
+                      : "bg-slate-100 text-slate-600 border-slate-200"
+                  }`}
+                >
+                  {authenticatorConfigured
+                    ? "Authenticator configured"
+                    : "Authenticator not configured"}
                 </span>
               </div>
               <p className="text-xs text-slate-500 mt-1 leading-relaxed max-w-lg">
-                {isMfaActive
-                  ? "Your account is protected with hardware or software-based time-based one-time passwords (TOTP)."
-                  : "Protect your account from credential theft by enforcing a 6-digit code via Google Authenticator, 1Password, or Authy."}
+                {authenticatorConfigured
+                  ? "Sign in with a 6-digit code from your authenticator app, or a remaining recovery code."
+                  : isMfaActive
+                    ? "Recovery-code MFA is active. Generate a QR code to bind Google Authenticator / Microsoft Authenticator."
+                    : "Protect your account with a 6-digit code via Google Authenticator, Microsoft Authenticator, or Authy."}
               </p>
+              {typeof recoveryCodesRemaining === "number" && isMfaActive && (
+                <p className="text-[11px] text-slate-500 mt-1.5">
+                  Recovery codes remaining:{" "}
+                  <span className="font-semibold text-slate-800">{recoveryCodesRemaining}</span>
+                </p>
+              )}
             </div>
           </div>
 
-          <div>
-            {isMfaActive ? (
-              mfaMandatory ? (
-                <span className="text-[11px] font-medium text-slate-600 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200 inline-block text-center">
-                  Mandatory for {user?.role === "SuperAdmin" ? "Super Admin" : "Org Admin"}
-                </span>
+          <div className="flex flex-col items-stretch sm:items-end gap-2 shrink-0">
+            {mfaMandatory && (
+              <span className="text-[11px] font-medium text-slate-600 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200 text-center">
+                Mandatory for {user?.role === "SuperAdmin" ? "Super Admin" : "Org Admin"}
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={handleStartMfaSetup}
+              disabled={setupLoading}
+              className="inline-flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition shadow-xs disabled:opacity-50"
+            >
+              {setupLoading ? (
+                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
               ) : (
-                <button
-                  type="button"
-                  onClick={() => setDisableModalOpen(true)}
-                  className="px-3.5 py-2 text-xs font-semibold text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 rounded-lg transition"
-                >
-                  Disable 2FA
-                </button>
-              )
-            ) : (
+                <QrCode className="h-3.5 w-3.5" />
+              )}
+              <span>
+                {!isMfaActive
+                  ? mfaMandatory
+                    ? "Complete required MFA setup"
+                    : "Enable 2FA"
+                  : authenticatorConfigured
+                    ? "Reconfigure authenticator"
+                    : "Generate MFA QR"}
+              </span>
+            </button>
+            {isMfaActive && !mfaMandatory && (
               <button
                 type="button"
-                onClick={handleStartMfaSetup}
-                disabled={setupLoading}
-                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition shadow-xs disabled:opacity-50"
+                onClick={() => setDisableModalOpen(true)}
+                className="px-3.5 py-2 text-xs font-semibold text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 rounded-lg transition"
               >
-                {setupLoading && <RefreshCw className="h-3.5 w-3.5 animate-spin" />}
-                <span>{mfaMandatory && !isMfaActive ? "Complete required MFA setup" : "Enable 2FA"}</span>
+                Disable 2FA
               </button>
             )}
           </div>
@@ -390,8 +452,13 @@ export default function SecuritySettingsPage() {
                   <Smartphone className="h-5 w-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-slate-900">Enable Two-Factor Auth</h3>
-                  <p className="text-xs text-slate-500">Scan QR code using Google Authenticator</p>
+                  <h3 className="text-base font-bold text-slate-900">
+                    {authenticatorConfigured ? "Reconfigure authenticator" : "Generate MFA"}
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    {setupData?.message ||
+                      "Scan QR with Google / Microsoft Authenticator, then enter the 6-digit code"}
+                  </p>
                 </div>
               </div>
               <button

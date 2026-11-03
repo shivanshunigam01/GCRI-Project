@@ -13,15 +13,30 @@ import { NotificationService } from "../services/notification.service.js";
 export async function getMe(req: Request, res: Response, next: NextFunction) {
   try {
     const userId = req.user?.userId;
-    const user = await User.findById(userId)
-      .select("-passwordHash -mfa.secret -mfa.tempSecret -mfa.recoveryCodes")
-      .populate("companyId", "name domain verificationStatus status logo");
+    const user = await User.findById(userId).populate(
+      "companyId",
+      "name domain verificationStatus status logo"
+    );
 
     if (!user) {
       return sendError(res, "User not found", 404, "USER_NOT_FOUND");
     }
 
-    return sendSuccess(res, user);
+    const authenticatorConfigured = Boolean(user.mfa?.secret);
+    const recoveryCodesRemaining = user.mfa?.recoveryCodes?.length || 0;
+    const data = user.toObject() as Record<string, unknown> & {
+      mfa?: Record<string, unknown>;
+      passwordHash?: string;
+    };
+    delete data.passwordHash;
+    data.mfa = {
+      enabled: Boolean(user.mfa?.enabled),
+      authenticatorConfigured,
+      recoveryCodesRemaining,
+    };
+    data.mfaEnabled = Boolean(user.mfa?.enabled);
+
+    return sendSuccess(res, data);
   } catch (err) {
     next(err);
   }

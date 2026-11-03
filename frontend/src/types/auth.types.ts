@@ -29,6 +29,9 @@ export interface User {
   avatar?: UserImageAsset | null;
   mfa: {
     enabled: boolean;
+    /** True when a TOTP authenticator secret is stored (QR setup completed). */
+    authenticatorConfigured?: boolean;
+    recoveryCodesRemaining?: number;
   };
   mfaEnabled?: boolean;
   companyId?: string | UserCompany | null;
@@ -60,6 +63,8 @@ export interface SetupMfaResponse {
   qrCodeUrl: string;
   issuer: string;
   account: string;
+  reconfigure?: boolean;
+  message?: string;
 }
 
 export interface InviteUserPayload {
