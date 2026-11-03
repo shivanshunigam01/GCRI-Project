@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { assessmentService } from "@/services/assessment.service";
@@ -39,6 +39,8 @@ import {
   Save,
   ShieldAlert,
   Layers,
+  ListChecks,
+  Target,
 } from "lucide-react";
 
 export interface FullAssessmentPlayerProps {
@@ -51,6 +53,47 @@ function companyLabel(session: AssessmentSession): string {
     return String((c as { name?: string }).name || "Client organization");
   }
   return "Client organization";
+}
+
+/** Framework seed stores tier + objectives + requirements in one assuranceTier blob. */
+function parseAssuranceBlock(raw?: string): {
+  tierLabel: string | null;
+  objectives: string[];
+  requirements: string[];
+} {
+  if (!raw?.trim()) {
+    return { tierLabel: null, objectives: [], requirements: [] };
+  }
+
+  const text = raw.replace(/\r\n/g, "\n").trim();
+  const tierMatch = text.match(/^(TIER\s*\d+)/i);
+  const tierLabel = tierMatch
+    ? tierMatch[1].replace(/\s+/g, " ").replace(/^tier/i, "Tier")
+    : null;
+
+  const withoutTier = text.replace(/^(TIER\s*\d+)\s*/i, "").trim();
+  if (!withoutTier) {
+    return { tierLabel, objectives: [], requirements: [] };
+  }
+
+  const [beforeReqs, reqsRaw = ""] = withoutTier.split(/Core Requirements Met:\s*/i);
+  const objsRaw = (beforeReqs.split(/Objectives Met:\s*/i)[1] ?? "").trim();
+
+  const parseBullets = (block: string) =>
+    block
+      .split(/\n/)
+      .map((line) => line.replace(/^[•\-\u2022*]\s*/, "").trim())
+      .filter(Boolean);
+
+  const objectives = parseBullets(objsRaw);
+  const requirements = parseBullets(reqsRaw.trim());
+
+  // Fallback: plain tier string with no structured sections
+  if (!tierLabel && objectives.length === 0 && requirements.length === 0) {
+    return { tierLabel: text.split("\n")[0].trim(), objectives: [], requirements: [] };
+  }
+
+  return { tierLabel, objectives, requirements };
 }
 
 const TEST_STATUS_OPTIONS: { value: TestStatus; label: string }[] = [
@@ -382,14 +425,27 @@ export function FullAssessmentPlayer({ assessmentId }: FullAssessmentPlayerProps
     }
   };
 
+  const questionTopRef = useRef<HTMLElement | null>(null);
+  const shouldScrollToControlRef = useRef(false);
+
+  useEffect(() => {
+    if (!shouldScrollToControlRef.current) return;
+    shouldScrollToControlRef.current = false;
+    questionTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [currentIndex]);
+
   const goToIndex = (index: number) => {
     if (index < 0 || index >= questions.length) return;
+    shouldScrollToControlRef.current = true;
     setCurrentIndex(index);
   };
 
   const goToPillar = (pillarId: string) => {
     const idx = questions.findIndex((q) => q.pillarId === pillarId);
-    if (idx >= 0) setCurrentIndex(idx);
+    if (idx >= 0) {
+      shouldScrollToControlRef.current = true;
+      setCurrentIndex(idx);
+    }
   };
 
   const goToReview = async () => {
@@ -440,6 +496,7 @@ export function FullAssessmentPlayer({ assessmentId }: FullAssessmentPlayerProps
   }
 
   const activePillarId = currentQuestion.pillarId;
+  const assurance = parseAssuranceBlock(currentQuestion.assuranceTier);
   const saveLabel =
     autosaveStatus === "saving"
       ? "Saving…"
@@ -451,8 +508,11 @@ export function FullAssessmentPlayer({ assessmentId }: FullAssessmentPlayerProps
             ? "Unsaved"
             : "Idle";
 
+  const canGoPrev = currentIndex > 0;
+  const canGoNext = currentIndex < questions.length - 1;
+
   return (
-    <div className="max-w-[1400px] mx-auto pb-12 space-y-4">
+    <div className="max-w-[1400px] mx-auto pb-28 space-y-4">
       <div className="glass-header rounded-2xl px-4 sm:px-6 py-4 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div className="flex items-start gap-3 min-w-0">
           <Link
@@ -633,33 +693,109 @@ export function FullAssessmentPlayer({ assessmentId }: FullAssessmentPlayerProps
 
         <main className="xl:col-span-6">
           <article
+            ref={questionTopRef}
             key={currentQuestion.questionId}
-            className="assessment-question-enter bg-white rounded-2xl border border-slate-200/90 shadow-md overflow-hidden"
+            className="assessment-question-enter bg-white rounded-2xl border border-slate-200/90 shadow-md overflow-hidden scroll-mt-4"
           >
-            <div className="px-5 sm:px-6 py-4 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white space-y-2">
-              <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold text-slate-500">
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-700 text-white">
+            <div className="px-5 sm:px-6 py-5 border-b border-slate-100 bg-gradient-to-br from-slate-50 via-white to-indigo-50/30 space-y-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center px-2.5 py-1 rounded-md bg-indigo-700 text-white text-[11px] font-bold tracking-wide">
                   {currentQuestion.questionId}
                 </span>
-                <span>
+                <span className="text-xs font-semibold text-slate-600">
                   Pillar {currentQuestion.pillarNumber}: {currentQuestion.pillarName}
                 </span>
-                {currentQuestion.assuranceTier && (
-                  <>
-                    <span className="text-slate-300">·</span>
-                    <span className="text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
-                      Tier: {currentQuestion.assuranceTier}
-                    </span>
-                  </>
+                {assurance.tierLabel && (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-md border border-amber-200/80 bg-amber-50 text-[11px] font-semibold text-amber-900">
+                    {assurance.tierLabel}
+                  </span>
                 )}
               </div>
-              <h2 className="text-base sm:text-lg font-bold text-slate-900 leading-snug">
-                {currentQuestion.text}
-              </h2>
-              {currentQuestion.controlDescription && (
-                <p className="text-xs text-slate-600 leading-relaxed">
-                  {currentQuestion.controlDescription}
-                </p>
+
+              <div className="space-y-1.5">
+                <h2 className="text-base sm:text-lg font-bold text-slate-900 leading-snug tracking-tight">
+                  {currentQuestion.text}
+                </h2>
+                {currentQuestion.controlDescription && (
+                  <p className="text-sm text-slate-600 leading-relaxed">
+                    {currentQuestion.controlDescription}
+                  </p>
+                )}
+              </div>
+
+              {(assurance.objectives.length > 0 || assurance.requirements.length > 0) && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {assurance.objectives.length > 0 && (
+                    <div className="rounded-xl border border-slate-200/90 bg-white/90 p-3.5 shadow-sm">
+                      <div className="flex items-center gap-1.5 mb-2.5">
+                        <Target className="h-3.5 w-3.5 text-indigo-600 shrink-0" />
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                          Objectives met
+                        </p>
+                      </div>
+                      <ul className="space-y-2">
+                        {assurance.objectives.map((item) => {
+                          const [code, ...rest] = item.split(/:\s*/);
+                          const detail = rest.join(": ").trim();
+                          return (
+                            <li
+                              key={item}
+                              className="flex gap-2 text-xs text-slate-700 leading-relaxed"
+                            >
+                              <span className="shrink-0 mt-0.5 h-1.5 w-1.5 rounded-full bg-indigo-500" />
+                              <span>
+                                {detail ? (
+                                  <>
+                                    <span className="font-semibold text-slate-800">{code}</span>
+                                    <span className="text-slate-500"> — </span>
+                                    <span>{detail}</span>
+                                  </>
+                                ) : (
+                                  item
+                                )}
+                              </span>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  )}
+                  {assurance.requirements.length > 0 && (
+                    <div className="rounded-xl border border-slate-200/90 bg-white/90 p-3.5 shadow-sm">
+                      <div className="flex items-center gap-1.5 mb-2.5">
+                        <ListChecks className="h-3.5 w-3.5 text-teal-600 shrink-0" />
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                          Core requirements
+                        </p>
+                      </div>
+                      <ul className="space-y-2">
+                        {assurance.requirements.map((item) => {
+                          const [code, ...rest] = item.split(/:\s*/);
+                          const detail = rest.join(": ").trim();
+                          return (
+                            <li
+                              key={item}
+                              className="flex gap-2 text-xs text-slate-700 leading-relaxed"
+                            >
+                              <span className="shrink-0 mt-0.5 h-1.5 w-1.5 rounded-full bg-teal-500" />
+                              <span>
+                                {detail ? (
+                                  <>
+                                    <span className="font-semibold text-slate-800">{code}</span>
+                                    <span className="text-slate-500"> — </span>
+                                    <span>{detail}</span>
+                                  </>
+                                ) : (
+                                  item
+                                )}
+                              </span>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
 
@@ -715,6 +851,34 @@ export function FullAssessmentPlayer({ assessmentId }: FullAssessmentPlayerProps
                   </select>
                 </div>
               </fieldset>
+
+              {/* Quick nav sits right after answering so assessors need not scroll */}
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-indigo-100 bg-indigo-50/60 px-3 py-2.5">
+                <p className="text-[11px] text-slate-600">
+                  Control{" "}
+                  <span className="font-semibold text-slate-800">{currentIndex + 1}</span>
+                  {" / "}
+                  <span className="font-semibold text-slate-800">{questions.length}</span>
+                </p>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => goToIndex(currentIndex - 1)}
+                    disabled={!canGoPrev}
+                    className="px-3 py-2 text-xs font-semibold rounded-lg border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 inline-flex items-center gap-1"
+                  >
+                    <ChevronLeft className="h-3.5 w-3.5" /> Prev
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => goToIndex(currentIndex + 1)}
+                    disabled={!canGoNext}
+                    className="px-4 py-2 text-xs font-semibold rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-40 inline-flex items-center gap-1 shadow-sm"
+                  >
+                    Next control <ChevronRight className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1.5">
@@ -798,32 +962,6 @@ export function FullAssessmentPlayer({ assessmentId }: FullAssessmentPlayerProps
               )}
             </div>
 
-            <div className="px-5 sm:px-6 py-4 border-t border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <p className="text-xs text-slate-500">
-                Control{" "}
-                <span className="font-semibold text-slate-800">{currentIndex + 1}</span> of{" "}
-                <span className="font-semibold text-slate-800">{questions.length}</span>
-                <span className="ml-2 font-medium text-slate-700">· {saveLabel}</span>
-              </p>
-              <div className="flex flex-wrap items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => goToIndex(currentIndex - 1)}
-                  disabled={currentIndex === 0}
-                  className="px-4 py-2.5 text-xs font-semibold rounded-xl border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 inline-flex items-center gap-1"
-                >
-                  <ChevronLeft className="h-4 w-4" /> Previous
-                </button>
-                <button
-                  type="button"
-                  onClick={() => goToIndex(currentIndex + 1)}
-                  disabled={currentIndex >= questions.length - 1}
-                  className="px-5 py-2.5 text-xs font-semibold rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-40 inline-flex items-center gap-1 shadow-md"
-                >
-                  Next <ChevronRight className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
           </article>
         </main>
 
@@ -926,6 +1064,56 @@ export function FullAssessmentPlayer({ assessmentId }: FullAssessmentPlayerProps
             </div>
           </div>
         </aside>
+      </div>
+
+      {/* Always-visible control navigator — avoids scrolling past long evidence/regulatory blocks */}
+      <div className="fixed bottom-0 inset-x-0 z-40 pointer-events-none">
+        <div className="max-w-[1400px] mx-auto px-3 sm:px-4 pb-3 sm:pb-4">
+          <div className="pointer-events-auto rounded-2xl border border-slate-200/90 bg-white/95 backdrop-blur-md shadow-[0_-8px_30px_rgba(15,23,42,0.12)] px-3 sm:px-5 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-xs text-slate-600 truncate">
+                <span className="font-bold text-slate-900">{currentQuestion.questionId}</span>
+                <span className="mx-1.5 text-slate-300">·</span>
+                Control {currentIndex + 1} of {questions.length}
+                <span className="mx-1.5 text-slate-300">·</span>
+                <span className="font-medium text-slate-700">{saveLabel}</span>
+              </p>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => goToIndex(currentIndex - 1)}
+                disabled={!canGoPrev}
+                className="px-4 py-2.5 text-xs font-semibold rounded-xl border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 inline-flex items-center gap-1"
+              >
+                <ChevronLeft className="h-4 w-4" /> Previous
+              </button>
+              {canGoNext ? (
+                <button
+                  type="button"
+                  onClick={() => goToIndex(currentIndex + 1)}
+                  className="px-5 py-2.5 text-xs font-semibold rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 inline-flex items-center gap-1 shadow-md"
+                >
+                  Next <ChevronRight className="h-4 w-4" />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={goToReview}
+                  disabled={navigatingReview || autosaveStatus === "saving"}
+                  className="px-5 py-2.5 text-xs font-semibold rounded-xl bg-gradient-to-r from-teal-600 to-blue-600 text-white hover:opacity-95 inline-flex items-center gap-1.5 shadow-md disabled:opacity-50"
+                >
+                  {navigatingReview ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <ClipboardCheck className="h-4 w-4" />
+                  )}
+                  Review &amp; submit
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
