@@ -294,8 +294,12 @@ export function FullAssessmentPlayer({ assessmentId }: FullAssessmentPlayerProps
       const prevState = prev[currentQuestion.questionId] || fullAnswerFromSessionItem();
       const next: FullControlAnswerState = { ...prevState, ...patch };
 
-      if (patch.exceptionStatus) {
-        next.selectedOptionCode = optionCodeForException(patch.exceptionStatus);
+      if (patch.exceptionStatus !== undefined) {
+        // Clear placeholder codes for NotAssessed so autosave won't fan out to every control
+        next.selectedOptionCode =
+          patch.exceptionStatus === "NotAssessed"
+            ? undefined
+            : optionCodeForException(patch.exceptionStatus);
         if (
           patch.exceptionStatus !== "NotAssessed" &&
           next.testStatus === "NotStarted"
@@ -356,7 +360,10 @@ export function FullAssessmentPlayer({ assessmentId }: FullAssessmentPlayerProps
           testStatus: state.testStatus,
           exceptionStatus: state.exceptionStatus,
           selectedOptionCode:
-            state.selectedOptionCode || optionCodeForException(state.exceptionStatus),
+            state.exceptionStatus === "NotAssessed"
+              ? undefined
+              : state.selectedOptionCode ||
+                optionCodeForException(state.exceptionStatus),
           evidenceNotes: state.evidenceNotes.trim() || undefined,
           workPaperReference: state.workPaperReference.trim() || undefined,
           evidenceAttachmentUrl: result.fileUrl,

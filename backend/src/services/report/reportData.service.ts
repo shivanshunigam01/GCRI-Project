@@ -41,26 +41,31 @@ function exceptionStatusLabel(
   answer: IAnswer | undefined,
   isGap: boolean
 ): string {
-  if (!answer || (answer.testStatus === "NotStarted" && !answer.selectedOptionCode)) {
+  const meaningfulCode =
+    answer?.selectedOptionCode && answer.selectedOptionCode !== "NOT_ASSESSED"
+      ? answer.selectedOptionCode
+      : undefined;
+
+  if (!answer || (answer.testStatus === "NotStarted" && !meaningfulCode)) {
     return "Not Assessed";
   }
   if (assessmentType === "Full") {
     if (
       answer.exceptionStatus === "ExceptionNoted" ||
-      answer.selectedOptionCode === "EXCEPTION_NOTED"
+      meaningfulCode === "EXCEPTION_NOTED"
     ) {
       return "Exception Noted";
     }
     if (
       answer.exceptionStatus === "NoExceptionNoted" ||
-      answer.selectedOptionCode === "NO_EXCEPTION_NOTED"
+      meaningfulCode === "NO_EXCEPTION_NOTED"
     ) {
       return "No Exception Noted";
     }
     return "Not Assessed";
   }
   if (isGap) return "Exception Noted";
-  if (answer.selectedOptionCode || answer.testStatus === "Complete") {
+  if (meaningfulCode || answer.testStatus === "Complete") {
     return "No Exception Noted";
   }
   return "Not Assessed";
@@ -136,25 +141,66 @@ export function buildPillarProgress(
 
       for (const q of questions) {
         const a = answerMap.get(q.questionId);
+        const meaningfulCode =
+          a?.selectedOptionCode && a.selectedOptionCode !== "NOT_ASSESSED"
+            ? a.selectedOptionCode
+            : undefined;
+
+        if (session.assessmentType === "Full") {
+          const assessed =
+            a?.exceptionStatus === "NoExceptionNoted" ||
+            a?.exceptionStatus === "ExceptionNoted" ||
+            meaningfulCode === "NO_EXCEPTION_NOTED" ||
+            meaningfulCode === "EXCEPTION_NOTED";
+          const working =
+            !!a &&
+            !assessed &&
+            (a.testStatus === "InProgress" ||
+              Boolean(a.evidenceNotes?.trim()) ||
+              Boolean(a.workPaperReference?.trim()) ||
+              Boolean(a.evidenceAttachmentUrl));
+
+          if (assessed) {
+            complete++;
+            if (
+              a!.exceptionStatus === "ExceptionNoted" ||
+              meaningfulCode === "EXCEPTION_NOTED"
+            ) {
+              exceptionsNoted++;
+            }
+            if (
+              a!.exceptionStatus === "NoExceptionNoted" ||
+              meaningfulCode === "NO_EXCEPTION_NOTED"
+            ) {
+              noExceptions++;
+            }
+          } else if (working) {
+            inProgress++;
+          } else {
+            notStarted++;
+          }
+          continue;
+        }
+
         if (
           !a ||
-          (a.testStatus === "NotStarted" && !a.selectedOptionCode) ||
-          (!a.testStatus && !a.selectedOptionCode)
+          (a.testStatus === "NotStarted" && !meaningfulCode) ||
+          (!a.testStatus && !meaningfulCode)
         ) {
           notStarted++;
-        } else if (a.testStatus === "InProgress" && !a.selectedOptionCode) {
+        } else if (a.testStatus === "InProgress" && !meaningfulCode) {
           inProgress++;
         } else {
           complete++;
           if (
             a.exceptionStatus === "ExceptionNoted" ||
-            a.selectedOptionCode === "EXCEPTION_NOTED"
+            meaningfulCode === "EXCEPTION_NOTED"
           ) {
             exceptionsNoted++;
           }
           if (
             a.exceptionStatus === "NoExceptionNoted" ||
-            a.selectedOptionCode === "NO_EXCEPTION_NOTED"
+            meaningfulCode === "NO_EXCEPTION_NOTED"
           ) {
             noExceptions++;
           }

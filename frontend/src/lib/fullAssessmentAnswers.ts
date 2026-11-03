@@ -49,6 +49,18 @@ export function exceptionFromOptionCode(code?: string): ExceptionStatus {
   return "NotAssessed";
 }
 
+/** True when code represents a real Full-assessment choice (not pristine placeholder). */
+export function isMeaningfulFullOptionCode(code?: string): boolean {
+  if (!code) return false;
+  const normalized = code.toUpperCase().replace(/[\s-]/g, "_");
+  return (
+    normalized === "NO_EXCEPTION_NOTED" ||
+    normalized === "EXCEPTION_NOTED" ||
+    normalized === "NOEXCEPTIONNOTED" ||
+    normalized === "EXCEPTIONNOTED"
+  );
+}
+
 export function fullAnswerFromSessionItem(
   item?: AnswerItem
 ): FullControlAnswerState {
@@ -57,14 +69,22 @@ export function fullAnswerFromSessionItem(
   const exceptionStatus: ExceptionStatus =
     item.exceptionStatus || exceptionFromOptionCode(item.selectedOptionCode);
 
+  // Sessions pre-seed every control as NotAssessed. Never invent NOT_ASSESSED —
+  // that truthy placeholder made autosave treat all controls as touched.
+  let selectedOptionCode: string | undefined;
+  if (isMeaningfulFullOptionCode(item.selectedOptionCode)) {
+    selectedOptionCode = item.selectedOptionCode;
+  } else if (exceptionStatus !== "NotAssessed") {
+    selectedOptionCode = optionCodeForException(exceptionStatus);
+  }
+
   return {
     testStatus: item.testStatus || "NotStarted",
     exceptionStatus,
     evidenceNotes: item.evidenceNotes || "",
     workPaperReference: item.workPaperReference || "",
     evidenceAttachmentUrl: item.evidenceAttachmentUrl || undefined,
-    selectedOptionCode:
-      item.selectedOptionCode || optionCodeForException(exceptionStatus),
+    selectedOptionCode,
   };
 }
 
@@ -96,21 +116,24 @@ export function buildFullSavePayload(
       if (allow && !allow.has(q.questionId)) return false;
       const state = answersByQuestionId[q.questionId];
       if (!state) return false;
-      // Persist any control that has been touched beyond pristine empty
+      // Persist only controls the auditor actually touched — never pristine rows.
+      // Do not use selectedOptionCode alone: NOT_ASSESSED is not a real answer.
       return (
         state.testStatus !== "NotStarted" ||
         state.exceptionStatus !== "NotAssessed" ||
         Boolean(state.evidenceNotes.trim()) ||
         Boolean(state.workPaperReference.trim()) ||
         Boolean(state.evidenceAttachmentUrl) ||
-        Boolean(state.selectedOptionCode)
+        isMeaningfulFullOptionCode(state.selectedOptionCode)
       );
     })
     .map((q) => {
       const state = answersByQuestionId[q.questionId];
       const exceptionStatus = state.exceptionStatus;
       const selectedOptionCode =
-        state.selectedOptionCode || optionCodeForException(exceptionStatus);
+        exceptionStatus === "NotAssessed"
+          ? undefined
+          : state.selectedOptionCode || optionCodeForException(exceptionStatus);
 
       let testStatus = state.testStatus;
       if (isControlAssessed(state) && testStatus === "NotStarted") {
