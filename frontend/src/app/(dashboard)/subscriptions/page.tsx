@@ -6,6 +6,8 @@ import { companyService } from "@/services/company.service";
 import { dashboardService } from "@/services/dashboard.service";
 import { Company, SubscriptionTier } from "@/types/company.types";
 import { SubscriptionsPageSkeleton, DataTableSkeleton } from "@/components/shared/PageSkeletons";
+import { ListPagination } from "@/components/shared/ListPagination";
+import { useClientPagination } from "@/hooks/useClientPagination";
 import {
   CreditCard,
   Shield,
@@ -148,6 +150,8 @@ export default function SubscriptionsPage() {
       return matchesSearch && matchesTier;
     });
   }, [companies, searchQuery, tierFilter]);
+
+  const companiesPagination = useClientPagination(filteredCompanies);
 
   if (loading && companies.length === 0 && !error) {
     return <SubscriptionsPageSkeleton />;
@@ -461,7 +465,7 @@ export default function SubscriptionsPage() {
             <div className="p-4">
               <DataTableSkeleton rows={6} columns={6} className="border-0 shadow-none" />
             </div>
-          ) : filteredCompanies.length === 0 ? (
+          ) : companiesPagination.total === 0 ? (
             <div className="p-12 text-center text-slate-400 text-xs">
               <Building2 className="h-8 w-8 text-slate-300 mx-auto mb-2" />
               <p className="font-medium text-slate-600">No organizations found matching criteria.</p>
@@ -472,6 +476,7 @@ export default function SubscriptionsPage() {
               </p>
             </div>
           ) : (
+            <>
             <table className="w-full text-left text-xs">
               <thead className="bg-slate-50/60 text-slate-500 font-semibold border-b border-slate-200">
                 <tr>
@@ -484,7 +489,7 @@ export default function SubscriptionsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-slate-700">
-                {filteredCompanies.map((c) => (
+                {companiesPagination.pageItems.map((c) => (
                   <tr key={c._id} className="hover:bg-slate-50/70 transition">
                     <td className="px-6 py-3.5">
                       <div className="flex items-center gap-2.5">
@@ -554,6 +559,18 @@ export default function SubscriptionsPage() {
                 ))}
               </tbody>
             </table>
+            <ListPagination
+              page={companiesPagination.page}
+              totalPages={companiesPagination.totalPages}
+              total={companiesPagination.total}
+              from={companiesPagination.from}
+              to={companiesPagination.to}
+              onPrevious={companiesPagination.goPrev}
+              onNext={companiesPagination.goNext}
+              itemLabel="organizations"
+              disabled={loading}
+            />
+            </>
           )}
         </div>
       </div>

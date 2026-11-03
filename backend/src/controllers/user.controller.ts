@@ -15,7 +15,7 @@ export async function getMe(req: Request, res: Response, next: NextFunction) {
     const userId = req.user?.userId;
     const user = await User.findById(userId)
       .select("-passwordHash -mfa.secret -mfa.tempSecret -mfa.recoveryCodes")
-      .populate("companyId", "name domain verificationStatus status");
+      .populate("companyId", "name domain verificationStatus status logo");
 
     if (!user) {
       return sendError(res, "User not found", 404, "USER_NOT_FOUND");
@@ -110,7 +110,7 @@ export async function getUsers(req: Request, res: Response, next: NextFunction) 
     const [users, total] = await Promise.all([
       User.find(filter)
         .select("-passwordHash -mfa.secret -mfa.tempSecret -mfa.recoveryCodes")
-        .populate("companyId", "name domain")
+        .populate("companyId", "name domain logo")
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit),
@@ -138,7 +138,7 @@ export async function getUserById(req: Request, res: Response, next: NextFunctio
     const { id } = req.params;
     const user = await User.findById(id)
       .select("-passwordHash -mfa.secret -mfa.tempSecret -mfa.recoveryCodes")
-      .populate("companyId", "name domain verificationStatus status");
+      .populate("companyId", "name domain verificationStatus status logo");
 
     if (!user) {
       return sendError(res, "User not found", 404, "USER_NOT_FOUND");

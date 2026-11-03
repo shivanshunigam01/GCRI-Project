@@ -11,6 +11,8 @@ import {
   AdminAssessmentItem,
 } from "@/types/dashboard.types";
 import { AssessmentListSkeleton } from "@/components/shared/PageSkeletons";
+import { ListPagination } from "@/components/shared/ListPagination";
+import { useClientPagination } from "@/hooks/useClientPagination";
 import {
   FileCheck2,
   Plus,
@@ -53,7 +55,7 @@ export default function AssessmentsPage() {
           status: statusFilter === "All" ? undefined : statusFilter,
           assessmentType: typeFilter === "All" ? undefined : typeFilter,
           search: searchQuery || undefined,
-          limit: 50,
+          limit: 100,
         });
         if (res?.data?.assessments) {
           setAdminAssessments(res.data.assessments);
@@ -62,7 +64,7 @@ export default function AssessmentsPage() {
         const res = await dashboardService.getAuditorAssessments({
           status: statusFilter === "All" ? undefined : statusFilter,
           assessmentType: typeFilter === "All" ? undefined : typeFilter,
-          limit: 50,
+          limit: 100,
         });
         if (res?.data?.assessments) {
           setAuditorAssessments(res.data.assessments);
@@ -88,20 +90,23 @@ export default function AssessmentsPage() {
     return name.includes(q) || type.includes(q);
   });
 
+  const adminPagination = useClientPagination(adminAssessments);
+  const auditorPagination = useClientPagination(filteredAuditorAssessments);
+
   return (
     <div className="space-y-6">
       {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-200 pb-5">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-200 dark:border-slate-700/80 pb-5">
         <div>
           <div className="flex items-center gap-2">
             <h1 className="page-title font-editorial">
               Assessments Workspace
             </h1>
-            <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+            <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-800">
               {isAdmin ? "Platform Audit Tracker" : "Auditor Workload"}
             </span>
           </div>
-          <p className="text-sm text-slate-500 mt-1">
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
             {isAdmin
               ? "Operational metadata tracking across client assessments. Confidential answers are strictly restricted."
               : "Execute evaluations across 7 GRAICE Pillars, capture evidence, and generate audit reports."}
@@ -112,7 +117,7 @@ export default function AssessmentsPage() {
           <div>
             <Link
               href="/assessments/new"
-              className="inline-flex items-center gap-2 px-4 py-2.5 bg-[#0c162c] hover:bg-slate-800 text-white font-semibold text-sm rounded-lg shadow-sm transition"
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-[#0c162c] hover:bg-slate-800 dark:bg-teal-600 dark:hover:bg-teal-500 text-white font-semibold text-sm rounded-lg shadow-sm transition"
             >
               <Plus className="h-4 w-4" />
               Start Assessment
@@ -122,7 +127,7 @@ export default function AssessmentsPage() {
       </div>
 
       {/* Filter and Search Bar */}
-      <div className="bg-white p-4 rounded-xl border border-slate-200/90 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3">
+      <div className="bg-white dark:bg-slate-900/90 p-4 rounded-xl border border-slate-200/90 dark:border-slate-700 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
           <input
@@ -130,19 +135,19 @@ export default function AssessmentsPage() {
             placeholder="Search by client organization..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition"
+            className="w-full pl-10 pr-4 py-2 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white dark:focus:bg-slate-800 transition"
           />
         </div>
 
         <div className="flex items-center gap-2.5 flex-wrap">
           {/* Status Filter */}
-          <div className="flex items-center gap-1.5 text-xs text-slate-600 font-medium">
+          <div className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300 font-medium">
             <Filter className="h-3.5 w-3.5 text-slate-400" /> Status:
           </div>
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="text-xs bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2 font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg px-2.5 py-2 font-medium text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="All">All Statuses</option>
             <option value="InProgress">In Progress</option>
@@ -154,7 +159,7 @@ export default function AssessmentsPage() {
           <select
             value={typeFilter}
             onChange={(e) => setTypeFilter(e.target.value)}
-            className="text-xs bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2 font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg px-2.5 py-2 font-medium text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="All">All Types</option>
             <option value="Light">Light Assessment (30 Q)</option>
@@ -163,7 +168,7 @@ export default function AssessmentsPage() {
 
           <button
             onClick={fetchAssessments}
-            className="p-2 border border-slate-200 bg-slate-50 hover:bg-slate-100 rounded-lg text-slate-600 transition"
+            className="p-2 border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg text-slate-600 dark:text-slate-300 transition"
             title="Refresh assessments"
           >
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
@@ -175,9 +180,9 @@ export default function AssessmentsPage() {
       {loading ? (
         <AssessmentListSkeleton />
       ) : error ? (
-        <div className="p-8 bg-white rounded-xl border border-red-200 text-center space-y-3">
+        <div className="p-8 bg-white dark:bg-slate-900 rounded-xl border border-red-200 dark:border-red-900 text-center space-y-3">
           <AlertCircle className="h-6 w-6 text-red-500 mx-auto" />
-          <p className="text-sm font-semibold text-slate-800">{error}</p>
+          <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">{error}</p>
           <button
             onClick={fetchAssessments}
             className="px-3 py-1.5 bg-slate-900 text-white rounded-lg text-xs font-semibold hover:bg-slate-800"
@@ -187,20 +192,21 @@ export default function AssessmentsPage() {
         </div>
       ) : isAdmin ? (
         /* Admin Assessment Pipeline Table */
-        <div className="bg-white rounded-xl border border-slate-200/90 shadow-xs overflow-hidden">
-          <div className="px-5 py-4 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-700 uppercase tracking-wider">
-              Platform Sessions ({adminAssessments.length})
+        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200/90 dark:border-slate-700 shadow-xs overflow-hidden">
+          <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wider">
+              Platform Sessions ({adminPagination.total})
             </span>
             <span className="text-xs text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 font-medium">
               🔒 Confidential content restricted
             </span>
           </div>
 
-          {adminAssessments.length > 0 ? (
+          {adminPagination.total > 0 ? (
+            <>
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
-                <thead className="text-[11px] font-semibold text-slate-400 uppercase bg-slate-50/80 border-b border-slate-200">
+                <thead className="text-[11px] font-semibold text-slate-400 uppercase bg-slate-50/80 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-700">
                   <tr>
                     <th className="py-3 px-5">Organization</th>
                     <th className="py-3 px-4">Assigned Auditor</th>
@@ -210,40 +216,40 @@ export default function AssessmentsPage() {
                     <th className="py-3 px-4 text-right">Created Date</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {adminAssessments.map((a) => (
-                    <tr key={a._id} className="hover:bg-slate-50/80 transition">
-                      <td className="py-3.5 px-5 font-semibold text-slate-900">
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {adminPagination.pageItems.map((a) => (
+                    <tr key={a._id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition">
+                      <td className="py-3.5 px-5 font-semibold text-slate-900 dark:text-slate-100">
                         <div className="flex items-center gap-2">
                           <Building2 className="h-4 w-4 text-slate-400 shrink-0" />
                           <span>{a.organization?.name || "Client Organization"}</span>
                         </div>
                       </td>
-                      <td className="py-3.5 px-4 text-slate-600">
+                      <td className="py-3.5 px-4 text-slate-600 dark:text-slate-300">
                         {a.auditor?.name || "Assigned Assessor"}
                       </td>
                       <td className="py-3.5 px-4">
-                        <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+                        <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600">
                           {a.assessmentType}
                         </span>
                       </td>
-                      <td className="py-3.5 px-4 text-slate-500 font-mono">
+                      <td className="py-3.5 px-4 text-slate-500 dark:text-slate-400 font-mono">
                         v{a.frameworkVersion}
                       </td>
                       <td className="py-3.5 px-4">
                         <span
                           className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${
                             a.status === "Submitted"
-                              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                              ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800"
                               : a.status === "InProgress"
-                              ? "bg-blue-50 text-blue-700 border-blue-200"
-                              : "bg-slate-100 text-slate-600 border-slate-200"
+                              ? "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/50 dark:text-blue-300 dark:border-blue-800"
+                              : "bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-600"
                           }`}
                         >
                           {a.status}
                         </span>
                       </td>
-                      <td className="py-3.5 px-4 text-slate-500 text-right">
+                      <td className="py-3.5 px-4 text-slate-500 dark:text-slate-400 text-right">
                         {new Date(a.createdAt).toLocaleDateString()}
                       </td>
                     </tr>
@@ -251,6 +257,17 @@ export default function AssessmentsPage() {
                 </tbody>
               </table>
             </div>
+            <ListPagination
+              page={adminPagination.page}
+              totalPages={adminPagination.totalPages}
+              total={adminPagination.total}
+              from={adminPagination.from}
+              to={adminPagination.to}
+              onPrevious={adminPagination.goPrev}
+              onNext={adminPagination.goNext}
+              itemLabel="assessments"
+            />
+            </>
           ) : (
             <div className="p-12 text-center space-y-2">
               <FileCheck2 className="h-8 w-8 text-slate-300 mx-auto" />
@@ -262,9 +279,10 @@ export default function AssessmentsPage() {
       ) : (
         /* Auditor Assessment Cards Grid */
         <div className="space-y-4">
-          {filteredAuditorAssessments.length > 0 ? (
+          {auditorPagination.total > 0 ? (
+            <>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-              {filteredAuditorAssessments.map((item) => {
+              {auditorPagination.pageItems.map((item) => {
                 const isSubmitted = item.status === "Submitted";
                 const isArchived = item.status === "Archived";
                 const pct = item.completionPercentage || 0;
@@ -272,37 +290,39 @@ export default function AssessmentsPage() {
                 return (
                   <div
                     key={item._id}
-                    className="group bg-white rounded-xl border border-slate-200/90 p-5 shadow-xs transition-all duration-300 hover:-translate-y-1 hover:shadow-md hover:border-slate-300 flex flex-col justify-between"
+                    className="group bg-white dark:bg-slate-900 rounded-xl border border-slate-200/90 dark:border-slate-700 p-5 shadow-xs transition-all duration-300 hover:-translate-y-1 hover:shadow-md hover:border-slate-300 dark:hover:border-slate-500 flex flex-col justify-between"
                   >
                     <div className="space-y-3">
                       {/* Card Header */}
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
-                          <h3 className="text-base font-bold text-slate-900 group-hover:text-blue-600 transition-colors truncate">
+                          <h3 className="text-base font-bold text-slate-900 dark:text-slate-50 group-hover:text-blue-600 dark:group-hover:text-cyan-300 transition-colors truncate">
                             {item.organization?.name || "Client Organization"}
                           </h3>
-                          <p className="text-xs text-slate-500 truncate mt-0.5">
+                          <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
                             {item.organization?.industry || "Enterprise"} • {item.organization?.activePlan || "Bronze"}
                           </p>
                         </div>
                         <span
                           className={`px-2 py-0.5 rounded-full text-[10px] font-bold border shrink-0 ${
                             item.assessmentType === "Full"
-                              ? "bg-indigo-50 text-indigo-700 border-indigo-200"
-                              : "bg-sky-50 text-sky-700 border-sky-200"
+                              ? "bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950/50 dark:text-indigo-300 dark:border-indigo-800"
+                              : "bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-950/50 dark:text-sky-300 dark:border-sky-800"
                           }`}
                         >
                           {item.assessmentType}
                         </span>
                       </div>
 
-                      {/* Progress Bar */}
+                      {/* Progress Bar — % answered, not submit status */}
                       <div className="space-y-1.5 pt-2">
                         <div className="flex items-center justify-between text-xs">
-                          <span className="text-slate-600 font-medium">Evaluation Progress</span>
-                          <span className="font-bold text-slate-900">{pct}%</span>
+                          <span className="text-slate-600 dark:text-slate-300 font-medium">
+                            {isSubmitted ? "Controls answered" : "Evaluation progress"}
+                          </span>
+                          <span className="font-bold text-slate-900 dark:text-slate-50">{pct}%</span>
                         </div>
-                        <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+                        <div className="h-2 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
                           <div
                             className={`h-full rounded-full transition-all duration-700 ${
                               isSubmitted
@@ -314,18 +334,29 @@ export default function AssessmentsPage() {
                             style={{ width: `${pct}%` }}
                           />
                         </div>
+                        {isSubmitted && pct < 100 && (
+                          <p className="text-[10px] text-slate-400 leading-snug">
+                            Submitted with some controls left unanswered / not assessed.
+                          </p>
+                        )}
                       </div>
 
-                      {/* Status and Aid Pill */}
-                      <div className="flex items-center justify-between text-xs pt-1 text-slate-500">
+                      {/* Status — this is the real completion signal */}
+                      <div className="flex items-center justify-between text-xs pt-1 text-slate-500 dark:text-slate-400">
                         <div className="flex items-center gap-1.5">
                           {isSubmitted ? (
-                            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                          ) : isArchived ? (
+                            <Clock className="h-3.5 w-3.5 text-slate-400" />
                           ) : (
-                            <Clock className="h-3.5 w-3.5 text-blue-600" />
+                            <Clock className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
                           )}
-                          <span className="font-medium text-slate-700">
-                            {isSubmitted ? "Submitted (Locked)" : "In Progress"}
+                          <span className="font-medium text-slate-700 dark:text-slate-200">
+                            {isSubmitted
+                              ? "Completed · Submitted (locked)"
+                              : isArchived
+                                ? "Archived"
+                                : "In progress · not submitted yet"}
                           </span>
                         </div>
                         <span className="text-[11px] text-slate-400">
@@ -335,18 +366,18 @@ export default function AssessmentsPage() {
                     </div>
 
                     {/* Card Actions */}
-                    <div className="pt-4 border-t border-slate-100 mt-4 flex items-center justify-between">
+                    <div className="pt-4 border-t border-slate-100 dark:border-slate-800 mt-4 flex items-center justify-between">
                       {isSubmitted ? (
                         <>
                           <Link
                             href={`/assessments/${item._id}/results`}
-                            className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 hover:text-emerald-800 transition"
+                            className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-400 hover:text-emerald-800 dark:hover:text-emerald-300 transition"
                           >
                             <Shield className="h-3.5 w-3.5" /> View Radar &amp; Reports
                           </Link>
                           <Link
                             href={`/assessments/${item._id}/findings`}
-                            className="text-xs font-semibold text-blue-600 hover:underline"
+                            className="text-xs font-semibold text-blue-600 dark:text-cyan-400 hover:underline"
                           >
                             Findings →
                           </Link>
@@ -355,13 +386,13 @@ export default function AssessmentsPage() {
                         <div className="flex flex-col sm:flex-row gap-2 w-full">
                           <Link
                             href={`/assessments/${item._id}`}
-                            className="flex-1 inline-flex items-center justify-center gap-1.5 py-2 px-3 bg-[#0c162c] hover:bg-slate-800 text-white text-xs font-semibold rounded-lg shadow-2xs transition"
+                            className="flex-1 inline-flex items-center justify-center gap-1.5 py-2 px-3 bg-[#0c162c] hover:bg-slate-800 dark:bg-teal-600 dark:hover:bg-teal-500 text-white text-xs font-semibold rounded-lg shadow-2xs transition"
                           >
                             Resume <ArrowRight className="h-3.5 w-3.5" />
                           </Link>
                           <Link
                             href={`/assessments/${item._id}/review`}
-                            className="flex-1 inline-flex items-center justify-center gap-1.5 py-2 px-3 border border-slate-200 bg-white hover:bg-slate-50 text-slate-800 text-xs font-semibold rounded-lg transition"
+                            className="flex-1 inline-flex items-center justify-center gap-1.5 py-2 px-3 border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 text-xs font-semibold rounded-lg transition"
                           >
                             Review &amp; submit
                           </Link>
@@ -372,20 +403,34 @@ export default function AssessmentsPage() {
                 );
               })}
             </div>
+            <div className="rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden bg-white dark:bg-slate-900">
+              <ListPagination
+                page={auditorPagination.page}
+                totalPages={auditorPagination.totalPages}
+                total={auditorPagination.total}
+                from={auditorPagination.from}
+                to={auditorPagination.to}
+                onPrevious={auditorPagination.goPrev}
+                onNext={auditorPagination.goNext}
+                itemLabel="assessments"
+                className="border-t-0"
+              />
+            </div>
+            </>
           ) : (
-            <div className="bg-white rounded-xl border border-slate-200 p-12 text-center space-y-4">
-              <div className="p-3 bg-blue-50 text-blue-600 rounded-full inline-flex">
+            <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-12 text-center space-y-4">
+              <div className="p-3 bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-300 rounded-full inline-flex">
                 <FileCheck2 className="h-8 w-8" />
               </div>
               <div className="space-y-1">
-                <h3 className="text-base font-bold text-slate-900">No active assessments found</h3>
-                <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                <h3 className="text-base font-bold text-slate-900 dark:text-slate-50">No active assessments found</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
                   You have no assessments matching this criteria. Initiate a new assessment for your assigned client organizations.
                 </p>
               </div>
               <Link
                 href="/assessments/new"
-                className="inline-flex items-center gap-2 px-4 py-2 bg-[#0c162c] text-white text-xs font-semibold rounded-lg hover:bg-slate-800 transition shadow-sm"
+                className="inline-flex items-center gap-2 px-4 py-2 bg-[#0c162c] dark:bg-teal-600 text-white text-xs font-semibold rounded-lg hover:bg-slate-800 dark:hover:bg-teal-500 transition shadow-sm"
               >
                 <Plus className="h-4 w-4" /> Start Assessment
               </Link>

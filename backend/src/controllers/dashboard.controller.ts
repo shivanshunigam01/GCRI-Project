@@ -541,6 +541,7 @@ export async function getAuditorOrganizations(req: Request, res: Response, next:
           status: c.status,
           activePlan: c.activePlan || "Bronze",
           size: c.size || "100-500 employees",
+          logo: c.logo?.url ? { url: c.logo.url, publicId: c.logo.publicId } : null,
           assessmentsSummary: {
             total,
             inProgress,

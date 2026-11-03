@@ -4,6 +4,8 @@ import React, { useState, useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { auditLogService } from "@/services/auditLog.service";
 import { DataTableSkeleton } from "@/components/shared/PageSkeletons";
+import { ListPagination } from "@/components/shared/ListPagination";
+import { useClientPagination } from "@/hooks/useClientPagination";
 import { AuditLogEntry, AuditLogStats } from "@/types/auditLog.types";
 import {
   History,
@@ -19,7 +21,11 @@ import {
   Layers,
   CheckCircle2,
   Lock,
+  Activity,
+  Ban,
 } from "lucide-react";
+import { MetricListModal, MetricListRow } from "@/components/shared/MetricListModal";
+import { SummaryMetricTile } from "@/components/shared/SummaryMetricTile";
 
 export default function AdminAuditLogsPage() {
   const { isAdmin } = useAuth();
@@ -33,6 +39,7 @@ export default function AdminAuditLogsPage() {
   const [actionFilter, setActionFilter] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
+  const [metricModal, setMetricModal] = useState<"all24h" | "denials" | "all" | "topAction" | null>(null);
 
   const fetchAuditData = async () => {
     setLoading(true);
@@ -43,7 +50,7 @@ export default function AdminAuditLogsPage() {
           entity: entityFilter || undefined,
           action: actionFilter || undefined,
           search: searchQuery || undefined,
-          limit: 50,
+          limit: 100,
         }),
         auditLogService.getAuditLogStats(),
       ]);
@@ -61,6 +68,52 @@ export default function AdminAuditLogsPage() {
   useEffect(() => {
     fetchAuditData();
   }, [entityFilter, actionFilter]);
+
+  const logsPagination = useClientPagination(logs);
+
+  const toLogRow = (log: AuditLogEntry): MetricListRow => {
+    const actor =
+      typeof log.actorId === "object" && log.actorId
+        ? log.actorId.name || log.actorId.email
+        : log.actorEmail || "System";
+    return {
+      id: log._id,
+      title: log.action,
+      subtitle: `${log.entity}${log.entityId ? ` · ${log.entityId}` : ""}`,
+      meta: `${actor} · ${new Date(log.timestamp).toLocaleString()}`,
+      badge: log.entity,
+      badgeTone: /DENY|FAIL|ERROR|SUSPEND/i.test(log.action) ? "danger" : "neutral",
+      imageVariant: "avatar",
+      imageName: actor,
+      onClick: () => setExpandedLogId(log._id),
+    };
+  };
+
+  const denialLogs = logs.filter((l) =>
+    /DENY|UNAUTHORIZED|FORBIDDEN|FAIL|LOCKED/i.test(l.action)
+  );
+  const last24hCutoff = Date.now() - 24 * 60 * 60 * 1000;
+  const logs24h = logs.filter((l) => new Date(l.timestamp).getTime() >= last24hCutoff);
+  const topAction = stats?.topActions?.[0]?.action;
+  const topActionLogs = topAction ? logs.filter((l) => l.action === topAction) : [];
+
+  const metricModalRows =
+    metricModal === "denials"
+      ? denialLogs.map(toLogRow)
+      : metricModal === "all24h"
+        ? logs24h.map(toLogRow)
+        : metricModal === "topAction"
+          ? topActionLogs.map(toLogRow)
+          : logs.map(toLogRow);
+
+  const metricModalTitle =
+    metricModal === "denials"
+      ? "Auth Denials"
+      : metricModal === "all24h"
+        ? "Events (last 24h)"
+        : metricModal === "topAction"
+          ? `Top Action: ${topAction || "—"}`
+          : "All Recorded Logs";
 
   if (!isAdmin) {
     return (
@@ -99,45 +152,52 @@ export default function AdminAuditLogsPage() {
         </button>
       </div>
 
-      {/* 24h Metrics KPI Row */}
+      {/* 24h Metrics KPI Row (click → list popup) */}
       {stats && (
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-          <div className="bg-white rounded-xl border border-slate-200/90 p-4 shadow-xs">
-            <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
-              24h Event Velocity
-            </span>
-            <div className="text-2xl font-extrabold text-slate-900 mt-1">
-              {stats.eventsLast24Hours}
-            </div>
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <SummaryMetricTile
+              tone="slate"
+              icon={Activity}
+              value={stats.eventsLast24Hours}
+              label="24h Event Velocity"
+              subtext="Click to list loaded events"
+              onClick={() => setMetricModal("all24h")}
+            />
+            <SummaryMetricTile
+              tone="rose"
+              icon={Ban}
+              value={stats.authorizationDenialsCount}
+              label="Auth Denials (24h)"
+              subtext="Click to list denials"
+              onClick={() => setMetricModal("denials")}
+            />
+            <SummaryMetricTile
+              tone="blue"
+              icon={History}
+              value={stats.totalEvents}
+              label="Total Recorded Logs"
+              subtext="Click to list loaded logs"
+              onClick={() => setMetricModal("all")}
+            />
+            <SummaryMetricTile
+              tone="cyan"
+              icon={Layers}
+              value={stats.topActions?.[0]?.count ?? 0}
+              label="Top Action (24h)"
+              subtext={stats.topActions?.[0]?.action || "LOGIN_SUCCESS"}
+              onClick={() => setMetricModal("topAction")}
+            />
           </div>
-
-          <div className="bg-white rounded-xl border border-slate-200/90 p-4 shadow-xs">
-            <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
-              Auth Denials (24h)
-            </span>
-            <div className="text-2xl font-extrabold text-rose-600 mt-1">
-              {stats.authorizationDenialsCount}
-            </div>
-          </div>
-
-          <div className="bg-white rounded-xl border border-slate-200/90 p-4 shadow-xs">
-            <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
-              Total Recorded Logs
-            </span>
-            <div className="text-2xl font-extrabold text-blue-600 mt-1">
-              {stats.totalEvents}
-            </div>
-          </div>
-
-          <div className="bg-white rounded-xl border border-slate-200/90 p-4 shadow-xs">
-            <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
-              Top Action (24h)
-            </span>
-            <div className="text-sm font-bold text-slate-800 truncate mt-2">
-              {stats.topActions?.[0]?.action || "LOGIN_SUCCESS"}
-            </div>
-          </div>
-        </div>
+          <MetricListModal
+            open={metricModal !== null}
+            onClose={() => setMetricModal(null)}
+            title={metricModalTitle}
+            description="Audit events from the current loaded trail"
+            emptyMessage="No matching audit events in the current result set."
+            rows={metricModalRows}
+          />
+        </>
       )}
 
       {/* Filter and Search Bar */}
@@ -202,7 +262,8 @@ export default function AdminAuditLogsPage() {
           <div className="p-4">
             <DataTableSkeleton rows={8} columns={6} className="border-0 shadow-none" />
           </div>
-        ) : logs.length > 0 ? (
+        ) : logsPagination.total > 0 ? (
+          <>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead className="text-[11px] font-semibold text-slate-400 uppercase bg-slate-50/80 border-b border-slate-200">
@@ -216,7 +277,7 @@ export default function AdminAuditLogsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {logs.map((log) => {
+                {logsPagination.pageItems.map((log) => {
                   const isExpanded = expandedLogId === log._id;
                   const actorEmail =
                     log.actorEmail ||
@@ -306,6 +367,18 @@ export default function AdminAuditLogsPage() {
               </tbody>
             </table>
           </div>
+          <ListPagination
+            page={logsPagination.page}
+            totalPages={logsPagination.totalPages}
+            total={logsPagination.total}
+            from={logsPagination.from}
+            to={logsPagination.to}
+            onPrevious={logsPagination.goPrev}
+            onNext={logsPagination.goNext}
+            itemLabel="audit events"
+            disabled={loading}
+          />
+          </>
         ) : (
           <div className="p-12 text-center space-y-2">
             <History className="h-8 w-8 text-slate-300 mx-auto" />

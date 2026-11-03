@@ -32,6 +32,8 @@ import { AuditorOrganizationMapping } from "@/types/auditorMapping.types";
 import { User as UserType } from "@/types/auth.types";
 import { Company } from "@/types/company.types";
 import { useAuth } from "@/context/AuthContext";
+import { MetricListModal, MetricListRow } from "@/components/shared/MetricListModal";
+import { SummaryMetricTile } from "@/components/shared/SummaryMetricTile";
 
 export default function AuditorMappingsPage() {
   const { user: currentUser, isSuperAdmin, isOrgAdmin } = useAuth();
@@ -50,10 +52,10 @@ export default function AuditorMappingsPage() {
 
   // Pagination & Filtering
   const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(20);
+  const [limit, setLimit] = useState(10);
   const [paginationMeta, setPaginationMeta] = useState({
     page: 1,
-    limit: 20,
+    limit: 10,
     total: 0,
     totalPages: 1,
   });
@@ -75,6 +77,8 @@ export default function AuditorMappingsPage() {
   const [unassignModalOpen, setUnassignModalOpen] = useState(false);
   const [mappingToUnassign, setMappingToUnassign] = useState<AuditorOrganizationMapping | null>(null);
   const [unassignLoading, setUnassignLoading] = useState(false);
+
+  const [metricModal, setMetricModal] = useState<"all" | "active" | "assessors" | "orgs" | null>(null);
 
   // Fetch all mappings from Live Backend
   const fetchMappings = useCallback(async () => {
@@ -172,6 +176,81 @@ export default function AuditorMappingsPage() {
     return set.size;
   }, [mappings]);
 
+  const mappingToRow = (m: AuditorOrganizationMapping): MetricListRow => {
+    const auditor = typeof m.auditorId === "object" ? m.auditorId : null;
+    const org = typeof m.organizationId === "object" ? m.organizationId : null;
+    return {
+      id: m._id,
+      title: auditor?.name || "Assessor",
+      subtitle: org?.name || "Organization",
+      meta: auditor?.email || org?.domain,
+      badge: m.status,
+      badgeTone: m.status === "Active" ? "success" : "warning",
+      imageUrl: auditor?.avatar?.url || org?.logo?.url,
+      imageName: auditor?.name || org?.name,
+      imageVariant: auditor ? "avatar" : "logo",
+    };
+  };
+
+  const uniqueAssessorRows = useMemo((): MetricListRow[] => {
+    const map = new Map<string, MetricListRow>();
+    mappings.forEach((m) => {
+      const auditor = typeof m.auditorId === "object" ? m.auditorId : null;
+      const id = auditor?._id || (typeof m.auditorId === "string" ? m.auditorId : "");
+      if (!id || map.has(id)) return;
+      map.set(id, {
+        id,
+        title: auditor?.name || "Assessor",
+        subtitle: auditor?.email,
+        badge: "Assessor",
+        badgeTone: "info",
+        imageUrl: auditor?.avatar?.url,
+        imageName: auditor?.name || auditor?.email,
+        imageVariant: "avatar",
+      });
+    });
+    return Array.from(map.values());
+  }, [mappings]);
+
+  const uniqueOrgRows = useMemo((): MetricListRow[] => {
+    const map = new Map<string, MetricListRow>();
+    mappings.forEach((m) => {
+      const org = typeof m.organizationId === "object" ? m.organizationId : null;
+      const id = org?._id || (typeof m.organizationId === "string" ? m.organizationId : "");
+      if (!id || map.has(id)) return;
+      map.set(id, {
+        id,
+        title: org?.name || "Organization",
+        subtitle: org?.domain,
+        badge: org?.status,
+        badgeTone: org?.status === "Active" ? "success" : "neutral",
+        imageUrl: org?.logo?.url,
+        imageName: org?.name,
+        imageVariant: "logo",
+        href: `/organizations/${id}`,
+      });
+    });
+    return Array.from(map.values());
+  }, [mappings]);
+
+  const metricModalRows =
+    metricModal === "active"
+      ? mappings.filter((m) => m.status === "Active").map(mappingToRow)
+      : metricModal === "assessors"
+        ? uniqueAssessorRows
+        : metricModal === "orgs"
+          ? uniqueOrgRows
+          : mappings.map(mappingToRow);
+
+  const metricModalTitle =
+    metricModal === "active"
+      ? "Active Scopes"
+      : metricModal === "assessors"
+        ? "Mapped Assessors"
+        : metricModal === "orgs"
+          ? "Client Organizations"
+          : "Total Mappings";
+
   // Handle Create Assignment
   const handleCreateAssignment = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -233,7 +312,7 @@ export default function AuditorMappingsPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shrink-0">
         <div>
           <div className="flex items-center gap-2.5">
-            <h1 className="text-xl sm:text-2xl font-black tracking-tight text-slate-900">
+            <h1 className="page-title page-title-lg">
               Auditor Mappings &amp; Engagements
             </h1>
             <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-cyan-50 text-cyan-700 border border-cyan-200">
@@ -293,56 +372,50 @@ export default function AuditorMappingsPage() {
         </div>
       )}
 
-      {/* Compact 4-Card Metric Grid (Fixed Top) */}
+      {/* Compact 4-Card Metric Grid (click → list popup) */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 shrink-0">
-        {/* Card 1: Total Mappings */}
-        <div className="bg-white rounded-xl border border-slate-200/90 p-3.5 shadow-2xs hover:shadow-xs transition flex items-center gap-3">
-          <div className="h-10 w-10 rounded-xl bg-cyan-50 text-cyan-700 flex items-center justify-center shrink-0 border border-cyan-100">
-            <Layers className="h-5 w-5" strokeWidth={1.85} />
-          </div>
-          <div className="min-w-0">
-            <div className="text-xl font-black text-slate-900 leading-tight tracking-tight">{totalCount}</div>
-            <div className="text-[11px] font-medium text-slate-500 truncate mt-0.5">Total Mappings</div>
-            <div className="text-[10px] font-semibold text-cyan-600 mt-0.5">Database Registry</div>
-          </div>
-        </div>
-
-        {/* Card 2: Active Engagements */}
-        <div className="bg-white rounded-xl border border-slate-200/90 p-3.5 shadow-2xs hover:shadow-xs transition flex items-center gap-3">
-          <div className="h-10 w-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 border border-emerald-100">
-            <Activity className="h-5 w-5" strokeWidth={1.85} />
-          </div>
-          <div className="min-w-0">
-            <div className="text-xl font-black text-slate-900 leading-tight tracking-tight">{activeCount}</div>
-            <div className="text-[11px] font-medium text-slate-500 truncate mt-0.5">Active Scopes</div>
-            <div className="text-[10px] font-semibold text-emerald-600 mt-0.5">● Ready for Audit</div>
-          </div>
-        </div>
-
-        {/* Card 3: Assigned Assessors */}
-        <div className="bg-white rounded-xl border border-slate-200/90 p-3.5 shadow-2xs hover:shadow-xs transition flex items-center gap-3">
-          <div className="h-10 w-10 rounded-xl bg-teal-50 text-teal-700 flex items-center justify-center shrink-0 border border-teal-100">
-            <UserCheck className="h-5 w-5" strokeWidth={1.85} />
-          </div>
-          <div className="min-w-0">
-            <div className="text-xl font-black text-slate-900 leading-tight tracking-tight">{uniqueAssessors}</div>
-            <div className="text-[11px] font-medium text-slate-500 truncate mt-0.5">Mapped Assessors</div>
-            <div className="text-[10px] font-semibold text-teal-600 mt-0.5">Active Certified</div>
-          </div>
-        </div>
-
-        {/* Card 4: Covered Organizations */}
-        <div className="bg-white rounded-xl border border-slate-200/90 p-3.5 shadow-2xs hover:shadow-xs transition flex items-center gap-3">
-          <div className="h-10 w-10 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center shrink-0 border border-blue-100">
-            <Building2 className="h-5 w-5" strokeWidth={1.85} />
-          </div>
-          <div className="min-w-0">
-            <div className="text-xl font-black text-slate-900 leading-tight tracking-tight">{uniqueOrgs}</div>
-            <div className="text-[11px] font-medium text-slate-500 truncate mt-0.5">Client Organizations</div>
-            <div className="text-[10px] font-semibold text-blue-600 mt-0.5">Covered Portfolios</div>
-          </div>
-        </div>
+        <SummaryMetricTile
+          tone="cyan"
+          icon={Layers}
+          value={totalCount}
+          label="Total Mappings"
+          subtext="Database Registry · Click to list"
+          onClick={() => setMetricModal("all")}
+        />
+        <SummaryMetricTile
+          tone="emerald"
+          icon={Activity}
+          value={activeCount}
+          label="Active Scopes"
+          subtext="● Ready for Audit · Click to list"
+          onClick={() => setMetricModal("active")}
+        />
+        <SummaryMetricTile
+          tone="teal"
+          icon={UserCheck}
+          value={uniqueAssessors}
+          label="Mapped Assessors"
+          subtext="Active Certified · Click to list"
+          onClick={() => setMetricModal("assessors")}
+        />
+        <SummaryMetricTile
+          tone="blue"
+          icon={Building2}
+          value={uniqueOrgs}
+          label="Client Organizations"
+          subtext="Covered Portfolios · Click to list"
+          onClick={() => setMetricModal("orgs")}
+        />
       </div>
+
+      <MetricListModal
+        open={metricModal !== null}
+        onClose={() => setMetricModal(null)}
+        title={metricModalTitle}
+        description="Directory for this summary metric"
+        emptyMessage="No items match this metric."
+        rows={metricModalRows}
+      />
 
       {/* Filter & Action Toolbar */}
       <div className="bg-white rounded-xl border border-slate-200/90 p-2.5 shadow-2xs flex flex-col md:flex-row md:items-center md:justify-between gap-2.5 shrink-0">

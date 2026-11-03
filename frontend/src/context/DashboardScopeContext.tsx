@@ -10,6 +10,7 @@ export interface ScopeOrganizationItem {
   status?: string;
   activePlan?: string;
   assessmentCount?: number;
+  logoUrl?: string | null;
 }
 
 interface DashboardScopeContextType {

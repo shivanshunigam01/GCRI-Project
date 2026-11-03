@@ -109,6 +109,7 @@ export interface AuditorOrganizationItem {
   status: "Active" | "Suspended";
   activePlan: "Bronze" | "Silver" | "Gold";
   size?: string;
+  logo?: { url: string; publicId?: string } | null;
   assessmentsSummary: {
     total: number;
     inProgress: number;

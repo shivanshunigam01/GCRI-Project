@@ -40,6 +40,9 @@ import { companyService } from "@/services/company.service";
 import { User, UserRole, UserStatus } from "@/types/auth.types";
 import { Company } from "@/types/company.types";
 import { useAuth } from "@/context/AuthContext";
+import { EntityImage } from "@/components/shared/EntityImage";
+import { MetricListModal, MetricListRow } from "@/components/shared/MetricListModal";
+import { SummaryMetricTile } from "@/components/shared/SummaryMetricTile";
 
 export default function AdminAssessorsPage() {
   const { isSuperAdmin, isOrgAdmin, user: currentUser } = useAuth();
@@ -51,10 +54,10 @@ export default function AdminAssessorsPage() {
 
   // Pagination & Filters
   const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(20);
+  const [limit, setLimit] = useState(10);
   const [paginationMeta, setPaginationMeta] = useState({
     page: 1,
-    limit: 20,
+    limit: 10,
     total: 0,
     totalPages: 1,
   });
@@ -115,6 +118,8 @@ export default function AdminAssessorsPage() {
 
   // Active Dropdown Action Row
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
+
+  const [metricModal, setMetricModal] = useState<"all" | "active" | "assessors" | "admins" | null>(null);
 
   // Debounce search
   useEffect(() => {
@@ -460,8 +465,42 @@ export default function AdminAssessorsPage() {
   // Compact metrics calculated from real data
   const totalCount = paginationMeta.total;
   const activeCount = users.filter((u) => u.status === "Active").length;
-  const adminCount = users.filter((u) => u.role === "Admin").length;
+  const adminCount = users.filter((u) => u.role === "Admin" || u.role === "SuperAdmin").length;
   const assessorCount = users.filter((u) => u.role === "Assessor").length;
+
+  const toUserRow = (u: User): MetricListRow => ({
+    id: u._id,
+    title: u.name || "Unnamed User",
+    subtitle: u.email,
+    meta:
+      typeof u.companyId === "object" && u.companyId?.name
+        ? u.companyId.name
+        : u.role,
+    badge: u.status,
+    badgeTone: u.status === "Active" ? "success" : "warning",
+    imageUrl: u.avatar?.url,
+    imageName: u.name || u.email,
+    imageVariant: "avatar",
+    onClick: () => handleOpenEdit(u),
+  });
+
+  const metricModalRows =
+    metricModal === "active"
+      ? users.filter((u) => u.status === "Active").map(toUserRow)
+      : metricModal === "assessors"
+        ? users.filter((u) => u.role === "Assessor").map(toUserRow)
+        : metricModal === "admins"
+          ? users.filter((u) => u.role === "Admin" || u.role === "SuperAdmin").map(toUserRow)
+          : users.map(toUserRow);
+
+  const metricModalTitle =
+    metricModal === "active"
+      ? "Active Users"
+      : metricModal === "assessors"
+        ? "Assessors"
+        : metricModal === "admins"
+          ? "Admins & Super Admins"
+          : "All Users";
 
   return (
     <div className="flex-1 flex flex-col h-full min-h-0 space-y-3 overflow-hidden">
@@ -488,56 +527,50 @@ export default function AdminAssessorsPage() {
         </div>
       )}
 
-      {/* Compact 4-Card Metric Grid (Fixed Top - Logo Inspired Colors) */}
+      {/* Compact 4-Card Metric Grid (click → list popup) */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 shrink-0">
-        {/* Card 1: Total Users - Deep Ocean Blue */}
-        <div className="bg-white rounded-xl border border-slate-200/90 p-3.5 shadow-xs hover:shadow-md transition-shadow flex items-center gap-3">
-          <div className="h-10 w-10 rounded-2xl bg-cyan-50 text-cyan-700 flex items-center justify-center shrink-0 border border-cyan-100 shadow-2xs">
-            <Users className="h-5 w-5" strokeWidth={1.85} />
-          </div>
-          <div className="min-w-0">
-            <div className="text-xl font-extrabold text-slate-900 leading-tight tracking-tight">{totalCount}</div>
-            <div className="text-[11px] font-medium text-slate-500 truncate mt-0.5">Total Users</div>
-            <div className="text-[10px] font-semibold text-teal-600 mt-0.5">▲ Live in DB</div>
-          </div>
-        </div>
-
-        {/* Card 2: Active Users - Vibrant Emerald/Teal */}
-        <div className="bg-white rounded-xl border border-slate-200/90 p-3.5 shadow-xs hover:shadow-md transition-shadow flex items-center gap-3">
-          <div className="h-10 w-10 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 border border-emerald-100 shadow-2xs">
-            <CheckCircle2 className="h-5 w-5" strokeWidth={1.85} />
-          </div>
-          <div className="min-w-0">
-            <div className="text-xl font-extrabold text-slate-900 leading-tight tracking-tight">{activeCount}</div>
-            <div className="text-[11px] font-medium text-slate-500 truncate mt-0.5">Active Users</div>
-            <div className="text-[10px] font-semibold text-emerald-600 mt-0.5">● On this page</div>
-          </div>
-        </div>
-
-        {/* Card 3: Assessors - Sky/Cyan */}
-        <div className="bg-white rounded-xl border border-slate-200/90 p-3.5 shadow-xs hover:shadow-md transition-shadow flex items-center gap-3">
-          <div className="h-10 w-10 rounded-2xl bg-teal-50 text-teal-700 flex items-center justify-center shrink-0 border border-teal-100 shadow-2xs">
-            <UserCheck className="h-5 w-5" strokeWidth={1.85} />
-          </div>
-          <div className="min-w-0">
-            <div className="text-xl font-extrabold text-slate-900 leading-tight tracking-tight">{assessorCount}</div>
-            <div className="text-[11px] font-medium text-slate-500 truncate mt-0.5">Assessors</div>
-            <div className="text-[10px] font-semibold text-teal-600 mt-0.5">Auditing Team</div>
-          </div>
-        </div>
-
-        {/* Card 4: Super Admins - Deep Royal Blue */}
-        <div className="bg-white rounded-xl border border-slate-200/90 p-3.5 shadow-xs hover:shadow-md transition-shadow flex items-center gap-3">
-          <div className="h-10 w-10 rounded-2xl bg-blue-50 text-blue-700 flex items-center justify-center shrink-0 border border-blue-100 shadow-2xs">
-            <Shield className="h-5 w-5" strokeWidth={1.85} />
-          </div>
-          <div className="min-w-0">
-            <div className="text-xl font-extrabold text-slate-900 leading-tight tracking-tight">{adminCount}</div>
-            <div className="text-[11px] font-medium text-slate-500 truncate mt-0.5">Super Admins</div>
-            <div className="text-[10px] font-semibold text-blue-600 mt-0.5">Full Privileges</div>
-          </div>
-        </div>
+        <SummaryMetricTile
+          tone="cyan"
+          icon={Users}
+          value={totalCount}
+          label="Total Users"
+          subtext="▲ Live in DB · Click to list"
+          onClick={() => setMetricModal("all")}
+        />
+        <SummaryMetricTile
+          tone="emerald"
+          icon={CheckCircle2}
+          value={activeCount}
+          label="Active Users"
+          subtext="● On this page · Click to list"
+          onClick={() => setMetricModal("active")}
+        />
+        <SummaryMetricTile
+          tone="teal"
+          icon={UserCheck}
+          value={assessorCount}
+          label="Assessors"
+          subtext="Auditing Team · Click to list"
+          onClick={() => setMetricModal("assessors")}
+        />
+        <SummaryMetricTile
+          tone="blue"
+          icon={Shield}
+          value={adminCount}
+          label="Admins"
+          subtext="Full Privileges · Click to list"
+          onClick={() => setMetricModal("admins")}
+        />
       </div>
+
+      <MetricListModal
+        open={metricModal !== null}
+        onClose={() => setMetricModal(null)}
+        title={metricModalTitle}
+        description="Users matching this summary metric"
+        emptyMessage="No users match this metric."
+        rows={metricModalRows}
+      />
 
       {/* Filter & Action Toolbar (Fixed) */}
       <div className="bg-white rounded-xl border border-slate-200/90 p-2.5 shadow-xs flex flex-col md:flex-row md:items-center md:justify-between gap-2.5 shrink-0">
@@ -744,9 +777,13 @@ export default function AdminAssessorsPage() {
                       {/* User Column */}
                       <td className="py-2.5 px-3.5">
                         <div className="flex items-center gap-2.5">
-                          <div className="h-7 w-7 rounded-full bg-gradient-to-br from-teal-500 via-cyan-600 to-blue-600 text-white font-bold text-[10px] flex items-center justify-center shrink-0 shadow-2xs">
-                            {getInitials(u.name, u.email)}
-                          </div>
+                          <EntityImage
+                            src={u.avatar?.url}
+                            name={u.name || u.email}
+                            variant="avatar"
+                            size="sm"
+                            cacheKey={u.updatedAt || u.avatar?.publicId}
+                          />
                           <div>
                             <div className="font-semibold text-slate-900 group-hover:text-teal-700 transition-colors leading-tight">
                               {u.name || "Unnamed User"}
@@ -909,6 +946,7 @@ export default function AdminAssessorsPage() {
                 }}
                 className="py-0.5 px-2 text-xs font-semibold bg-white border border-slate-300 rounded-md text-slate-700 hover:border-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
               >
+                <option value={10}>10</option>
                 <option value={20}>20</option>
                 <option value={50}>50</option>
                 <option value={100}>100</option>

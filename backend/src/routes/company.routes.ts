@@ -8,9 +8,14 @@ import {
   updateCompanyStatus,
   getCompanyTrends,
 } from "../controllers/company.controller.js";
+import {
+  uploadCompanyLogo,
+  deleteCompanyLogo,
+} from "../controllers/companyLogo.controller.js";
 import { authenticate, authorize } from "../middlewares/auth.js";
 import { requireCompanyScope } from "../middlewares/companyScope.js";
 import { validateRequest } from "../middlewares/validate.js";
+import { handleImageUpload } from "../middlewares/imageUpload.js";
 import {
   CreateCompanySchema,
   UpdateCompanySchema,
@@ -193,6 +198,92 @@ router.patch(
   validateRequest(UpdateCompanySchema),
   requireCompanyScope("id"),
   updateCompany
+);
+
+/**
+ * @openapi
+ * /api/v1/companies/{id}/logo:
+ *   post:
+ *     summary: Upload or replace organization logo
+ *     description: |
+ *       Authenticated, backend-mediated Cloudinary upload (JPEG/PNG/WebP, max 5 MB).
+ *       Authorization mirrors organization profile updates (tenant-scoped).
+ *       SuperAdmin: any organization. Admin: own organization. Assessor: assigned organization only.
+ *       Returns 503 CLOUDINARY_NOT_CONFIGURED when Cloudinary env vars are missing.
+ *     tags:
+ *       - Company Management
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - file
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *                 description: JPEG, PNG, or WebP image (max 5 MB)
+ *     responses:
+ *       200:
+ *         description: Logo uploaded
+ *       400:
+ *         description: Invalid image or validation failure
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Cross-organization access denied
+ *       409:
+ *         description: Concurrent logo update conflict
+ *       503:
+ *         description: Cloudinary credentials not configured
+ *   delete:
+ *     summary: Remove organization logo
+ *     description: Clears logo metadata in MongoDB and deletes the Cloudinary asset using the server-stored public ID.
+ *     tags:
+ *       - Company Management
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Logo removed
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden
+ *       404:
+ *         description: Company not found
+ */
+router.post(
+  "/:id/logo",
+  authenticate,
+  validateRequest(CompanyParamSchema),
+  requireCompanyScope("id"),
+  handleImageUpload,
+  uploadCompanyLogo
+);
+
+router.delete(
+  "/:id/logo",
+  authenticate,
+  validateRequest(CompanyParamSchema),
+  requireCompanyScope("id"),
+  deleteCompanyLogo
 );
 
 /**

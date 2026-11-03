@@ -4,11 +4,20 @@ import helmet from "helmet";
 import morgan from "morgan";
 import dotenv from "dotenv";
 import { connectDB } from "./config/db.js";
+import { ensureCloudinaryConfigured } from "./config/cloudinary.js";
 import v1Routes from "./routes/index.js";
 import { errorHandler } from "./middlewares/errorHandler.js";
 import { apiLimiter } from "./middlewares/rateLimiter.js";
 
 dotenv.config();
+
+// Configure Cloudinary when credentials exist; never block startup if missing
+const cloudinaryStatus = ensureCloudinaryConfigured();
+if (!cloudinaryStatus.configured) {
+  console.warn(
+    "[cloudinary] credentials not set — image upload endpoints will return CLOUDINARY_NOT_CONFIGURED until CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET are provided"
+  );
+}
 
 const app = express();
 const PORT = process.env.PORT || 5000;

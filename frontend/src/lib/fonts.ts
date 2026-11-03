@@ -1,18 +1,20 @@
-import { Instrument_Serif, Plus_Jakarta_Sans } from "next/font/google";
+import { Fraunces, Plus_Jakarta_Sans } from "next/font/google";
 
 /** Primary UI — clean enterprise SaaS readability */
 export const fontSans = Plus_Jakarta_Sans({
   subsets: ["latin"],
   variable: "--font-jakarta",
   display: "swap",
-  weight: ["400", "500", "600", "700"],
+  weight: ["400", "500", "600", "700", "800"],
 });
 
-/** Page titles & editorial accents */
-export const fontDisplay = Instrument_Serif({
+/**
+ * Module / page titles — Fraunces supports real bold weights
+ * (Instrument Serif was display-only at 400 and read too light).
+ */
+export const fontDisplay = Fraunces({
   subsets: ["latin"],
-  variable: "--font-instrument",
+  variable: "--font-fraunces",
   display: "swap",
-  weight: "400",
-  style: ["normal", "italic"],
+  weight: ["600", "700", "800", "900"],
 });

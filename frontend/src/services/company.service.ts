@@ -45,4 +45,20 @@ export const companyService = {
 
   getCompanyTrends: (id: string) =>
     apiClient.get<CompanyTrendsResponse>(`/companies/${id}/trends`),
+
+  uploadLogo: (id: string, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return apiClient.post<{
+      logo: { url: string; publicId: string };
+      company: { _id: string; name: string; logo?: Company["logo"] };
+    }>(`/companies/${id}/logo`, form);
+  },
+
+  deleteLogo: (id: string) =>
+    apiClient.delete<{
+      message: string;
+      logo: null;
+      company: { _id: string; name: string; logo: null };
+    }>(`/companies/${id}/logo`),
 };

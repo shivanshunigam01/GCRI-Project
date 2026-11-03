@@ -38,6 +38,8 @@ import { AssessmentSession } from "@/types/assessment.types";
 import { OrgAuditorItem } from "@/types/auditorMapping.types";
 import Modal, { ConfirmationVariant } from "@/components/ui/Modal";
 import { useAuth } from "@/context/AuthContext";
+import { EntityImage } from "@/components/shared/EntityImage";
+import { ImageUploader } from "@/components/shared/ImageUploader";
 
 export default function OrganizationProfileFullPage({
   params,
@@ -357,9 +359,13 @@ export default function OrganizationProfileFullPage({
           >
             <ArrowLeft className="h-4 w-4" />
           </Link>
-          <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-teal-500 via-cyan-600 to-blue-600 text-white font-black text-base flex items-center justify-center shrink-0 shadow-xs">
-            {company.name.slice(0, 2).toUpperCase()}
-          </div>
+          <EntityImage
+            src={company.logo?.url}
+            name={company.name}
+            variant="logo"
+            size="lg"
+            cacheKey={company.updatedAt || company.logo?.publicId}
+          />
           <div>
             <div className="flex items-center gap-2 flex-wrap">
               <h1 className="page-title text-xl sm:text-2xl font-black tracking-tight">{company.name}</h1>
@@ -517,6 +523,38 @@ export default function OrganizationProfileFullPage({
                 <p className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">
                   {editError}
                 </p>
+              )}
+
+              {isAdmin && (
+                <ImageUploader
+                  variant="logo"
+                  label="Organization logo"
+                  name={company.name}
+                  currentUrl={company.logo?.url}
+                  cacheKey={company.updatedAt || company.logo?.publicId}
+                  onUpload={async (file) => {
+                    const res = await companyService.uploadLogo(company._id, file);
+                    setCompany((prev) =>
+                      prev
+                        ? {
+                            ...prev,
+                            logo: res.data?.logo || prev.logo,
+                            updatedAt: new Date().toISOString(),
+                          }
+                        : prev
+                    );
+                    setEditSuccess(true);
+                    setTimeout(() => setEditSuccess(false), 3000);
+                  }}
+                  onRemove={async () => {
+                    await companyService.deleteLogo(company._id);
+                    setCompany((prev) =>
+                      prev ? { ...prev, logo: null, updatedAt: new Date().toISOString() } : prev
+                    );
+                    setEditSuccess(true);
+                    setTimeout(() => setEditSuccess(false), 3000);
+                  }}
+                />
               )}
 
               {isEditing ? (
