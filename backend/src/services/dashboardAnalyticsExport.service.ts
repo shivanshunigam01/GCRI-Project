@@ -1,13 +1,7 @@
-import PDFDocument from "pdfkit";
 import ExcelJS from "exceljs";
 import type { DashboardAnalyticsPayload } from "./dashboardAnalytics.service.js";
 import { reportLogoPaths } from "./report/reportAssets.js";
-
-const NAVY = "#102C3A";
-const TEAL = "#145568";
-const TEXT = "#24323D";
-const MUTED = "#667583";
-const BORDER = "#D7E0E6";
+import { renderDashboardAnalyticsPdf } from "./dashboardAnalyticsPdf.renderer.js";
 
 const XLS_NAVY = "FF102C3A";
 const XLS_TEAL = "FF145568";
@@ -177,114 +171,6 @@ export class DashboardAnalyticsExportService {
   }
 
   public static buildPdf(data: DashboardAnalyticsPayload, ctx: DashboardExportContext): Promise<Buffer> {
-    return new Promise((resolve, reject) => {
-      try {
-        const doc = new PDFDocument({ size: "A4", margin: 48 });
-        const buffers: Buffer[] = [];
-        doc.on("data", (chunk) => buffers.push(chunk));
-        doc.on("error", reject);
-        doc.on("end", () => resolve(Buffer.concat(buffers)));
-
-        const logos = reportLogoPaths();
-        let y = 48;
-
-        if (logos.gcrai) {
-          doc.image(logos.gcrai, 48, y, { height: 36, fit: [120, 36] });
-        }
-        if (logos.graice) {
-          doc.image(logos.graice, 420, y, { height: 36, fit: [120, 36] });
-        }
-        y += 50;
-
-        doc.fillColor(NAVY).font("Helvetica-Bold").fontSize(16).text("Analytics & Operations Report", 48, y);
-        y += 22;
-        doc.fillColor(MUTED).font("Helvetica").fontSize(10).text(`${ctx.scopeLabel} · ${ctx.roleLabel}`, 48, y);
-        y += 14;
-        doc.text(`Period: ${data.range} (${data.periodDays} days) · Generated ${data.generatedAt.slice(0, 10)}`, 48, y);
-        y += 24;
-
-        doc.strokeColor(BORDER).moveTo(48, y).lineTo(547, y).stroke();
-        y += 16;
-
-        doc.fillColor(TEAL).font("Helvetica-Bold").fontSize(12).text("Key performance indicators", 48, y);
-        y += 18;
-
-        for (const [label, value] of kpiRows(data)) {
-          doc.fillColor(MUTED).font("Helvetica").fontSize(9).text(`${label}:`, 48, y, { continued: true });
-          doc.fillColor(TEXT).font("Helvetica-Bold").text(` ${value}`, { continued: false });
-          y += 14;
-          if (y > 720) {
-            doc.addPage();
-            y = 48;
-          }
-        }
-
-        y += 8;
-        doc.fillColor(TEAL).font("Helvetica-Bold").fontSize(12).text("Assessment & risk posture", 48, y);
-        y += 16;
-        const s = data.assessmentsByStatus;
-        const r = data.riskSeverity;
-        doc.font("Helvetica").fontSize(9).fillColor(TEXT);
-        doc.text(
-          `Assessments — completed: ${s.completed}, in progress: ${s.inProgress}, not started: ${s.notStarted}.`,
-          48,
-          y
-        );
-        y += 14;
-        doc.text(
-          `Risks — critical: ${r.critical}, high: ${r.high}, medium: ${r.medium}, low: ${r.low}. Light/Full mix: ${data.assessmentTypeMix.light} / ${data.assessmentTypeMix.full}.`,
-          48,
-          y
-        );
-        y += 22;
-
-        doc.fillColor(TEAL).font("Helvetica-Bold").fontSize(12).text("Compliance trend (sample)", 48, y);
-        y += 14;
-        const sample = data.complianceTrend.filter((_, i) => i % Math.max(1, Math.floor(data.complianceTrend.length / 10)) === 0);
-        sample.forEach((point) => {
-          doc.font("Helvetica").fontSize(8).fillColor(TEXT).text(`${point.date}: ${point.value}%`, 56, y);
-          y += 11;
-        });
-        y += 10;
-
-        doc.fillColor(TEAL).font("Helvetica-Bold").fontSize(12).text("Top organizations", 48, y);
-        y += 14;
-        data.topOrganizations.slice(0, 5).forEach((org) => {
-          doc.font("Helvetica").fontSize(8).fillColor(TEXT).text(`• ${org.name} — ${org.complianceScore}% (${org.assessmentCount} assessments)`, 56, y);
-          y += 11;
-        });
-        y += 10;
-
-        if (data.outliers.length > 0) {
-          if (y > 650) {
-            doc.addPage();
-            y = 48;
-          }
-          doc.fillColor(TEAL).font("Helvetica-Bold").fontSize(12).text("Outliers & insights", 48, y);
-          y += 14;
-          data.outliers.slice(0, 10).forEach((o) => {
-            doc
-              .font("Helvetica-Bold")
-              .fontSize(8)
-              .fillColor(o.severity === "critical" ? "#B45345" : TEXT)
-              .text(`[${o.severity.toUpperCase()}] ${o.label}`, 56, y);
-            y += 10;
-            doc.font("Helvetica").fontSize(8).fillColor(MUTED).text(o.detail, 64, y, { width: 460 });
-            y += doc.heightOfString(o.detail, { width: 460 }) + 6;
-          });
-        }
-
-        doc.font("Helvetica").fontSize(7).fillColor(MUTED).text(
-          "Confidential — GCRAI Platform analytics export. For authorized operational and governance use.",
-          48,
-          780,
-          { align: "center", width: 499 }
-        );
-
-        doc.end();
-      } catch (err) {
-        reject(err);
-      }
-    });
+    return renderDashboardAnalyticsPdf(data, ctx);
   }
 }
