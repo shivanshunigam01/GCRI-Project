@@ -48,6 +48,10 @@ curl http://localhost:5001/api/v1/health
 
 **If you see `Cannot GET /api/v1/dashboard/admin/analytics`:** the API process is running an old `dist/` (build failed or was not restarted). From `backend/` run `npm run build`, then `npm run dev` or `pm2 reload gcri-backend`. Use port **5001** if that is what `PORT` is in `.env`. The route requires a **Bearer token** (Super Admin or Admin); opening the URL in a browser without login returns `401`, not 404.
 
+**If PM2 logs show `Invalid CLOUDINARY_URL protocol` or the browser shows CORS on login:** remove or fix `CLOUDINARY_URL` in `backend/.env` — it must be `cloudinary://KEY:SECRET@CLOUD_NAME`, or delete that line and keep only `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`. Then `npm run build` and `pm2 restart gcri-backend --update-env`.
+
+**Production CORS:** set `CORS_ORIGIN=https://gcrai-fe.vercel.app` (comma-separate multiple origins). The API also allows that Vercel URL by default.
+
 ### 4. SMTP (transactional email)
 Copy SMTP variables from `.env.example` (`SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`, `CLIENT_BASE_URL`). On startup, logs should show `[EmailService] SMTP configured`.
 

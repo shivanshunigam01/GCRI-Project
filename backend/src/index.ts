@@ -1,4 +1,5 @@
 import "dotenv/config";
+import "./bootstrap/sanitizeEnv.js";
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
@@ -41,9 +42,15 @@ app.use(
     },
   })
 );
-const corsOrigins = process.env.CORS_ORIGIN
+const defaultCorsOrigins = [
+  "http://localhost:3000",
+  "http://localhost:3001",
+  "https://gcrai-fe.vercel.app",
+];
+const envCorsOrigins = process.env.CORS_ORIGIN
   ? process.env.CORS_ORIGIN.split(",").map((o) => o.trim()).filter(Boolean)
-  : ["http://localhost:3000", "http://localhost:3001"];
+  : [];
+const corsOrigins = [...new Set([...defaultCorsOrigins, ...envCorsOrigins])];
 
 app.use(
   cors({
