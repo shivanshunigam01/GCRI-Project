@@ -63,7 +63,7 @@ export class PlatformSchedulerService {
 
     console.log(`[Scheduler] Found ${approachingSessions.length} session(s) nearing due date.`);
 
-    const clientBaseUrl = process.env.CLIENT_BASE_URL || "http://localhost:3000";
+    const clientBaseUrl = emailService.getAppBaseUrl();
 
     for (const session of approachingSessions) {
       try {
@@ -103,7 +103,7 @@ export class PlatformSchedulerService {
 
     console.log(`[Scheduler] Found ${dormantSessions.length} dormant session(s).`);
 
-    const clientBaseUrl = process.env.CLIENT_BASE_URL || "http://localhost:3000";
+    const clientBaseUrl = emailService.getAppBaseUrl();
 
     for (const session of dormantSessions) {
       try {

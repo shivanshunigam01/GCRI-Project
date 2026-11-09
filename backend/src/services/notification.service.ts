@@ -49,8 +49,7 @@ notificationEvents.on("DOMAIN_VERIFICATION_PENDING", async ({ company, reason }:
 
 notificationEvents.on("USER_INVITED", async ({ user, invitedBy, rawToken }: { user: IUser; invitedBy: { id: string; email: string }; rawToken: string }) => {
   try {
-    const clientBaseUrl = process.env.CLIENT_BASE_URL || "http://localhost:3000";
-    const invitationUrl = `${clientBaseUrl}/accept-invite?token=${rawToken}`;
+    const invitationUrl = `${emailService.getAppBaseUrl()}/accept-invite?token=${rawToken}`;
 
     await emailService.sendUserInvitation({
       recipientEmail: user.email,

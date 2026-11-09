@@ -6,6 +6,7 @@ import {
   AdminDashboardSummary,
   AdminAssessmentItem,
 } from "@/types/dashboard.types";
+import { AnalyticsRange, DashboardAnalytics } from "@/types/analytics.types";
 
 export type AuditorPipelineFilter = "All" | "InProgress" | "Submitted" | "Light" | "Full";
 
@@ -71,4 +72,25 @@ export const dashboardService = {
     apiClient.get<{ assessments: AdminAssessmentItem[] }>("/dashboard/admin/assessments", {
       params,
     }),
+
+  getAdminAnalytics: (params?: { range?: AnalyticsRange; companyId?: string }) =>
+    apiClient.get<DashboardAnalytics>("/dashboard/admin/analytics", { params }),
+
+  getAuditorAnalytics: (params?: { range?: AnalyticsRange }) =>
+    apiClient.get<DashboardAnalytics>("/dashboard/auditor/analytics", { params }),
+
+  getAdminAnalyticsExportUrl: (params: {
+    format: "pdf" | "xlsx";
+    range: AnalyticsRange;
+    companyId?: string;
+  }) => {
+    const q = new URLSearchParams({ format: params.format, range: params.range });
+    if (params.companyId) q.set("companyId", params.companyId);
+    return `/dashboard/admin/analytics/export?${q.toString()}`;
+  },
+
+  getAuditorAnalyticsExportUrl: (params: { format: "pdf" | "xlsx"; range: AnalyticsRange }) => {
+    const q = new URLSearchParams({ format: params.format, range: params.range });
+    return `/dashboard/auditor/analytics/export?${q.toString()}`;
+  },
 };

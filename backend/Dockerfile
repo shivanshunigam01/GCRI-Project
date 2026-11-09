@@ -13,6 +13,7 @@ RUN npm ci
 
 # Copy TypeScript configuration and source code
 COPY tsconfig.json ./
+COPY assets ./assets
 COPY src ./src
 
 # Compile TypeScript to dist/
@@ -41,6 +42,7 @@ USER node
 COPY --chown=node:node --from=builder /app/package*.json ./
 COPY --chown=node:node --from=builder /app/node_modules ./node_modules
 COPY --chown=node:node --from=builder /app/dist ./dist
+COPY --chown=node:node --from=builder /app/assets ./assets
 
 # Expose backend service port
 EXPOSE 5000
