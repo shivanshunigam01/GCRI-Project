@@ -5,7 +5,7 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc",
+    "build": "node --max-old-space-size=8192 ./node_modules/typescript/bin/tsc",
     "start": "node dist/index.js",
     "start:prod": "npm run build && node dist/index.js",
     "pm2:start": "npm run build && pm2 start ecosystem.config.cjs",

@@ -651,7 +651,11 @@ function parseAnalyticsRange(raw: unknown): AnalyticsRange {
 
 export async function exportAdminDashboardAnalytics(req: Request, res: Response, next: NextFunction) {
   try {
-    if (req.user?.role !== "SuperAdmin" && req.user?.role !== "Admin") {
+    const user = req.user;
+    if (!user) {
+      return sendError(res, "Authentication required", 401, "UNAUTHORIZED");
+    }
+    if (user.role !== "SuperAdmin" && user.role !== "Admin") {
       return sendError(res, "Access denied. Administrators only.", 403, "ADMIN_ROLE_REQUIRED");
     }
 
@@ -661,15 +665,15 @@ export async function exportAdminDashboardAnalytics(req: Request, res: Response,
     }
 
     const safeRange = parseAnalyticsRange(req.query.range);
-    let companyId = req.user.role === "Admin" ? req.user.companyId : undefined;
+    let companyId = user.role === "Admin" ? user.companyId : undefined;
     const scopeParam = typeof req.query.companyId === "string" ? req.query.companyId : "";
-    if (req.user.role === "SuperAdmin" && scopeParam && /^[0-9a-fA-F]{24}$/.test(scopeParam)) {
+    if (user.role === "SuperAdmin" && scopeParam && /^[0-9a-fA-F]{24}$/.test(scopeParam)) {
       companyId = scopeParam;
     }
 
     const analytics = await buildDashboardAnalytics({
       companyId: companyId || undefined,
-      isSuperAdmin: req.user.role === "SuperAdmin",
+      isSuperAdmin: user.role === "SuperAdmin",
       range: safeRange,
     });
 
@@ -681,8 +685,8 @@ export async function exportAdminDashboardAnalytics(req: Request, res: Response,
 
     const ctx = {
       scopeLabel,
-      roleLabel: req.user.role === "SuperAdmin" ? "Super Administrator" : "Organization Administrator",
-      requestedBy: req.user.email,
+      roleLabel: user.role === "SuperAdmin" ? "Super Administrator" : "Organization Administrator",
+      requestedBy: user.email,
     };
 
     const stamp = new Date().toISOString().slice(0, 10);
@@ -709,8 +713,9 @@ export async function exportAdminDashboardAnalytics(req: Request, res: Response,
 
 export async function exportAuditorDashboardAnalytics(req: Request, res: Response, next: NextFunction) {
   try {
-    const auditorId = req.user?.userId;
-    if (!auditorId) {
+    const user = req.user;
+    const auditorId = user?.userId;
+    if (!user || !auditorId) {
       return sendError(res, "Authentication required", 401, "UNAUTHORIZED");
     }
 
@@ -731,7 +736,7 @@ export async function exportAuditorDashboardAnalytics(req: Request, res: Respons
     const ctx = {
       scopeLabel: `Assigned portfolio (${assignedCompanyIds.length} organization(s))`,
       roleLabel: "Accredited Assessor",
-      requestedBy: req.user.email,
+      requestedBy: user.email,
     };
 
     const stamp = new Date().toISOString().slice(0, 10);

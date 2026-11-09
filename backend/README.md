@@ -43,8 +43,10 @@ The server will start on `http://localhost:5000`.
 
 ### 3. Health Check
 ```bash
-curl http://localhost:5000/api/v1/health
+curl http://localhost:5001/api/v1/health
 ```
+
+**If you see `Cannot GET /api/v1/dashboard/admin/analytics`:** the API process is running an old `dist/` (build failed or was not restarted). From `backend/` run `npm run build`, then `npm run dev` or `pm2 reload gcri-backend`. Use port **5001** if that is what `PORT` is in `.env`. The route requires a **Bearer token** (Super Admin or Admin); opening the URL in a browser without login returns `401`, not 404.
 
 ### 4. SMTP (transactional email)
 Copy SMTP variables from `.env.example` (`SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`, `CLIENT_BASE_URL`). On startup, logs should show `[EmailService] SMTP configured`.

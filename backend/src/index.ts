@@ -71,6 +71,20 @@ import("./services/s3.service.js").then(({ s3Service }) => {
 // API Routes
 app.use("/api/v1", apiLimiter, v1Routes);
 
+app.use((req, res) => {
+  if (req.originalUrl.startsWith("/api/")) {
+    return res.status(404).json({
+      success: false,
+      error: {
+        message: `Route not found: ${req.method} ${req.originalUrl}`,
+        code: "ROUTE_NOT_FOUND",
+        hint: "Restart the API after git pull and run npm run build in backend/. Analytics: GET /api/v1/dashboard/admin/analytics",
+      },
+    });
+  }
+  res.status(404).send(`Cannot ${req.method} ${req.originalUrl}`);
+});
+
 // Global Error Handler
 app.use(errorHandler);
 
