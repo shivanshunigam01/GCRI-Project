@@ -17,10 +17,20 @@ import type {
 } from "./reportTypes.js";
 
 function formatDate(value?: Date | string | null): string {
-  if (!value) return new Date().toISOString().slice(0, 10);
+  if (!value) {
+    return new Date().toLocaleDateString("en-GB", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
+  }
   const d = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(d.getTime())) return String(value).slice(0, 10);
-  return d.toISOString().slice(0, 10);
+  return d.toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
 }
 
 function statusLabel(status: string): string {
@@ -301,14 +311,20 @@ function executiveNarrative(
     gapCount: number;
   }
 ): string {
-  const typeWord = data.assessmentType.toLowerCase();
+  const typeWord = data.assessmentType === "Light" ? "light (lite)" : "full";
   const maturity = data.kpis.maturityLevel || "Initial";
   const pct = data.kpis.overallPercentage ?? data.kpis.completionPercentage;
+  const scorePhrase =
+    data.assessmentType === "Light" &&
+    data.kpis.overallScore != null &&
+    data.kpis.maxPossibleScore
+      ? ` The organization scored ${data.kpis.overallScore} of ${data.kpis.maxPossibleScore} available points`
+      : "";
   return (
     `This ${typeWord} assessment provides a focused, evidence-based snapshot of responsible AI governance ` +
-    `maturity for ${data.organizationName} against the GRAICE control framework. ` +
+    `maturity for ${data.organizationName} against the GRAICE control framework.${scorePhrase} ` +
     `Overall scored maturity is classified as ${maturity}` +
-    (pct !== undefined ? ` (${pct}%).` : ".") +
+    (pct !== undefined ? ` (compliance index ${pct}%).` : ".") +
     ` Results are intended to inform leadership investment priorities and next-step assurance planning` +
     (data.gapCount > 0
       ? `, with ${data.gapCount} control gap${data.gapCount === 1 ? "" : "s"} requiring remediation attention.`

@@ -27,7 +27,22 @@ const MARGIN_TOP = 56; // ~20 mm
 const MARGIN_BOTTOM = 52; // ~18 mm
 const CONTENT_W = PAGE_W - MARGIN_X * 2;
 const FOOTER_Y = PAGE_H - 34;
-const CONTENT_BOTTOM = FOOTER_Y - 10;
+const CONTENT_BOTTOM = FOOTER_Y - 16;
+
+/** Column widths that always sum to CONTENT_W (avoids table cell overlap). */
+function distributeWidths(weights: number[]): number[] {
+  const total = weights.reduce((a, b) => a + b, 0);
+  const raw = weights.map((w) => (w / total) * CONTENT_W);
+  const floored = raw.map((w) => Math.floor(w));
+  let used = floored.reduce((a, b) => a + b, 0);
+  let i = 0;
+  while (used < CONTENT_W) {
+    floored[i % floored.length] += 1;
+    used += 1;
+    i += 1;
+  }
+  return floored;
+}
 
 const FONT_REG = "SourceSans";
 const FONT_SEMI = "SourceSans-Semibold";
@@ -180,6 +195,95 @@ class ReportPdfRenderer {
     this.y += 22;
   }
 
+  private measureMetaValue(label: string, value: string, valueW: number): number {
+    this.doc.font(this.font("reg")).fontSize(8.5);
+    const labelH = this.doc.heightOfString(`${label}: `, { width: valueW });
+    this.doc.font(this.font("semi"));
+    const valueH = this.doc.heightOfString(value || "—", { width: valueW - 4 });
+    return Math.max(labelH, valueH, 12);
+  }
+
+  private drawMetadataGrid(meta: [string, string][]): void {
+    const gap = 14;
+    const colW = (CONTENT_W - gap) / 2;
+    for (let i = 0; i < meta.length; i += 2) {
+      const left = meta[i];
+      const right = meta[i + 1];
+      const rowH = Math.max(
+        this.measureMetaValue(left[0], left[1], colW),
+        right ? this.measureMetaValue(right[0], right[1], colW) : 0
+      );
+      this.ensureSpace(rowH + 8);
+      if (i > 0) this.hLine(this.y - 2, "#E8EEF2", 0.5);
+
+      const drawCell = (item: [string, string], x: number) => {
+        const y = this.y;
+        this.doc
+          .fillColor(C.secondary)
+          .font(this.font("reg"))
+          .fontSize(8.5)
+          .text(`${item[0]}: `, x, y, { width: colW, continued: true });
+        this.doc
+          .fillColor(C.navy)
+          .font(this.font("semi"))
+          .text(item[1] || "—", { width: colW - 4 });
+      };
+
+      drawCell(left, MARGIN_X);
+      if (right) drawCell(right, MARGIN_X + colW + gap);
+      this.y += rowH + 6;
+    }
+    this.y += 10;
+  }
+
+  private drawScoreSummaryStrip(): void {
+    const isLight = this.data.assessmentType === "Light";
+    const maturity = this.data.kpis.maturityLevel || "—";
+    const compliance =
+      this.data.kpis.overallPercentage != null
+        ? `${this.data.kpis.overallPercentage}%`
+        : `${this.data.kpis.completionPercentage}%`;
+
+    let primary = `Maturity: ${maturity}`;
+    let secondary = `Compliance / completion: ${compliance}`;
+
+    if (isLight && this.data.kpis.overallScore != null && this.data.kpis.maxPossibleScore) {
+      primary = `Overall score: ${this.data.kpis.overallScore} / ${this.data.kpis.maxPossibleScore} pts`;
+      secondary = `Maturity: ${maturity} · Compliance index: ${compliance}`;
+    } else if (!isLight) {
+      primary = `Governance maturity: ${maturity}`;
+      secondary = `Overall compliance index: ${compliance} · Controls assessed: ${this.data.kpis.controlsAssessed} of ${this.data.kpis.totalControls}`;
+    }
+
+    const stripH = 44;
+    this.ensureSpace(stripH + 10);
+    const top = this.y;
+    this.doc
+      .roundedRect(MARGIN_X, top, CONTENT_W, stripH, 4)
+      .lineWidth(1)
+      .fillAndStroke("#E8F4F6", C.border);
+    this.doc
+      .fillColor(C.teal)
+      .font(this.font("semi"))
+      .fontSize(9)
+      .text(
+        isLight ? "LIGHT ASSESSMENT SCORE SUMMARY" : "FULL ASSESSMENT SCORE SUMMARY",
+        MARGIN_X + 12,
+        top + 8
+      );
+    this.doc
+      .fillColor(C.navy)
+      .font(this.font("bold"))
+      .fontSize(11)
+      .text(primary, MARGIN_X + 12, top + 22, { width: CONTENT_W - 24 });
+    this.doc
+      .fillColor(C.text)
+      .font(this.font("reg"))
+      .fontSize(9)
+      .text(secondary, MARGIN_X + 12, top + 36, { width: CONTENT_W - 24 });
+    this.y = top + stripH + 12;
+  }
+
   private drawCoverAndExecutive(): void {
     this.drawLogos();
 
@@ -217,9 +321,8 @@ class ReportPdfRenderer {
     this.drawGradientRule(this.y);
     this.y += 14;
 
-    // Metadata grid with subtle row dividers
     const meta: [string, string][] = [
-      ["Assessment type", this.data.assessmentType],
+      ["Assessment type", this.data.assessmentType === "Light" ? "Light (lite)" : "Full"],
       ["Status", this.data.statusLabel],
       ["Organization scope", this.data.organizationScope],
       ["Framework version", this.data.frameworkVersion],
@@ -228,25 +331,10 @@ class ReportPdfRenderer {
       ["Auditor / Assessor", this.data.auditorName],
       ["Assessment reference", this.data.assessmentReference],
     ];
-
-    const rowH = 16;
-    const rows = Math.ceil(meta.length / 2);
-    for (let r = 0; r < rows; r++) {
-      const y = this.y + r * rowH;
-      if (r > 0) this.hLine(y - 2, "#E8EEF2", 0.5);
-      for (let c = 0; c < 2; c++) {
-        const item = meta[r * 2 + c];
-        if (!item) continue;
-        const x = c === 0 ? MARGIN_X : PAGE_W / 2 + 4;
-        this.doc
-          .fillColor(C.secondary)
-          .font(this.font("reg"))
-          .fontSize(8.5)
-          .text(`${item[0]}: `, x, y, { continued: true });
-        this.doc.fillColor(C.navy).font(this.font("semi")).text(item[1]);
-      }
+    if (this.data.submittedAt) {
+      meta.splice(5, 0, ["Submitted", this.data.submittedAt]);
     }
-    this.y += rows * rowH + 16;
+    this.drawMetadataGrid(meta);
 
     // Executive Summary
     this.sectionHeading("Executive Summary");
@@ -279,7 +367,7 @@ class ReportPdfRenderer {
     ];
     const gap = 8;
     const boxW = (CONTENT_W - gap * 3) / 4;
-    const boxH = 56;
+  const boxH = 58;
     kpis.forEach(([value, label, danger], i) => {
       const x = MARGIN_X + i * (boxW + gap);
       this.doc
@@ -289,15 +377,17 @@ class ReportPdfRenderer {
       this.doc
         .fillColor(danger ? C.exception : C.navy)
         .font(this.font("bold"))
-        .fontSize(18)
-        .text(value, x + 10, this.y + 12, { width: boxW - 20 });
+        .fontSize(value.length > 6 ? 14 : 18)
+        .text(value, x + 10, this.y + 10, { width: boxW - 20, lineGap: 0 });
       this.doc
         .fillColor(C.secondary)
         .font(this.font("reg"))
-        .fontSize(8.5)
-        .text(label, x + 10, this.y + 36, { width: boxW - 20 });
+        .fontSize(8)
+        .text(label, x + 10, this.y + 34, { width: boxW - 20, lineGap: 0.5 });
     });
     this.y += boxH + 14;
+
+    this.drawScoreSummaryStrip();
 
     // Status by Pillar
     this.sectionHeading("Status by Pillar");
@@ -312,7 +402,7 @@ class ReportPdfRenderer {
     this.drawTable(
       ["Pillar", "Not Started", "In-Progress", "Complete", "Total", "Completion"],
       pillarRows,
-      [170, 70, 70, 70, 55, 76],
+      distributeWidths([34, 11, 11, 11, 9, 12]),
       { numericAlignFrom: 1 }
     );
     this.y += 14;
@@ -375,6 +465,15 @@ class ReportPdfRenderer {
     this.y = boxTop + boxH + 10;
   }
 
+  private strokeTableSegment(top: number, bottom: number): void {
+    if (bottom <= top + 4) return;
+    this.doc
+      .strokeColor(C.border)
+      .lineWidth(1)
+      .rect(MARGIN_X, top, CONTENT_W, bottom - top)
+      .stroke();
+  }
+
   private drawTable(
     headers: string[],
     rows: string[][],
@@ -383,42 +482,52 @@ class ReportPdfRenderer {
   ): void {
     const fontSize = opts?.fontSize ?? 9;
     const pad = 6;
+    const widthSum = widths.reduce((a, b) => a + b, 0);
+    if (Math.abs(widthSum - CONTENT_W) > 1) {
+      console.warn(`[ReportPdf] Table column widths (${widthSum}) != CONTENT_W (${CONTENT_W})`);
+    }
 
     const drawHeader = () => {
-      this.doc.rect(MARGIN_X, this.y, CONTENT_W, 22).fill(C.headerBg);
+      this.doc.font(this.font("semi")).fontSize(fontSize);
+      const headerTexts = headers.map((h, i) =>
+        this.doc.heightOfString(h, { width: widths[i] - pad * 2 })
+      );
+      const headerH = Math.max(22, Math.max(...headerTexts, 10) + pad * 2);
+      this.doc.rect(MARGIN_X, this.y, CONTENT_W, headerH).fill(C.headerBg);
       this.doc
         .strokeColor(C.border)
         .lineWidth(1)
-        .rect(MARGIN_X, this.y, CONTENT_W, 22)
+        .rect(MARGIN_X, this.y, CONTENT_W, headerH)
         .stroke();
+
       let x = MARGIN_X;
       headers.forEach((h, i) => {
         this.doc
           .fillColor(C.navy)
           .font(this.font("semi"))
           .fontSize(fontSize)
-          .text(h, x + pad, this.y + 7, {
+          .text(h, x + pad, this.y + pad, {
             width: widths[i] - pad * 2,
-            lineBreak: false,
           });
         if (i < headers.length - 1) {
           this.doc
             .strokeColor(C.border)
             .lineWidth(0.6)
             .moveTo(x + widths[i], this.y)
-            .lineTo(x + widths[i], this.y + 22)
+            .lineTo(x + widths[i], this.y + headerH)
             .stroke();
         }
         x += widths[i];
       });
-      this.y += 22;
+      this.y += headerH;
     };
 
     this.ensureSpace(50);
-    const tableTop = this.y;
+    let tableTop = this.y;
     drawHeader();
 
     rows.forEach((row, rowIdx) => {
+      this.doc.font(this.font("reg")).fontSize(fontSize);
       const heights = row.map((cell, i) => {
         const h = this.doc.heightOfString(String(cell || "—"), {
           width: widths[i] - pad * 2,
@@ -428,13 +537,9 @@ class ReportPdfRenderer {
       const rowH = Math.max(...heights);
 
       if (this.y + rowH > CONTENT_BOTTOM) {
-        // close outer border for previous segment
-        this.doc
-          .strokeColor(C.border)
-          .lineWidth(1)
-          .rect(MARGIN_X, tableTop, CONTENT_W, this.y - tableTop)
-          .stroke();
+        this.strokeTableSegment(tableTop, this.y);
         this.addPage();
+        tableTop = this.y;
         drawHeader();
       }
 
@@ -478,12 +583,7 @@ class ReportPdfRenderer {
       this.y += rowH;
     });
 
-    // Outer border
-    this.doc
-      .strokeColor(C.border)
-      .lineWidth(1)
-      .rect(MARGIN_X, tableTop, CONTENT_W, this.y - tableTop)
-      .stroke();
+    this.strokeTableSegment(tableTop, this.y);
   }
 
   private drawDetailedFindings(): void {
@@ -512,17 +612,28 @@ class ReportPdfRenderer {
         .text(`Pillar ${num}: ${controls[0].pillarName}`, MARGIN_X, this.y);
       this.y += 18;
 
+      const isLight = this.data.assessmentType === "Light";
+      const headers = isLight
+        ? ["Control", "Status", "Exception", "Findings"]
+        : ["Control", "Tier", "Status", "Exception", "Findings"];
+      const widths = isLight
+        ? distributeWidths([12, 14, 18, 56])
+        : distributeWidths([10, 8, 12, 16, 54]);
       this.drawTable(
-        ["Control", "Tier", "Status", "Exception", "Findings"],
-        controls.map((c) => [
-          c.questionId,
-          c.assuranceTier,
-          c.testStatus,
-          c.exceptionStatus,
-          c.findings,
-        ]),
-        [52, 42, 58, 92, CONTENT_W - 52 - 42 - 58 - 92],
-        { exceptionCol: 3, fontSize: 8.5 }
+        headers,
+        controls.map((c) =>
+          isLight
+            ? [c.questionId, c.testStatus, c.exceptionStatus, c.findings]
+            : [
+                c.questionId,
+                c.assuranceTier,
+                c.testStatus,
+                c.exceptionStatus,
+                c.findings,
+              ]
+        ),
+        widths,
+        { exceptionCol: isLight ? 2 : 3, fontSize: 8.5 }
       );
       this.y += 14;
     }
@@ -562,7 +673,7 @@ class ReportPdfRenderer {
         r.finding,
         r.recommendedAction,
       ]),
-      [48, 88, 48, 150, CONTENT_W - 48 - 88 - 48 - 150],
+      distributeWidths([9, 15, 9, 28, 39]),
       { fontSize: 8.5 }
     );
   }
@@ -570,7 +681,11 @@ class ReportPdfRenderer {
   private drawControlEvaluations(): void {
     this.addPage();
     this.drawLogos();
-    this.sectionHeading("Control Detail");
+    const detailTitle =
+      this.data.assessmentType === "Light"
+        ? "Control Detail (Light Assessment)"
+        : "Control Detail (Full Assessment)";
+    this.sectionHeading(detailTitle);
 
     let currentPillar = -1;
     for (const control of this.data.controls) {
@@ -589,13 +704,26 @@ class ReportPdfRenderer {
   }
 
   private estimateCardMinHeight(control: ReportControlEvaluation): number {
-    let h = 70;
-    h += 20; // question
-    if (control.controlDescription) h += 36;
-    h += 40; // procedure
-    h += 28; // findings + rec
-    if (control.regulatoryAlignments) h += 50;
-    return Math.min(h, 160);
+    const innerW = CONTENT_W - 20;
+    const isLight = this.data.assessmentType === "Light";
+    this.doc.font(this.font("semi")).fontSize(10.5);
+    let h = 48;
+    h +=
+      this.doc.heightOfString(control.questionText, { width: innerW, lineGap: 1 }) + 12;
+    this.doc.font(this.font("reg")).fontSize(9.5);
+    if (control.controlDescription?.trim()) {
+      h += 14 + this.doc.heightOfString(control.controlDescription.trim(), { width: innerW }) + 6;
+    }
+    if (!isLight) {
+      const procedure =
+        control.testProcedureSteps.length > 0
+          ? control.testProcedureSteps.map((s, i) => `${i + 1}. ${s}`).join("\n")
+          : control.testProcedure?.trim() || " ";
+      h += 14 + this.doc.heightOfString(procedure, { width: innerW, lineGap: 1 }) + 6;
+    }
+    h += 14 + this.doc.heightOfString(control.findings, { width: innerW, lineGap: 1 }) + 6;
+    h += 14 + this.doc.heightOfString(control.recommendation, { width: innerW, lineGap: 1 }) + 12;
+    return Math.max(h, 96);
   }
 
   private drawControlCard(control: ReportControlEvaluation): void {
@@ -624,8 +752,27 @@ class ReportPdfRenderer {
       strokeOpenSegment();
     };
 
-    // Header bar
-    const headerH = 28;
+    const isLight = this.data.assessmentType === "Light";
+    const badges: { t: string; danger: boolean }[] = [
+      ...(isLight ? [] : [{ t: control.assuranceTier, danger: false }]),
+      { t: control.testStatus, danger: false },
+      { t: control.exceptionStatus, danger: control.exceptionStatus === "Exception Noted" },
+    ];
+
+    this.doc.font(this.font("semi")).fontSize(7.5);
+    const maxBadgeX = cardX + cardW - 10;
+    let bx = cardX + 10;
+    let badgeBottom = 24;
+    for (const b of badges) {
+      const tw = this.doc.widthOfString(b.t) + 12;
+      if (bx + tw > maxBadgeX && bx > cardX + 10) {
+        bx = cardX + 10;
+        badgeBottom += 16;
+      }
+      bx += tw + 5;
+    }
+    const headerH = Math.max(40, badgeBottom + 18);
+
     this.doc.rect(cardX, this.y, cardW, headerH).fill(C.headerBg);
     this.doc
       .strokeColor(C.border)
@@ -637,26 +784,25 @@ class ReportPdfRenderer {
       .fillColor(C.navy)
       .font(this.font("bold"))
       .fontSize(11)
-      .text(control.questionId, cardX + 10, this.y + 9);
+      .text(control.questionId, cardX + 10, this.y + 8, { width: cardW - 20 });
 
-    let bx = cardX + 10 + this.doc.widthOfString(control.questionId) + 10;
-    const badges = [
-      { t: control.assuranceTier, danger: false },
-      { t: control.testStatus, danger: false },
-      { t: control.exceptionStatus, danger: control.exceptionStatus === "Exception Noted" },
-    ];
+    bx = cardX + 10;
+    let by = this.y + 24;
     badges.forEach((b) => {
       const tw = this.doc.widthOfString(b.t) + 12;
-      if (bx + tw > cardX + cardW - 10) return;
+      if (bx + tw > maxBadgeX) {
+        bx = cardX + 10;
+        by += 16;
+      }
       this.doc
-        .roundedRect(bx, this.y + 7, tw, 14, 3)
+        .roundedRect(bx, by, tw, 14, 3)
         .lineWidth(0.7)
         .fillAndStroke(C.white, C.border);
       this.doc
         .fillColor(b.danger ? C.exception : C.text)
         .font(this.font("semi"))
         .fontSize(7.5)
-        .text(b.t, bx + 6, this.y + 10);
+        .text(b.t, bx + 6, by + 3);
       bx += tw + 5;
     });
     this.y += headerH + 10;
@@ -724,13 +870,18 @@ class ReportPdfRenderer {
       body(control.controlDescription.trim());
     }
 
-    const procedure =
-      control.testProcedureSteps.length > 0
-        ? control.testProcedureSteps.map((s, i) => `${i + 1}. ${s}`).join("\n")
-        : control.testProcedure?.trim() ||
-          "No test procedure recorded for this control in the bound framework version.";
-    label("Test Procedure");
-    body(procedure);
+    if (!isLight) {
+      const procedure =
+        control.testProcedureSteps.length > 0
+          ? control.testProcedureSteps.map((s, i) => `${i + 1}. ${s}`).join("\n")
+          : control.testProcedure?.trim() ||
+            "No test procedure recorded for this control in the bound framework version.";
+      label("Test Procedure");
+      body(procedure);
+    } else if (control.testProcedure?.trim()) {
+      label("Assessment Context");
+      body(control.testProcedure.trim());
+    }
 
     const evidenceParts: string[] = [];
     if (control.linkedDocumentTitles.length) {
@@ -786,31 +937,42 @@ class ReportPdfRenderer {
       if (align.nistAiRmf) rows.push(["NIST AI RMF", align.nistAiRmf]);
       if (align.iso42001) rows.push(["ISO/IEC 42001", align.iso42001]);
       if (align.oecdAi) rows.push(["OECD AI Principles", align.oecdAi]);
-      const boxH = 18 + rows.length * 13;
+
+      this.doc.font(this.font("reg")).fontSize(8.5);
+      const rowHeights = rows.map(([k, v]) =>
+        Math.max(
+          this.doc.heightOfString(k, { width: 112 }),
+          this.doc.heightOfString(v, { width: cardW - 150 })
+        )
+      );
+      const boxH = 22 + rowHeights.reduce((s, h) => s + h + 6, 0);
       softBreak(boxH + 8);
+
+      const boxTop = this.y;
       this.doc
-        .roundedRect(cardX + 8, this.y, cardW - 16, boxH, 3)
+        .roundedRect(cardX + 8, boxTop, cardW - 16, boxH, 3)
         .fill(C.headerBg);
       this.doc
         .fillColor(C.secondary)
         .font(this.font("semi"))
         .fontSize(8)
-        .text("FRAMEWORK ALIGNMENT", cardX + 16, this.y + 6);
-      let ay = this.y + 18;
-      rows.forEach(([k, v]) => {
+        .text("FRAMEWORK ALIGNMENT", cardX + 16, boxTop + 6);
+      let ay = boxTop + 20;
+      rows.forEach(([k, v], idx) => {
+        const rh = rowHeights[idx];
         this.doc
           .fillColor(C.teal)
           .font(this.font("semi"))
           .fontSize(8.5)
-          .text(k, cardX + 16, ay);
+          .text(k, cardX + 16, ay, { width: 112 });
         this.doc
           .fillColor(C.text)
           .font(this.font("reg"))
           .fontSize(8.5)
           .text(v, cardX + 130, ay, { width: cardW - 150 });
-        ay += 13;
+        ay += rh + 6;
       });
-      this.y += boxH + 8;
+      this.y = boxTop + boxH + 8;
     }
 
     strokeOpenSegment();
@@ -822,16 +984,24 @@ class ReportPdfRenderer {
     for (let i = 0; i < range.count; i++) {
       this.doc.switchToPage(range.start + i);
       this.hLine(FOOTER_Y - 8, C.border, 0.6);
+      const typeLabel =
+        this.data.assessmentType === "Light" ? "Light assessment" : "Full assessment";
       this.doc
         .fillColor(C.secondary)
         .font(this.font("reg"))
-        .fontSize(8)
+        .fontSize(7.5)
         .text(
-          `${this.data.assessmentReference}  ·  Confidential  ·  ${this.data.generatedAt}  ·  Page ${i + 1} of ${range.count}`,
+          `${this.data.assessmentReference} · Confidential · ${typeLabel}`,
           MARGIN_X,
-          FOOTER_Y,
-          { width: CONTENT_W, align: "left", lineBreak: false }
+          FOOTER_Y - 2,
+          { width: CONTENT_W, align: "left" }
         );
+      this.doc.text(
+        `Generated ${this.data.generatedAt} · Page ${i + 1} of ${range.count}`,
+        MARGIN_X,
+        FOOTER_Y + 8,
+        { width: CONTENT_W, align: "left" }
+      );
     }
   }
 }

@@ -237,7 +237,7 @@ function PillarRadar({
         ))}
       </svg>
       {hoveredIndex !== null && dataPoints[hoveredIndex] && (
-        <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1 rounded-xl border border-slate-200 bg-white/95 px-3 py-2 text-center shadow-lg backdrop-blur-sm">
+        <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-center shadow-lg pointer-events-none">
           <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-600">
             {dataPoints[hoveredIndex].label}
           </p>
@@ -351,11 +351,12 @@ export function AssessmentResultsView({
         className="surface-panel rounded-3xl p-6"
       />
 
-      {/* Hero */}
+      {/* Hero — metrics stay painted inside the card (avoid backdrop-blur / heavy outer glow) */}
       <section
         className={cn(
-          "relative overflow-hidden rounded-3xl border border-slate-800/40 bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 text-white",
-          theme.glow
+          "relative isolate overflow-hidden rounded-3xl border border-slate-800/40",
+          "bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 text-white",
+          "ring-1 ring-white/10 shadow-lg"
         )}
       >
         <div
@@ -440,10 +441,10 @@ export function AssessmentResultsView({
                 </p>
               </div>
 
-              <div className="flex flex-wrap items-center gap-3">
+              <div className="flex flex-wrap items-stretch gap-3">
                 <div
                   className={cn(
-                    "inline-flex items-center gap-2 rounded-2xl border px-4 py-2.5",
+                    "inline-flex items-center gap-2 rounded-2xl border px-4 py-2.5 shrink-0",
                     theme.badge
                   )}
                 >
@@ -455,11 +456,11 @@ export function AssessmentResultsView({
                     <p className="text-lg font-bold leading-tight">{summary.maturityLevel}</p>
                   </div>
                 </div>
-                <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2.5 backdrop-blur-sm">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-white/50">
+                <div className="rounded-2xl border border-white/15 bg-slate-900/55 px-4 py-2.5 shrink-0">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-white/55">
                     Compliance index
                   </p>
-                  <p className="text-lg font-bold tabular-nums">
+                  <p className="text-lg font-bold tabular-nums text-white">
                     <AnimatedNumber value={compliance} suffix="%" duration={800} />
                   </p>
                 </div>
