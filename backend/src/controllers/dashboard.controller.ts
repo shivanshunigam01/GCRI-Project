@@ -731,7 +731,7 @@ export async function exportAuditorDashboardAnalytics(req: Request, res: Respons
     const ctx = {
       scopeLabel: `Assigned portfolio (${assignedCompanyIds.length} organization(s))`,
       roleLabel: "Accredited Assessor",
-      requestedBy: req.user.email,
+      requestedBy: req.user?.email,
     };
 
     const stamp = new Date().toISOString().slice(0, 10);

@@ -111,9 +111,10 @@ export class DashboardAnalyticsExportService {
     };
     kpiEntries.forEach((key) => {
       const item = data.kpis[key];
+      const suffix = "suffix" in item && item.suffix ? item.suffix : "";
       kpiSheet.addRow([
         labels[key] || key,
-        `${item.value}${item.suffix || ""}`,
+        `${item.value}${suffix}`,
         item.deltaPct,
         item.hint || "",
       ]);

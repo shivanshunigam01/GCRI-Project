@@ -25,7 +25,7 @@ export async function getMe(req: Request, res: Response, next: NextFunction) {
 
     const authenticatorConfigured = Boolean(user.mfa?.secret);
     const recoveryCodesRemaining = user.mfa?.recoveryCodes?.length || 0;
-    const data = user.toObject() as Record<string, unknown> & {
+    const data = user.toObject() as unknown as Record<string, unknown> & {
       mfa?: Record<string, unknown>;
       passwordHash?: string;
     };
