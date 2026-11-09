@@ -74,7 +74,13 @@ import {
 
 export default function DashboardPage() {
   const { user, isSuperAdmin, isAdmin } = useAuth();
-  const { setOrganizations, refreshTrigger, selectedOrgFilter } = useDashboardScope();
+  const {
+    setOrganizations,
+    refreshTrigger,
+    selectedOrgFilter,
+    setSelectedOrgFilter,
+    organizations: scopeOrganizations,
+  } = useDashboardScope();
   // SuperAdmin and Org Admin share the admin dashboard APIs (isAdmin includes SuperAdmin).
   // Assessor never hits /dashboard/admin/* — that was the historical SuperAdmin→Auditor bug.
   const roleView: "Admin" | "Auditor" = isAdmin ? "Admin" : "Auditor";
@@ -363,6 +369,13 @@ export default function DashboardPage() {
           void fetchAnalytics(analyticsRange);
         }}
         isAuditor={roleView === "Auditor"}
+        showScopeSelector={isSuperAdmin && roleView === "Admin"}
+        scopeOrganizations={scopeOrganizations.map((o) => ({ _id: o._id, name: o.name }))}
+        scopeValue={selectedOrgFilter}
+        onScopeChange={setSelectedOrgFilter}
+        analyticsCompanyId={
+          isSuperAdmin && selectedOrgFilter !== "all" ? selectedOrgFilter : undefined
+        }
         title={
           roleView === "Auditor"
             ? "Assessor Operations Analytics"

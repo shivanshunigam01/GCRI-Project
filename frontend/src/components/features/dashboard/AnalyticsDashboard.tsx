@@ -1,10 +1,12 @@
 "use client";
 
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import Link from "next/link";
 import {
   Area,
   AreaChart,
+  Bar,
+  BarChart,
   CartesianGrid,
   Cell,
   Line,
@@ -20,8 +22,13 @@ import {
   ArrowDownRight,
   ArrowUpRight,
   Building2,
+  ChevronDown,
   FileCheck2,
+  FileDown,
+  FileSpreadsheet,
+  Loader2,
   Minus,
+  Radar,
   RefreshCw,
   ShieldAlert,
   TrendingUp,
@@ -30,6 +37,12 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AnalyticsRange, DashboardAnalytics } from "@/types/analytics.types";
+import {
+  downloadAdminDashboardExport,
+  downloadAuditorDashboardExport,
+} from "@/lib/dashboardDownloads";
+import { getApiErrorMessage } from "@/lib/authUser";
+import { useToast } from "@/context/ToastContext";
 
 const RANGES: AnalyticsRange[] = ["30d", "90d", "6m", "1y"];
 const STATUS_COLORS = ["#10b981", "#3b82f6", "#94a3b8"];
@@ -149,6 +162,11 @@ export interface AnalyticsDashboardProps {
   title?: string;
   subtitle?: string;
   isAuditor?: boolean;
+  showScopeSelector?: boolean;
+  scopeOrganizations?: Array<{ _id: string; name: string }>;
+  scopeValue?: string;
+  onScopeChange?: (orgId: string) => void;
+  analyticsCompanyId?: string;
 }
 
 export function AnalyticsDashboard({
@@ -161,7 +179,49 @@ export function AnalyticsDashboard({
   title = "Platform Operations & Governance",
   subtitle = "Analytics · trends · outliers · operational telemetry",
   isAuditor = false,
+  showScopeSelector = false,
+  scopeOrganizations = [],
+  scopeValue = "all",
+  onScopeChange,
+  analyticsCompanyId,
 }: AnalyticsDashboardProps) {
+  const toast = useToast();
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exporting, setExporting] = useState<"pdf" | "xlsx" | null>(null);
+
+  const handleExport = async (format: "pdf" | "xlsx") => {
+    if (exporting) return;
+    setExporting(format);
+    setExportOpen(false);
+    try {
+      if (isAuditor) {
+        await downloadAuditorDashboardExport({ format, range });
+      } else {
+        await downloadAdminDashboardExport({
+          format,
+          range,
+          companyId: analyticsCompanyId,
+        });
+      }
+      toast.success(
+        format === "pdf"
+          ? "Dashboard analytics PDF downloaded (branded executive pack)."
+          : "Dashboard analytics Excel workbook downloaded."
+      );
+    } catch (err: unknown) {
+      toast.error(getApiErrorMessage(err, "Failed to export dashboard report."));
+    } finally {
+      setExporting(null);
+    }
+  };
+
+  const typeMixBar = useMemo(() => {
+    const mix = data?.assessmentTypeMix ?? { light: 0, full: 0, total: 0 };
+    return [
+      { name: "Light", count: mix.light, fill: "#0ea5e9" },
+      { name: "Full", count: mix.full, fill: "#6366f1" },
+    ];
+  }, [data]);
   const statusPie = useMemo(() => {
     if (!data) return [];
     const s = data.assessmentsByStatus;
@@ -260,6 +320,24 @@ export function AnalyticsDashboard({
           <p className="text-xs sm:text-sm text-slate-500 mt-1">{subtitle}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {showScopeSelector && onScopeChange && (
+            <label className="inline-flex items-center gap-2 text-xs font-semibold text-slate-600">
+              <Building2 className="h-3.5 w-3.5 text-slate-400" />
+              Scope
+              <select
+                value={scopeValue}
+                onChange={(e) => onScopeChange(e.target.value)}
+                className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-800 min-w-[140px] max-w-[200px]"
+              >
+                <option value="all">All organizations</option>
+                {scopeOrganizations.map((o) => (
+                  <option key={o._id} value={o._id}>
+                    {o.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-0.5">
             {RANGES.map((r) => (
               <button
@@ -288,6 +366,40 @@ export function AnalyticsDashboard({
               Refresh
             </button>
           )}
+          <div className="relative">
+            <button
+              type="button"
+              disabled={!data || !!exporting}
+              onClick={() => setExportOpen((v) => !v)}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl bg-[#102C3A] text-white hover:bg-[#145568] disabled:opacity-50"
+            >
+              {exporting ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <FileDown className="h-3.5 w-3.5" />
+              )}
+              Export report
+              <ChevronDown className="h-3.5 w-3.5 opacity-80" />
+            </button>
+            {exportOpen && (
+              <div className="absolute right-0 z-20 mt-1 w-48 rounded-xl border border-slate-200 bg-white shadow-lg py-1">
+                <button
+                  type="button"
+                  onClick={() => void handleExport("pdf")}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-slate-800 hover:bg-slate-50"
+                >
+                  <FileDown className="h-3.5 w-3.5" /> PDF (branded)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleExport("xlsx")}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-slate-800 hover:bg-slate-50"
+                >
+                  <FileSpreadsheet className="h-3.5 w-3.5" /> Excel workbook
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -338,6 +450,48 @@ export function AnalyticsDashboard({
               );
             })}
           </div>
+
+          {(data.outliers ?? []).length > 0 && (
+            <ChartCard
+              title="Insights & outliers"
+              subtitle="Automated signals — low maturity tenants, workload gaps, risk spikes, and trend declines"
+              className="border-amber-200/80 bg-gradient-to-br from-amber-50/40 via-white to-white"
+            >
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
+                {(data.outliers ?? []).map((o, idx) => (
+                  <div
+                    key={`${o.type}-${o.label}-${idx}`}
+                    className={cn(
+                      "rounded-xl border px-3 py-2.5",
+                      o.severity === "critical"
+                        ? "border-rose-200 bg-rose-50/80"
+                        : o.severity === "high"
+                          ? "border-amber-200 bg-amber-50/60"
+                          : "border-slate-200 bg-slate-50/80"
+                    )}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Radar
+                        className={cn(
+                          "h-3.5 w-3.5 shrink-0",
+                          o.severity === "critical"
+                            ? "text-rose-600"
+                            : o.severity === "high"
+                              ? "text-amber-700"
+                              : "text-slate-500"
+                        )}
+                      />
+                      <p className="text-[11px] font-bold text-slate-900 truncate">{o.label}</p>
+                      <span className="ml-auto text-[9px] font-bold uppercase tracking-wide text-slate-500">
+                        {o.type}
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-slate-600 mt-1 leading-snug">{o.detail}</p>
+                  </div>
+                ))}
+              </div>
+            </ChartCard>
+          )}
 
           <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
             <ChartCard
@@ -472,7 +626,7 @@ export function AnalyticsDashboard({
 
           <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
             <ChartCard
-              className="xl:col-span-5"
+              className="xl:col-span-4"
               title="Security Events Timeline"
               subtitle="Audit trail volume over the selected period"
             >
@@ -535,19 +689,41 @@ export function AnalyticsDashboard({
             </ChartCard>
 
             <ChartCard
-              className="xl:col-span-3"
-              title="SaaS Subscription Distribution"
-              subtitle={`${data.subscriptionDistribution.total} tenants`}
+              className="xl:col-span-2"
+              title="Assessment type mix"
+              subtitle={`${data.assessmentTypeMix?.total ?? 0} sessions in scope`}
             >
               <div className="h-[160px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={typeMixBar} layout="vertical" margin={{ left: 8, right: 8 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" horizontal={false} />
+                    <XAxis type="number" allowDecimals={false} tick={{ fontSize: 10, fill: "#64748b" }} />
+                    <YAxis type="category" dataKey="name" width={44} tick={{ fontSize: 10, fill: "#64748b" }} />
+                    <Tooltip />
+                    <Bar dataKey="count" radius={[0, 6, 6, 0]}>
+                      {typeMixBar.map((entry, i) => (
+                        <Cell key={i} fill={entry.fill} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </ChartCard>
+
+            <ChartCard
+              className="xl:col-span-2"
+              title="SaaS plans"
+              subtitle={`${data.subscriptionDistribution.total} tenants`}
+            >
+              <div className="h-[140px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
                       data={planPie.length ? planPie : [{ name: "None", value: 1 }]}
                       dataKey="value"
                       nameKey="name"
-                      innerRadius={42}
-                      outerRadius={64}
+                      innerRadius={36}
+                      outerRadius={52}
                       paddingAngle={2}
                     >
                       {(planPie.length ? planPie : [{ name: "None", value: 1 }]).map((_, i) => (

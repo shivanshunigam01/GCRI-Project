@@ -7,6 +7,8 @@ import {
   getAuditorDashboardAssessments,
   getAuditorDashboardAnalytics,
   getAuditorOrganizations,
+  exportAdminDashboardAnalytics,
+  exportAuditorDashboardAnalytics,
 } from "../controllers/dashboard.controller.js";
 import { authenticate, authorize } from "../middlewares/auth.js";
 import { validateRequest } from "../middlewares/validate.js";
@@ -65,6 +67,13 @@ router.get(
   authenticate,
   authorize("SuperAdmin", "Admin"),
   getAdminDashboardAnalytics
+);
+
+router.get(
+  "/admin/analytics/export",
+  authenticate,
+  authorize("SuperAdmin", "Admin"),
+  exportAdminDashboardAnalytics
 );
 
 /**
@@ -155,6 +164,13 @@ router.get(
   authenticate,
   authorize("Assessor"),
   getAuditorDashboardAnalytics
+);
+
+router.get(
+  "/auditor/analytics/export",
+  authenticate,
+  authorize("Assessor"),
+  exportAuditorDashboardAnalytics
 );
 
 /**

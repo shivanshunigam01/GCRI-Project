@@ -441,6 +441,98 @@ export async function buildDashboardAnalytics(scope: DashboardAnalyticsScope) {
     ),
   };
 
+  let lightAssessments = 0;
+  let fullAssessments = 0;
+  for (const s of sessionsForScores) {
+    if (s.assessmentType === "Full") fullAssessments++;
+    else lightAssessments++;
+  }
+  const assessmentTypeMix = {
+    light: lightAssessments,
+    full: fullAssessments,
+    total: sessionsForScores.length,
+  };
+
+  const outliers: Array<{
+    type: "organization" | "auditor" | "risk" | "compliance";
+    label: string;
+    detail: string;
+    severity: "critical" | "high" | "medium";
+    value?: number;
+  }> = [];
+
+  for (const [, row] of orgAgg.entries()) {
+    const complianceScore = row.scored > 0 ? Math.round(row.scoreSum / row.scored) : 0;
+    if (row.assessments > 0 && complianceScore < 55) {
+      outliers.push({
+        type: "organization",
+        label: row.name,
+        detail: `Compliance maturity ${complianceScore}% across ${row.assessments} session(s)`,
+        severity: complianceScore < 35 ? "critical" : "high",
+        value: complianceScore,
+      });
+    }
+  }
+
+  for (const a of auditorPerformance) {
+    if (a.assigned >= 2 && a.completionRate < 50) {
+      outliers.push({
+        type: "auditor",
+        label: a.name,
+        detail: `Completion rate ${a.completionRate}% (${a.completed}/${a.assigned} assessments)`,
+        severity: a.completionRate < 25 ? "critical" : "high",
+        value: a.completionRate,
+      });
+    }
+  }
+
+  if (riskBuckets.Critical > 0) {
+    outliers.push({
+      type: "risk",
+      label: "Critical exceptions",
+      detail: `${riskBuckets.Critical} critical open finding(s) in scope`,
+      severity: "critical",
+      value: riskBuckets.Critical,
+    });
+  } else if (riskBuckets.High >= 3) {
+    outliers.push({
+      type: "risk",
+      label: "Elevated high-severity risks",
+      detail: `${riskBuckets.High} high-severity exceptions open`,
+      severity: "high",
+      value: riskBuckets.High,
+    });
+  }
+
+  if (complianceTrend.length >= 2) {
+    const startVal = complianceTrend[0]?.value ?? complianceScore;
+    const endVal = complianceTrend[complianceTrend.length - 1]?.value ?? complianceScore;
+    if (endVal < startVal - 8) {
+      outliers.push({
+        type: "compliance",
+        label: "Compliance trend decline",
+        detail: `Average maturity dropped from ${startVal}% to ${endVal}% over ${range}`,
+        severity: endVal < startVal - 20 ? "critical" : "high",
+        value: endVal - startVal,
+      });
+    }
+  }
+
+  if (openRisks > 0 && risksDelta > 15) {
+    outliers.push({
+      type: "risk",
+      label: "Risk volume spike",
+      detail: `Open exceptions up ${risksDelta}% vs prior period (${openRisks} total)`,
+      severity: risksDelta > 35 ? "critical" : "medium",
+      value: openRisks,
+    });
+  }
+
+  outliers.sort((a, b) => {
+    const rank = { critical: 0, high: 1, medium: 2 };
+    return rank[a.severity] - rank[b.severity];
+  });
+
   return {
     range,
     periodDays: days,
@@ -508,5 +600,9 @@ export async function buildDashboardAnalytics(scope: DashboardAnalyticsScope) {
     assessmentPipeline,
     recentOrganizations,
     recentActivity,
+    assessmentTypeMix,
+    outliers: outliers.slice(0, 12),
   };
 }
+
+export type DashboardAnalyticsPayload = Awaited<ReturnType<typeof buildDashboardAnalytics>>;

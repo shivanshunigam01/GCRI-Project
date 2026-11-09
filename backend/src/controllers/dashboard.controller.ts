@@ -10,6 +10,7 @@ import {
   AnalyticsRange,
   buildDashboardAnalytics,
 } from "../services/dashboardAnalytics.service.js";
+import { DashboardAnalyticsExportService } from "../services/dashboardAnalyticsExport.service.js";
 
 const CANONICAL_GRAICE_PILLARS = [
   { key: "P1", pillarId: "ethical-leadership", number: 1, name: "Ethical Leadership", defaultControls: 10 },
@@ -630,6 +631,126 @@ export async function getAuditorOrganizations(req: Request, res: Response, next:
     );
 
     return sendSuccess(res, { organizations: organizationsWithStats });
+  } catch (err) {
+    next(err);
+  }
+}
+
+function parseAnalyticsExportFormat(raw: unknown): "pdf" | "xlsx" | null {
+  const f = String(raw || "pdf").toLowerCase();
+  if (f === "pdf") return "pdf";
+  if (f === "xlsx" || f === "excel") return "xlsx";
+  return null;
+}
+
+function parseAnalyticsRange(raw: unknown): AnalyticsRange {
+  const range = String(raw || "30d") as AnalyticsRange;
+  const valid: AnalyticsRange[] = ["30d", "90d", "6m", "1y"];
+  return valid.includes(range) ? range : "30d";
+}
+
+export async function exportAdminDashboardAnalytics(req: Request, res: Response, next: NextFunction) {
+  try {
+    if (req.user?.role !== "SuperAdmin" && req.user?.role !== "Admin") {
+      return sendError(res, "Access denied. Administrators only.", 403, "ADMIN_ROLE_REQUIRED");
+    }
+
+    const format = parseAnalyticsExportFormat(req.query.format);
+    if (!format) {
+      return sendError(res, "Invalid format. Use format=pdf or format=xlsx", 400, "INVALID_FORMAT");
+    }
+
+    const safeRange = parseAnalyticsRange(req.query.range);
+    let companyId = req.user.role === "Admin" ? req.user.companyId : undefined;
+    const scopeParam = typeof req.query.companyId === "string" ? req.query.companyId : "";
+    if (req.user.role === "SuperAdmin" && scopeParam && /^[0-9a-fA-F]{24}$/.test(scopeParam)) {
+      companyId = scopeParam;
+    }
+
+    const analytics = await buildDashboardAnalytics({
+      companyId: companyId || undefined,
+      isSuperAdmin: req.user.role === "SuperAdmin",
+      range: safeRange,
+    });
+
+    let scopeLabel = "All organizations";
+    if (companyId) {
+      const org = await Company.findById(companyId).select("name").lean();
+      scopeLabel = org?.name || "Scoped organization";
+    }
+
+    const ctx = {
+      scopeLabel,
+      roleLabel: req.user.role === "SuperAdmin" ? "Super Administrator" : "Organization Administrator",
+      requestedBy: req.user.email,
+    };
+
+    const stamp = new Date().toISOString().slice(0, 10);
+    if (format === "pdf") {
+      const buffer = await DashboardAnalyticsExportService.buildPdf(analytics, ctx);
+      const fileName = `GCRAI_Analytics_${safeRange}_${stamp}.pdf`;
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+      return res.send(buffer);
+    }
+
+    const buffer = await DashboardAnalyticsExportService.buildExcel(analytics, ctx);
+    const fileName = `GCRAI_Analytics_${safeRange}_${stamp}.xlsx`;
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+    res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+    return res.send(buffer);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function exportAuditorDashboardAnalytics(req: Request, res: Response, next: NextFunction) {
+  try {
+    const auditorId = req.user?.userId;
+    if (!auditorId) {
+      return sendError(res, "Authentication required", 401, "UNAUTHORIZED");
+    }
+
+    const format = parseAnalyticsExportFormat(req.query.format);
+    if (!format) {
+      return sendError(res, "Invalid format. Use format=pdf or format=xlsx", 400, "INVALID_FORMAT");
+    }
+
+    const safeRange = parseAnalyticsRange(req.query.range);
+    const assignedCompanyIds = await getAssignedOrganizationIds(auditorId);
+
+    const analytics = await buildDashboardAnalytics({
+      assignedCompanyIds,
+      auditorUserId: auditorId,
+      range: safeRange,
+    });
+
+    const ctx = {
+      scopeLabel: `Assigned portfolio (${assignedCompanyIds.length} organization(s))`,
+      roleLabel: "Accredited Assessor",
+      requestedBy: req.user.email,
+    };
+
+    const stamp = new Date().toISOString().slice(0, 10);
+    if (format === "pdf") {
+      const buffer = await DashboardAnalyticsExportService.buildPdf(analytics, ctx);
+      const fileName = `GCRAI_Assessor_Analytics_${safeRange}_${stamp}.pdf`;
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+      return res.send(buffer);
+    }
+
+    const buffer = await DashboardAnalyticsExportService.buildExcel(analytics, ctx);
+    const fileName = `GCRAI_Assessor_Analytics_${safeRange}_${stamp}.xlsx`;
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+    res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+    return res.send(buffer);
   } catch (err) {
     next(err);
   }

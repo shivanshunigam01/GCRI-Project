@@ -78,4 +78,19 @@ export const dashboardService = {
 
   getAuditorAnalytics: (params?: { range?: AnalyticsRange }) =>
     apiClient.get<DashboardAnalytics>("/dashboard/auditor/analytics", { params }),
+
+  getAdminAnalyticsExportUrl: (params: {
+    format: "pdf" | "xlsx";
+    range: AnalyticsRange;
+    companyId?: string;
+  }) => {
+    const q = new URLSearchParams({ format: params.format, range: params.range });
+    if (params.companyId) q.set("companyId", params.companyId);
+    return `/dashboard/admin/analytics/export?${q.toString()}`;
+  },
+
+  getAuditorAnalyticsExportUrl: (params: { format: "pdf" | "xlsx"; range: AnalyticsRange }) => {
+    const q = new URLSearchParams({ format: params.format, range: params.range });
+    return `/dashboard/auditor/analytics/export?${q.toString()}`;
+  },
 };

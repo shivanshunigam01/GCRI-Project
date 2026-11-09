@@ -82,4 +82,16 @@ export interface DashboardAnalytics {
     actorEmail?: string;
     timestamp: string;
   }>;
+  assessmentTypeMix: {
+    light: number;
+    full: number;
+    total: number;
+  };
+  outliers: Array<{
+    type: "organization" | "auditor" | "risk" | "compliance";
+    label: string;
+    detail: string;
+    severity: "critical" | "high" | "medium";
+    value?: number;
+  }>;
 }

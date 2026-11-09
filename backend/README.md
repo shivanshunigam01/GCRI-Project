@@ -64,6 +64,12 @@ From **Assessments → open session → Results** (`/assessments/:id/results`), 
 - PDF includes GCRAI / GRAICE logos, executive summary, KPIs, findings, remediation, and per-control detail (`GET /api/v1/assessments/:id/report` generates on demand if needed).
 - Excel mirrors the same dataset in styled sheets (`GET /api/v1/assessments/:id/export`).
 
+### 6. Dashboard analytics export
+On `/dashboard`, use **Export report** → PDF or Excel (Super Admin, Admin, Assessor).
+
+- `GET /api/v1/dashboard/admin/analytics/export?format=pdf|xlsx&range=30d&companyId=optional`
+- `GET /api/v1/dashboard/auditor/analytics/export?format=pdf|xlsx&range=30d`
+
 ## Production (EC2 + PM2)
 
 `dist/` is not in git. On the server you must install dependencies and compile before PM2 can start.
