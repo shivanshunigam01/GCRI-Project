@@ -6,6 +6,7 @@ import { User, IUser } from "../models/User.js";
 import { AuditLog } from "../models/AuditLog.js";
 import { sendSuccess, sendError } from "../utils/response.js";
 import { NotificationService } from "../services/notification.service.js";
+import { emailService } from "../services/email.service.js";
 
 /**
  * Get profile of currently authenticated user
@@ -614,10 +615,18 @@ export async function adminResetPassword(
       userAgent: req.headers["user-agent"],
     });
 
-    const resetUrl = `${process.env.APP_URL || "http://localhost:3000"}/reset-password?token=${rawToken}`;
+    const resetUrl = `${emailService.getAppBaseUrl()}/reset-password?token=${rawToken}`;
+    const mailResult = await emailService.sendPasswordReset({
+      recipientEmail: user.email,
+      resetUrl,
+      expiresInMinutes: 24 * 60,
+    });
 
     return sendSuccess(res, {
-      message: `Password reset token generated for user '${user.email}'.`,
+      message: mailResult.success
+        ? `Password reset email sent to '${user.email}'.`
+        : `Password reset token generated for '${user.email}', but email delivery failed — share the reset link manually.`,
+      emailSent: Boolean(mailResult.success && !mailResult.mocked),
       resetToken: rawToken,
       resetUrl,
       expiresAt: expires,

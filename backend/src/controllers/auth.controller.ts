@@ -8,6 +8,7 @@ import { User, IUser } from "../models/User.js";
 import { Company } from "../models/Company.js";
 import { sendSuccess, sendError } from "../utils/response.js";
 import { AuditLog } from "../models/AuditLog.js";
+import { emailService } from "../services/email.service.js";
 
 /**
  * Register a new Assessor or User
@@ -338,6 +339,16 @@ export async function verifyMfa(req: Request, res: Response, next: NextFunction)
       userAgent: req.headers["user-agent"],
     });
 
+    void emailService
+      .sendMfaAlert({
+        recipientEmail: user.email,
+        action: "ENABLED",
+        ipAddress: req.ip,
+      })
+      .catch((err) => {
+        console.error("[Auth] MFA alert email failed:", err);
+      });
+
     const secret = process.env.JWT_SECRET || "default_jwt_secret_dev";
     const expiresIn = process.env.JWT_EXPIRES_IN || "7d";
     const fullToken = jwt.sign(
@@ -462,9 +473,21 @@ export async function forgotPassword(req: Request, res: Response, next: NextFunc
       userAgent: req.headers["user-agent"],
     });
 
-    // Until Milestone 6 email delivery service is configured, log token for development reference
-    if (process.env.NODE_ENV !== "production") {
+    const resetUrl = `${emailService.getAppBaseUrl()}/reset-password?token=${rawToken}`;
+    const mailResult = await emailService.sendPasswordReset({
+      recipientEmail: user.email,
+      resetUrl,
+      expiresInMinutes: 60,
+    });
+
+    if (!mailResult.success) {
+      console.error(`[Auth] Password reset email failed for ${user.email}`);
+      if (process.env.NODE_ENV !== "production") {
+        console.warn(`[Auth/Dev] Reset URL (email failed): ${resetUrl}`);
+      }
+    } else if (process.env.NODE_ENV !== "production" && mailResult.mocked) {
       console.log(`[Auth/Dev] Password Reset Token for ${user.email}: ${rawToken}`);
+      console.log(`[Auth/Dev] Reset URL: ${resetUrl}`);
     }
 
     return sendSuccess(res, {

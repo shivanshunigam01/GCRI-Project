@@ -6,6 +6,7 @@ import {
   AdminDashboardSummary,
   AdminAssessmentItem,
 } from "@/types/dashboard.types";
+import { AnalyticsRange, DashboardAnalytics } from "@/types/analytics.types";
 
 export type AuditorPipelineFilter = "All" | "InProgress" | "Submitted" | "Light" | "Full";
 
@@ -71,4 +72,10 @@ export const dashboardService = {
     apiClient.get<{ assessments: AdminAssessmentItem[] }>("/dashboard/admin/assessments", {
       params,
     }),
+
+  getAdminAnalytics: (params?: { range?: AnalyticsRange; companyId?: string }) =>
+    apiClient.get<DashboardAnalytics>("/dashboard/admin/analytics", { params }),
+
+  getAuditorAnalytics: (params?: { range?: AnalyticsRange }) =>
+    apiClient.get<DashboardAnalytics>("/dashboard/auditor/analytics", { params }),
 };

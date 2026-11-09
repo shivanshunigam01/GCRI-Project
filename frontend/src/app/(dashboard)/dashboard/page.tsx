@@ -16,6 +16,7 @@ import { MetricListModal, MetricListRow } from "@/components/shared/MetricListMo
 import { useClientPagination } from "@/hooks/useClientPagination";
 import { AnimatedNumber } from "@/components/ui/AnimatedNumber";
 import { userService } from "@/services/user.service";
+import { AnalyticsDashboard } from "@/components/features/dashboard/AnalyticsDashboard";
 import {
   AuditorDashboardSummary,
   AdminDashboardSummary,
@@ -25,6 +26,7 @@ import {
   AuditorPillarPerformance,
   AuditorActiveAssessment,
 } from "@/types/dashboard.types";
+import { AnalyticsRange, DashboardAnalytics } from "@/types/analytics.types";
 import { useDashboardScope } from "@/context/DashboardScopeContext";
 import { getUserFacingApiError } from "@/lib/authUser";
 import {
@@ -72,13 +74,17 @@ import {
 
 export default function DashboardPage() {
   const { user, isSuperAdmin, isAdmin } = useAuth();
-  const { setOrganizations, refreshTrigger } = useDashboardScope();
+  const { setOrganizations, refreshTrigger, selectedOrgFilter } = useDashboardScope();
   // SuperAdmin and Org Admin share the admin dashboard APIs (isAdmin includes SuperAdmin).
   // Assessor never hits /dashboard/admin/* — that was the historical SuperAdmin→Auditor bug.
   const roleView: "Admin" | "Auditor" = isAdmin ? "Admin" : "Auditor";
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [dashboardWarning, setDashboardWarning] = useState<string | null>(null);
+  const [analytics, setAnalytics] = useState<DashboardAnalytics | null>(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
+  const [analyticsError, setAnalyticsError] = useState<string | null>(null);
+  const [analyticsRange, setAnalyticsRange] = useState<AnalyticsRange>("30d");
 
   // Auditor state
   const [auditorSummary, setAuditorSummary] = useState<AuditorDashboardSummary | null>(null);
@@ -101,16 +107,50 @@ export default function DashboardPage() {
     []
   );
 
+  const fetchAnalytics = useCallback(
+    async (range: AnalyticsRange = analyticsRange) => {
+      setAnalyticsLoading(true);
+      setAnalyticsError(null);
+      try {
+        if (roleView === "Admin") {
+          const res = await dashboardService.getAdminAnalytics({
+            range,
+            companyId:
+              isSuperAdmin && selectedOrgFilter !== "all" ? selectedOrgFilter : undefined,
+          });
+          if (res?.data) setAnalytics(res.data);
+          else setAnalytics(null);
+        } else {
+          const res = await dashboardService.getAuditorAnalytics({ range });
+          if (res?.data) setAnalytics(res.data);
+          else setAnalytics(null);
+        }
+      } catch (err: unknown) {
+        setAnalyticsError(
+          getUserFacingApiError(err, "Failed to load analytics charts.")
+        );
+      } finally {
+        setAnalyticsLoading(false);
+      }
+    },
+    [analyticsRange, roleView, isSuperAdmin, selectedOrgFilter]
+  );
+
   const fetchDashboard = async () => {
     setLoading(true);
     setError(null);
     setDashboardWarning(null);
     try {
       if (roleView === "Admin") {
-        const [sumResult, assessResult, compResult] = await Promise.allSettled([
+        const [sumResult, assessResult, compResult, analyticsResult] = await Promise.allSettled([
           dashboardService.getAdminSummary(),
           dashboardService.getAdminAssessments({ limit: 100 }),
           companyService.getCompanies({ limit: 100 }),
+          dashboardService.getAdminAnalytics({
+            range: analyticsRange,
+            companyId:
+              isSuperAdmin && selectedOrgFilter !== "all" ? selectedOrgFilter : undefined,
+          }),
         ]);
 
         const partialErrors: string[] = [];
@@ -168,14 +208,28 @@ export default function DashboardPage() {
           }
         }
 
+        if (analyticsResult.status === "fulfilled" && analyticsResult.value?.data) {
+          setAnalytics(analyticsResult.value.data);
+          setAnalyticsError(null);
+        } else {
+          setAnalytics(null);
+          partialErrors.push(
+            analyticsResult.status === "rejected"
+              ? getUserFacingApiError(analyticsResult.reason, "analytics charts")
+              : "Analytics charts returned an unexpected format."
+          );
+          setAnalyticsError(partialErrors[partialErrors.length - 1] || null);
+        }
+
         if (partialErrors.length > 0) {
           setDashboardWarning(partialErrors.join(" "));
         }
       } else {
-        const [sumResult, assessResult, orgsResult] = await Promise.allSettled([
+        const [sumResult, assessResult, orgsResult, analyticsResult] = await Promise.allSettled([
           dashboardService.getAuditorSummary(),
           dashboardService.getAuditorAssessments({ limit: 100 }),
           dashboardService.getAuditorOrganizations(),
+          dashboardService.getAuditorAnalytics({ range: analyticsRange }),
         ]);
 
         const partialErrors: string[] = [];
@@ -223,6 +277,19 @@ export default function DashboardPage() {
           );
         }
 
+        if (analyticsResult.status === "fulfilled" && analyticsResult.value?.data) {
+          setAnalytics(analyticsResult.value.data);
+          setAnalyticsError(null);
+        } else {
+          setAnalytics(null);
+          partialErrors.push(
+            analyticsResult.status === "rejected"
+              ? getUserFacingApiError(analyticsResult.reason, "analytics charts")
+              : "Analytics charts returned an unexpected format."
+          );
+          setAnalyticsError(partialErrors[partialErrors.length - 1] || null);
+        }
+
         if (partialErrors.length > 0) {
           setDashboardWarning(partialErrors.join(" "));
         }
@@ -236,13 +303,18 @@ export default function DashboardPage() {
 
   useEffect(() => {
     fetchDashboard();
-  }, [roleView, refreshTrigger]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roleView, refreshTrigger, analyticsRange, selectedOrgFilter]);
 
-  if (loading) {
+  const handleAnalyticsRangeChange = (range: AnalyticsRange) => {
+    setAnalyticsRange(range);
+  };
+
+  if (loading && !analytics) {
     return <DashboardPageSkeleton roleView={roleView} />;
   }
 
-  if (error) {
+  if (error && !analytics) {
     return (
       <div className="p-8 bg-white rounded-xl border border-red-200 text-center space-y-4 shadow-xs">
         <div className="inline-flex p-3 rounded-full bg-red-50 text-red-600">
@@ -279,22 +351,74 @@ export default function DashboardPage() {
           </div>
         </div>
       )}
-      {roleView === "Auditor" ? (
-        <AuditorDashboardContent
-          summary={auditorSummary}
-          assessments={auditorAssessments}
-          organizations={auditorOrgs}
-          userName={user?.name || "Auditor"}
-          onRefresh={fetchDashboard}
-          onFetchAssessments={fetchAuditorAssessments}
-        />
-      ) : (
-        <AdminDashboardContent
-          summary={adminSummary}
-          assessments={adminAssessments}
-          isSuperAdmin={isSuperAdmin}
-          onRefresh={fetchDashboard}
-        />
+
+      <AnalyticsDashboard
+        data={analytics}
+        loading={loading || analyticsLoading}
+        error={analyticsError}
+        range={analyticsRange}
+        onRangeChange={handleAnalyticsRangeChange}
+        onRefresh={() => {
+          void fetchDashboard();
+          void fetchAnalytics(analyticsRange);
+        }}
+        isAuditor={roleView === "Auditor"}
+        title={
+          roleView === "Auditor"
+            ? "Assessor Operations Analytics"
+            : isSuperAdmin
+              ? "Platform Operations & Governance"
+              : "Organization Governance & Compliance"
+        }
+        subtitle={
+          roleView === "Auditor"
+            ? "Workload trends, findings outliers, pillar completion, and assessment pipeline for your assigned tenants."
+            : isSuperAdmin
+              ? "Global multi-tenant KPIs, compliance trends, risk outliers, growth charts, and security telemetry."
+              : "Tenant KPIs, assessment trends, risk posture, auditor performance, and operational audit activity."
+        }
+      />
+
+      {roleView === "Auditor" && (auditorSummary?.activeAssessments?.length ?? 0) > 0 && (
+        <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs p-5 space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <h2 className="text-sm font-bold text-slate-900">Continue your assessments</h2>
+              <p className="text-[11px] text-slate-500">Jump back into in-progress work</p>
+            </div>
+            <Link
+              href="/assessments"
+              className="text-[11px] font-semibold text-indigo-600 hover:underline"
+            >
+              View all
+            </Link>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {auditorSummary!.activeAssessments.slice(0, 3).map((a) => (
+              <Link
+                key={a._id}
+                href={`/assessments/${a._id}`}
+                className="rounded-xl border border-slate-200 p-3.5 hover:border-indigo-300 hover:bg-indigo-50/40 transition"
+              >
+                <p className="text-xs font-semibold text-slate-800 truncate">
+                  {a.organizationName}
+                </p>
+                <p className="text-[10px] text-slate-500 mt-0.5">
+                  {a.assessmentType} · {a.resumptionAid.currentPillarName}
+                </p>
+                <div className="mt-2 h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                  <div
+                    className="h-full bg-indigo-500"
+                    style={{ width: `${a.completionPercentage}%` }}
+                  />
+                </div>
+                <p className="text-[10px] font-semibold text-slate-600 mt-1 tabular-nums">
+                  {a.completionPercentage}% complete
+                </p>
+              </Link>
+            ))}
+          </div>
+        </div>
       )}
     </div>
   );

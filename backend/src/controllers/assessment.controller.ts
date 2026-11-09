@@ -1455,7 +1455,7 @@ export async function sendAssessmentReminderNotification(req: Request, res: Resp
       return sendError(res, "Recipient email address is required", 400, "RECIPIENT_EMAIL_REQUIRED");
     }
 
-    const clientBaseUrl = process.env.CLIENT_BASE_URL || "http://localhost:3000";
+    const clientBaseUrl = emailService.getAppBaseUrl();
     const deepLinkUrl = `${clientBaseUrl}/assessments/${session._id}`;
 
     await emailService.sendAssessmentReminder({
