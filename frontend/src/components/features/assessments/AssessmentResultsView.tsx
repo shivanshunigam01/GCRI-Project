@@ -345,6 +345,12 @@ export function AssessmentResultsView({
         </div>
       )}
 
+      <AssessmentReportsPanel
+        assessmentId={assessmentId}
+        isFullAssessment={!isLight}
+        className="surface-panel rounded-3xl p-6"
+      />
+
       {/* Hero */}
       <section
         className={cn(
@@ -754,11 +760,6 @@ export function AssessmentResultsView({
         </Link>
       </div>
 
-      <AssessmentReportsPanel
-        assessmentId={assessmentId}
-        isFullAssessment={!isLight}
-        className="surface-panel rounded-3xl p-6"
-      />
     </div>
   );
 }

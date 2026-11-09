@@ -2,6 +2,7 @@ import PDFDocument from "pdfkit";
 import fs from "fs";
 import path from "path";
 import type { GraiceReportData, ReportControlEvaluation } from "./reportTypes.js";
+import { reportLogoPaths } from "./reportAssets.js";
 
 /** Professional design tokens — GRAICE audit report */
 const C = {
@@ -43,16 +44,7 @@ function resolveAssetDirs(): string[] {
 }
 
 function logoPaths(): { gcrai?: string; graice?: string } {
-  const base = resolveAssetDirs()
-    .map((d) => path.join(d, "report"))
-    .find((d) => fs.existsSync(d));
-  if (!base) return {};
-  const gcrai = path.join(base, "gcrai-logo.png");
-  const graice = path.join(base, "graice-logo.png");
-  return {
-    gcrai: fs.existsSync(gcrai) ? gcrai : undefined,
-    graice: fs.existsSync(graice) ? graice : undefined,
-  };
+  return reportLogoPaths();
 }
 
 function fontPaths(): { regular?: string; semibold?: string; bold?: string } {

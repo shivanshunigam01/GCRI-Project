@@ -58,6 +58,12 @@ Copy SMTP variables from `.env.example` (`SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, 
 | Admin reset password | Admin → Users → reset → email to user |
 | MFA enabled | Security settings → enable MFA → security alert email |
 
+### 5. Assessment reports (PDF & Excel)
+From **Assessments → open session → Results** (`/assessments/:id/results`), use **Download PDF report** or **Download Excel workbook**.
+
+- PDF includes GCRAI / GRAICE logos, executive summary, KPIs, findings, remediation, and per-control detail (`GET /api/v1/assessments/:id/report` generates on demand if needed).
+- Excel mirrors the same dataset in styled sheets (`GET /api/v1/assessments/:id/export`).
+
 ## Production (EC2 + PM2)
 
 `dist/` is not in git. On the server you must install dependencies and compile before PM2 can start.

@@ -1390,19 +1390,27 @@ export async function exportAssessmentExcel(req: Request, res: Response, next: N
       return sendError(res, "Access denied. You are not assigned to this organization.", 403, "CROSS_COMPANY_ACCESS_DENIED");
     }
 
-    const [company, framework] = await Promise.all([
+    const [company, framework, auditor, conductedBy] = await Promise.all([
       Company.findById(session.companyId),
       AssessmentFramework.findOne({
         version: session.frameworkVersion,
         assessmentType: session.assessmentType,
       }),
+      User.findById(req.user.userId),
+      User.findById(session.conductedByUserId),
     ]);
 
-    if (!company || !framework) {
+    if (!company || !framework || !auditor) {
       return sendError(res, "Required assessment context not found", 404, "CONTEXT_NOT_FOUND");
     }
 
-    const excelBuffer = ExportService.generateAssessmentExcel(session, company, framework);
+    const excelBuffer = await ExportService.generateAssessmentExcel(
+      session,
+      company,
+      framework,
+      auditor,
+      conductedBy
+    );
     const fileName = `GRAICE_Audit_Findings_${company.name.replace(/[^a-zA-Z0-9_-]/g, "_")}_${session._id}.xlsx`;
 
     res.setHeader(
