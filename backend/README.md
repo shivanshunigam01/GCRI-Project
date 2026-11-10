@@ -48,7 +48,7 @@ After deploy, seed or rotate credentials against your production MongoDB (requir
 npm run seed:client-accounts
 ```
 
-Shareable copy for clients: `docs/CLIENT_DEMO_ACCESS.md` (passwords + MFA recovery codes).
+Shareable copy for clients: `CLIENT_DEMO_ACCESS.md` (passwords + MFA recovery codes).
 
 ### 3. Health Check
 ```bash

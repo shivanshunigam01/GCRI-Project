@@ -28,7 +28,7 @@ type SeedAccount = {
  * Note: login schema requires a real email (must contain @).
  * Client-facing shorthand "gcrai.superadmin.com" maps to gcrai.superadmin@gcrai.com
  */
-/** Client demo credentials — Nov 2026 rotation (see backend/docs/CLIENT_DEMO_ACCESS.md) */
+/** Client demo credentials — Nov 2026 rotation (see backend/CLIENT_DEMO_ACCESS.md) */
 const ACCOUNTS: SeedAccount[] = [
   {
     email: "gcrai.superadmin@gcrai.com",
