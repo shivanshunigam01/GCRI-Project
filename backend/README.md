@@ -41,6 +41,15 @@ npm run dev
 ```
 The server will start on `http://localhost:5000`.
 
+### 2b. Client demo logins (Super Admin / Admin / Auditor)
+After deploy, seed or rotate credentials against your production MongoDB (requires `MONGODB_URI` in `.env`):
+
+```bash
+npm run seed:client-accounts
+```
+
+Shareable copy for clients: `CLIENT_DEMO_ACCESS.md` (passwords + MFA recovery codes).
+
 ### 3. Health Check
 ```bash
 curl http://localhost:5001/api/v1/health
