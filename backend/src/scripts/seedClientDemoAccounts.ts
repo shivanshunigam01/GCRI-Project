@@ -7,10 +7,13 @@
 import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
 import dotenv from "dotenv";
+import path from "path";
+import { fileURLToPath } from "url";
 import { User } from "../models/User.js";
 import { Company } from "../models/Company.js";
 
-dotenv.config();
+const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: path.resolve(scriptDir, "../../.env") });
 
 type SeedAccount = {
   email: string;
@@ -25,44 +28,45 @@ type SeedAccount = {
  * Note: login schema requires a real email (must contain @).
  * Client-facing shorthand "gcrai.superadmin.com" maps to gcrai.superadmin@gcrai.com
  */
+/** Client demo credentials — Nov 2026 rotation (see backend/docs/CLIENT_DEMO_ACCESS.md) */
 const ACCOUNTS: SeedAccount[] = [
   {
     email: "gcrai.superadmin@gcrai.com",
-    password: "GcraiSuper@2026!",
+    password: "GcraiSuper#Client2026!",
     name: "GCRAI Super Administrator",
     role: "SuperAdmin",
     recoveryCodes: [
-      "GCRAI-SA-481920",
-      "GCRAI-SA-739104",
-      "GCRAI-SA-265883",
-      "GCRAI-SA-904572",
-      "GCRAI-SA-118346",
-      "GCRAI-SA-557291",
-      "GCRAI-SA-683047",
-      "GCRAI-SA-320658",
+      "GCRAI-SA-284910",
+      "GCRAI-SA-573829",
+      "GCRAI-SA-619304",
+      "GCRAI-SA-842751",
+      "GCRAI-SA-105638",
+      "GCRAI-SA-397264",
+      "GCRAI-SA-720485",
+      "GCRAI-SA-958173",
     ],
     assignCompany: false,
   },
   {
     email: "gcrai.admin@gcrai.com",
-    password: "GcraiAdmin@2026!",
+    password: "GcraiAdmin#Client2026!",
     name: "GCRAI Organization Admin",
     role: "Admin",
     recoveryCodes: [
-      "GCRAI-AD-819204",
-      "GCRAI-AD-401937",
-      "GCRAI-AD-672580",
-      "GCRAI-AD-953146",
-      "GCRAI-AD-228761",
-      "GCRAI-AD-594308",
-      "GCRAI-AD-736019",
-      "GCRAI-AD-185472",
+      "GCRAI-AD-381902",
+      "GCRAI-AD-647520",
+      "GCRAI-AD-829174",
+      "GCRAI-AD-150863",
+      "GCRAI-AD-492716",
+      "GCRAI-AD-760348",
+      "GCRAI-AD-918523",
+      "GCRAI-AD-235849",
     ],
     assignCompany: true,
   },
   {
     email: "gcrai.auditor@gcrai.com",
-    password: "GcraiAuditor@2026!",
+    password: "GcraiAuditor#Client2026!",
     name: "GCRAI Certified Auditor",
     role: "Assessor",
     /** Assessor: no MFA / no recovery codes — direct password login */
@@ -158,6 +162,9 @@ async function main() {
     "gcrai.superadmin@graice.io",
     "gcrai.admin@graice.io",
     "gcrai.auditor@graice.io",
+    "superadmin@graice.io",
+    "admin@graice.io",
+    "auditor@graice.io",
   ];
   await User.updateMany(
     { email: { $in: legacyEmails } },

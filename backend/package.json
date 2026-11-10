@@ -16,6 +16,8 @@
     "docker:compose:up": "docker compose -f ../docker-compose.yml up --build",
     "docker:compose:down": "docker compose -f ../docker-compose.yml down",
     "seed:framework": "tsx src/scripts/seedFramework.ts",
+    "seed:client-accounts": "tsx src/scripts/seedClientDemoAccounts.ts",
+    "seed:admin": "tsx src/scripts/createAdmin.ts",
     "test:scoring": "tsx scratch/test_assessment_scoring_fixes.ts"
   },
   "dependencies": {

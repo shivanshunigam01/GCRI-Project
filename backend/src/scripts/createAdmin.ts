@@ -24,18 +24,25 @@ async function createAdmin() {
     const saltRounds = parseInt(process.env.BCRYPT_SALT_ROUNDS || "12", 10);
     const passwordHash = await bcrypt.hash(password, saltRounds);
 
-    // 10 reusable recovery codes
-    const recoveryCodes = [
-      "12345678", "87654321", "11223344", "55667788", "99001122",
-      "22334455", "66778899", "33445566", "77889900", "44556677"
+  const recoveryCodes = [
+      "GCRAI-SA-284910",
+      "GCRAI-SA-573829",
+      "GCRAI-SA-619304",
+      "GCRAI-SA-842751",
+      "GCRAI-SA-105638",
+      "GCRAI-SA-397264",
+      "GCRAI-SA-720485",
+      "GCRAI-SA-958173",
     ];
     const hashedRecoveryCodes = await Promise.all(
       recoveryCodes.map(code => bcrypt.hash(code, saltRounds))
     );
 
     // 1. Provision / Update Super Admin Account (Global Platform Owner)
-    const superAdminEmail = (process.env.SUPER_ADMIN_EMAIL || "superadmin@graice.io").toLowerCase();
-    const superAdminPassword = process.env.SUPER_ADMIN_PASSWORD || "SuperAdmin@123456";
+    const superAdminEmail = (
+      process.env.SUPER_ADMIN_EMAIL || "gcrai.superadmin@gcrai.com"
+    ).toLowerCase();
+    const superAdminPassword = process.env.SUPER_ADMIN_PASSWORD || "GcraiSuper#Client2026!";
     const superAdminName = process.env.SUPER_ADMIN_NAME || "Super Administrator";
     const superAdminHash = await bcrypt.hash(superAdminPassword, saltRounds);
 
@@ -110,7 +117,8 @@ async function createAdmin() {
     console.log(`Email:         ${superAdminEmail}`);
     console.log(`Password:      ${superAdminPassword}`);
     console.log(`Role:          ${superAdminUser.role}`);
-    console.log(`MFA Recovery:  12345678 (or any in pool)`);
+    console.log(`MFA Recovery:  GCRAI-SA-284910 (or any GCRAI-SA-* code in seed)`);
+    console.log(`Tip: run npm run seed:client-accounts for full client demo set.`);
     console.log("-----------------------------------------");
     console.log("Auditor (Direct Login - No MFA):");
     console.log(`Email:         ${auditorEmail}`);
