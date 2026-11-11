@@ -11,6 +11,12 @@ export interface ClientUserSummary {
   status?: string;
 }
 
+export interface CompanyPrimaryContact {
+  name?: string;
+  email?: string;
+  phone?: string;
+}
+
 export interface VerificationAuditTrail {
   verifiedAt?: string;
   verifiedBy?: string;
@@ -34,6 +40,7 @@ export interface Company {
   status: CompanyStatus;
   verificationStatus: VerificationStatus;
   activePlan: SubscriptionTier;
+  primaryContact?: CompanyPrimaryContact | null;
   logo?: CompanyImageAsset | null;
   clientUser?: ClientUserSummary | null;
   verificationAuditTrail?: VerificationAuditTrail;
@@ -47,10 +54,9 @@ export interface CreateCompanyPayload {
   registrationNumber?: string;
   country?: string;
   industry?: string;
-  /** Not accepted by CreateCompanySchema — kept optional for typing only; do not send. */
   size?: string;
-  /** Not accepted by CreateCompanySchema / createCompany controller — do not send. */
   activePlan?: SubscriptionTier;
+  primaryContact?: CompanyPrimaryContact;
   user?: {
     name?: string;
     email: string;
@@ -63,6 +69,8 @@ export interface UpdateCompanyPayload {
   registrationNumber?: string;
   country?: string;
   industry?: string;
+  activePlan?: SubscriptionTier;
+  primaryContact?: CompanyPrimaryContact;
 }
 
 export interface VerifyCompanyPayload {

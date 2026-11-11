@@ -9,6 +9,12 @@ export interface ICompanyImageAsset {
   publicId: string;
 }
 
+export interface ICompanyPrimaryContact {
+  name?: string;
+  email?: string;
+  phone?: string;
+}
+
 export interface ICompany extends Document {
   name: string;
   domain: string;
@@ -16,6 +22,7 @@ export interface ICompany extends Document {
   country?: string;
   industry?: string;
   size?: string;
+  primaryContact?: ICompanyPrimaryContact;
   activePlan?: SubscriptionTier;
   verificationStatus: VerificationStatus;
   status: CompanyStatus;
@@ -39,6 +46,12 @@ const CompanySchema = new Schema<ICompany>(
     country: { type: String, trim: true },
     industry: { type: String, trim: true },
     size: { type: String, trim: true },
+    primaryContact: {
+      _id: false,
+      name: { type: String, trim: true },
+      email: { type: String, trim: true, lowercase: true },
+      phone: { type: String, trim: true },
+    },
     activePlan: {
       type: String,
       enum: ["Bronze", "Silver", "Gold"],

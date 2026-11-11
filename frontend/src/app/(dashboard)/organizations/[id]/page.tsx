@@ -32,7 +32,13 @@ import { companyService } from "@/services/company.service";
 import { auditorMappingService } from "@/services/auditorMapping.service";
 import { assessmentService } from "@/services/assessment.service";
 import { userService } from "@/services/user.service";
-import { Company, CompanyStatus, CompanyTrendsResponse } from "@/types/company.types";
+import {
+  Company,
+  CompanyStatus,
+  CompanyTrendsResponse,
+  SubscriptionTier,
+} from "@/types/company.types";
+import { formatOrgSubtitle, resolveCompanyContact } from "@/lib/companyDisplay";
 import { User as UserType } from "@/types/auth.types";
 import { AssessmentSession } from "@/types/assessment.types";
 import { OrgAuditorItem } from "@/types/auditorMapping.types";
@@ -65,6 +71,10 @@ export default function OrganizationProfileFullPage({
     industry: "",
     country: "",
     registrationNumber: "",
+    activePlan: "Bronze" as SubscriptionTier,
+    contactName: "",
+    contactEmail: "",
+    contactPhone: "",
   });
 
   // People & Auditor Mappings State
@@ -108,11 +118,16 @@ export default function OrganizationProfileFullPage({
       const res = await companyService.getCompanyById(id);
       if (res?.data) {
         setCompany(res.data);
+        const contact = resolveCompanyContact(res.data);
         setEditForm({
           name: res.data.name || "",
           industry: res.data.industry || "",
           country: res.data.country || "",
           registrationNumber: res.data.registrationNumber || "",
+          activePlan: res.data.activePlan || "Bronze",
+          contactName: contact.name || "",
+          contactEmail: contact.email || "",
+          contactPhone: contact.phone || "",
         });
       }
     } catch (err: any) {
@@ -134,6 +149,12 @@ export default function OrganizationProfileFullPage({
         industry: editForm.industry.trim() || undefined,
         country: editForm.country.trim() || undefined,
         registrationNumber: editForm.registrationNumber.trim() || undefined,
+        activePlan: editForm.activePlan,
+        primaryContact: {
+          name: editForm.contactName.trim() || undefined,
+          email: editForm.contactEmail.trim() || undefined,
+          phone: editForm.contactPhone.trim() || undefined,
+        },
       });
       if (updatedRes?.data) {
         setCompany((prev) =>
@@ -347,6 +368,7 @@ export default function OrganizationProfileFullPage({
   const completedCount = assessments.filter((a) => a.status === "Submitted").length;
   const inProgressCount = assessments.filter((a) => a.status === "InProgress").length;
   const latestAssessment = assessments[0] || null;
+  const profileContact = resolveCompanyContact(company);
 
   return (
     <div className="h-full flex flex-col gap-4 min-h-0">
@@ -384,16 +406,21 @@ export default function OrganizationProfileFullPage({
                 {company.status === "Active" ? "Active Client" : "Suspended"}
               </span>
             </div>
-            <p className="text-xs text-slate-500 mt-0.5">
-              {company.industry || "General Industry"} &bull; {company.country || "Global"} &bull;{" "}
-              <a
-                href={`https://${company.domain}`}
-                target="_blank"
-                rel="noreferrer"
-                className="text-teal-600 hover:underline font-medium inline-flex items-center gap-0.5"
-              >
-                {company.domain} <ExternalLink className="h-2.5 w-2.5" />
-              </a>
+            <p className="text-xs text-slate-500 mt-0.5 flex flex-wrap items-center gap-x-1.5">
+              <span>{formatOrgSubtitle(company)}</span>
+              {company.domain ? (
+                <>
+                  <span className="text-slate-300">·</span>
+                  <a
+                    href={`https://${company.domain}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-teal-600 hover:underline font-medium inline-flex items-center gap-0.5"
+                  >
+                    {company.domain} <ExternalLink className="h-2.5 w-2.5" />
+                  </a>
+                </>
+              ) : null}
             </p>
           </div>
         </div>
@@ -503,6 +530,10 @@ export default function OrganizationProfileFullPage({
                         industry: company.industry || "",
                         country: company.country || "",
                         registrationNumber: company.registrationNumber || "",
+                        activePlan: company.activePlan || "Bronze",
+                        contactName: profileContact.name || "",
+                        contactEmail: profileContact.email || "",
+                        contactPhone: profileContact.phone || "",
                       });
                       setEditError(null);
                       setIsEditing(true);
@@ -594,6 +625,55 @@ export default function OrganizationProfileFullPage({
                       className="w-full text-sm py-2 px-3 border border-slate-300 rounded-lg font-mono focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500"
                     />
                   </div>
+                  <div>
+                    <label className="text-slate-400 block text-[11px] uppercase font-semibold mb-1">
+                      Subscription Tier
+                    </label>
+                    <select
+                      value={editForm.activePlan}
+                      onChange={(e) =>
+                        setEditForm({ ...editForm, activePlan: e.target.value as SubscriptionTier })
+                      }
+                      className="w-full text-sm py-2 px-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500"
+                    >
+                      <option value="Bronze">Bronze</option>
+                      <option value="Silver">Silver</option>
+                      <option value="Gold">Gold</option>
+                    </select>
+                  </div>
+                  <div className="col-span-2 pt-1 border-t border-slate-100">
+                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">
+                      Primary contact
+                    </p>
+                  </div>
+                  <div className="col-span-2">
+                    <label className="text-slate-400 block text-[11px] uppercase font-semibold mb-1">
+                      Contact person
+                    </label>
+                    <input
+                      value={editForm.contactName}
+                      onChange={(e) => setEditForm({ ...editForm, contactName: e.target.value })}
+                      className="w-full text-sm py-2 px-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-slate-400 block text-[11px] uppercase font-semibold mb-1">Email</label>
+                    <input
+                      type="email"
+                      value={editForm.contactEmail}
+                      onChange={(e) => setEditForm({ ...editForm, contactEmail: e.target.value })}
+                      className="w-full text-sm py-2 px-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-slate-400 block text-[11px] uppercase font-semibold mb-1">Phone</label>
+                    <input
+                      type="tel"
+                      value={editForm.contactPhone}
+                      onChange={(e) => setEditForm({ ...editForm, contactPhone: e.target.value })}
+                      className="w-full text-sm py-2 px-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500"
+                    />
+                  </div>
                   <div className="col-span-2 flex items-center justify-end gap-2 pt-1">
                     <button
                       type="button"
@@ -626,13 +706,13 @@ export default function OrganizationProfileFullPage({
                 </div>
                 <div>
                   <span className="text-slate-400 block text-[11px] uppercase font-semibold">Contact Person</span>
-                  <span className="font-semibold text-slate-900 text-sm">{company.clientUser?.name || "—"}</span>
+                  <span className="font-semibold text-slate-900 text-sm">{profileContact.name || "—"}</span>
                 </div>
                 <div>
                   <span className="text-slate-400 block text-[11px] uppercase font-semibold">Email</span>
-                  {company.clientUser?.email ? (
-                    <a href={`mailto:${company.clientUser.email}`} className="font-semibold text-teal-600 hover:underline text-sm">
-                      {company.clientUser.email}
+                  {profileContact.email ? (
+                    <a href={`mailto:${profileContact.email}`} className="font-semibold text-teal-600 hover:underline text-sm">
+                      {profileContact.email}
                     </a>
                   ) : (
                     <span className="font-semibold text-slate-500 text-sm">—</span>
@@ -640,7 +720,7 @@ export default function OrganizationProfileFullPage({
                 </div>
                 <div>
                   <span className="text-slate-400 block text-[11px] uppercase font-semibold">Phone</span>
-                  <span className="font-semibold text-slate-800 text-sm">{company.clientUser?.phone || "—"}</span>
+                  <span className="font-semibold text-slate-800 text-sm">{profileContact.phone || "—"}</span>
                 </div>
                 <div>
                   <span className="text-slate-400 block text-[11px] uppercase font-semibold">Country</span>
