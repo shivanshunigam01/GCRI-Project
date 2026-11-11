@@ -33,6 +33,7 @@ import {
 } from "@/lib/auditorOrganizations";
 import { useAuth } from "@/context/AuthContext";
 import { Company, CompanyStatus, VerificationStatus, SubscriptionTier } from "@/types/company.types";
+import { formatOrgSubtitle } from "@/lib/companyDisplay";
 import OrganizationDetailDrawer from "@/components/features/companies/OrganizationDetailDrawer";
 import Modal, { ConfirmationVariant } from "@/components/ui/Modal";
 import { AnimatedNumber } from "@/components/ui/AnimatedNumber";
@@ -92,7 +93,10 @@ export default function OrganizationsPage() {
     registrationNumber: "",
     country: "",
     industry: "",
-    subscriptionTier: "Gold" as SubscriptionTier,
+    subscriptionTier: "Bronze" as SubscriptionTier,
+    contactName: "",
+    contactEmail: "",
+    contactPhone: "",
   });
   const [onboardLogoFile, setOnboardLogoFile] = useState<File | null>(null);
 
@@ -333,15 +337,26 @@ export default function OrganizationsPage() {
     setOnboardLoading(true);
 
     try {
-      // CreateCompanySchema accepts name, domain, registrationNumber, country, industry, user.
-      // activePlan is NOT accepted by the registered schema and is ignored by createCompany —
-      // new orgs default to Bronze on the backend until a plan API exists.
+      const contactName = onboardForm.contactName.trim();
+      const contactEmail = onboardForm.contactEmail.trim();
+      const contactPhone = onboardForm.contactPhone.trim();
+      const primaryContact =
+        contactName || contactEmail || contactPhone
+          ? {
+              name: contactName || undefined,
+              email: contactEmail || undefined,
+              phone: contactPhone || undefined,
+            }
+          : undefined;
+
       const created = await companyService.createCompany({
         name: onboardForm.name.trim(),
         domain: cleanDomain,
         registrationNumber: onboardForm.registrationNumber.trim() || undefined,
         country: onboardForm.country.trim() || undefined,
         industry: onboardForm.industry.trim() || undefined,
+        activePlan: onboardForm.subscriptionTier,
+        primaryContact,
       });
 
       const companyId = created?.data?.company?._id;
@@ -357,7 +372,7 @@ export default function OrganizationsPage() {
       setOnboardModalOpen(false);
       setOnboardLogoFile(null);
       setActionSuccess(
-        `Organization ${onboardForm.name} onboarded successfully. Subscription defaults to Bronze until a plan is assigned.${logoNote}`
+        `Organization ${onboardForm.name} onboarded successfully (${onboardForm.subscriptionTier} plan).${logoNote}`
       );
       setTimeout(() => setActionSuccess(null), 5000);
       fetchCompanies();
@@ -472,7 +487,7 @@ export default function OrganizationsPage() {
         id: c._id,
         title: c.name,
         subtitle: c.domain,
-        meta: `${c.industry || "General"} · ${c.country || "Global"}`,
+        meta: c.domain ? `${formatOrgSubtitle(c)} · ${c.domain}` : formatOrgSubtitle(c),
         badge:
           metricModal === "verified"
             ? c.verificationStatus
@@ -682,6 +697,9 @@ export default function OrganizationsPage() {
                   country: "",
                   industry: "",
                   subscriptionTier: "Bronze",
+                  contactName: "",
+                  contactEmail: "",
+                  contactPhone: "",
                 });
                 setOnboardLogoFile(null);
                 setOnboardError(null);
@@ -821,10 +839,10 @@ export default function OrganizationsPage() {
                       {/* Industry & Country */}
                       <td className="py-2.5 px-3">
                         <div className="text-slate-800 font-medium text-[11px] leading-tight">
-                          {c.industry || "General Industry"}
+                          {c.industry || "—"}
                         </div>
                         <div className="text-[10px] text-slate-400 leading-tight mt-0.5">
-                          {c.country || "Global"}
+                          {c.country || "—"}
                         </div>
                       </td>
 
@@ -996,7 +1014,7 @@ export default function OrganizationsPage() {
       {/* ============================================================== */}
       {onboardModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-lg w-full overflow-hidden animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
             <div className="p-4 border-b border-slate-100 flex items-center justify-between">
               <div className="flex items-center gap-2.5">
                 <div className="h-8 w-8 rounded-xl bg-teal-100 text-teal-700 flex items-center justify-center">
@@ -1085,12 +1103,51 @@ export default function OrganizationsPage() {
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
                     Subscription Tier
                   </label>
-                  <div className="w-full text-xs py-2 px-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-600">
-                    Defaults to <span className="font-semibold text-slate-800">Bronze</span>
-                    <span className="block text-[10px] text-slate-400 mt-0.5">
-                      Plan is not settable via onboard API yet
-                    </span>
-                  </div>
+                  <select
+                    value={onboardForm.subscriptionTier}
+                    onChange={(e) =>
+                      setOnboardForm({
+                        ...onboardForm,
+                        subscriptionTier: e.target.value as SubscriptionTier,
+                      })
+                    }
+                    className="w-full text-xs py-2 px-2.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500"
+                  >
+                    <option value="Bronze">Bronze</option>
+                    <option value="Silver">Silver</option>
+                    <option value="Gold">Gold</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="pt-1 border-t border-slate-100">
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">
+                  Primary contact (shown on profile)
+                </p>
+                <div className="space-y-2.5">
+                  <input
+                    type="text"
+                    value={onboardForm.contactName}
+                    onChange={(e) => setOnboardForm({ ...onboardForm, contactName: e.target.value })}
+                    placeholder="Contact person name"
+                    className="w-full text-xs py-2 px-3 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3 mt-2.5">
+                  <input
+                    type="email"
+                    value={onboardForm.contactEmail}
+                    onChange={(e) => setOnboardForm({ ...onboardForm, contactEmail: e.target.value })}
+                    placeholder="contact@company.com"
+                    className="w-full text-xs py-2 px-3 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500"
+                  />
+                  <input
+                    type="tel"
+                    value={onboardForm.contactPhone}
+                    onChange={(e) => setOnboardForm({ ...onboardForm, contactPhone: e.target.value })}
+                    placeholder="Phone (optional)"
+                    className="w-full text-xs py-2 px-3 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500"
+                  />
                 </div>
               </div>
 

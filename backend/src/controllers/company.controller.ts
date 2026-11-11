@@ -14,7 +14,16 @@ import { scopeQueryByCompany, isAuditorAssignedToOrg } from "../middlewares/comp
  */
 export async function createCompany(req: Request, res: Response, next: NextFunction) {
   try {
-    const { name, domain, registrationNumber, country, industry, user: userData } = req.body;
+    const {
+      name,
+      domain,
+      registrationNumber,
+      country,
+      industry,
+      activePlan,
+      primaryContact,
+      user: userData,
+    } = req.body;
     const actorId = req.user?.userId;
     const actorEmail = req.user?.email || "unknown";
 
@@ -49,12 +58,24 @@ export async function createCompany(req: Request, res: Response, next: NextFunct
     // Run automated DNS legitimacy check
     const verificationResult = await verifyDomainLegitimacy(cleanDomain);
 
+    const contactPayload =
+      primaryContact &&
+      (primaryContact.name || primaryContact.email || primaryContact.phone)
+        ? {
+            name: primaryContact.name,
+            email: primaryContact.email,
+            phone: primaryContact.phone,
+          }
+        : undefined;
+
     const company = await Company.create({
       name,
       domain: cleanDomain,
       registrationNumber,
       country,
       industry,
+      activePlan: activePlan || "Bronze",
+      primaryContact: contactPayload,
       verificationStatus: verificationResult.verificationStatus,
       status: "Active",
       verificationAuditTrail: {
@@ -255,7 +276,7 @@ export async function getCompanyById(req: Request, res: Response, next: NextFunc
 export async function updateCompany(req: Request, res: Response, next: NextFunction) {
   try {
     const { id } = req.params;
-    const { name, registrationNumber, country, industry } = req.body;
+    const { name, registrationNumber, country, industry, activePlan, primaryContact } = req.body;
     const actorId = req.user?.userId;
     const actorEmail = req.user?.email || "unknown";
 
@@ -269,12 +290,18 @@ export async function updateCompany(req: Request, res: Response, next: NextFunct
       registrationNumber: company.registrationNumber,
       country: company.country,
       industry: company.industry,
+      activePlan: company.activePlan,
+      primaryContact: company.primaryContact,
     };
 
     if (name) company.name = name;
     if (registrationNumber !== undefined) company.registrationNumber = registrationNumber;
     if (country !== undefined) company.country = country;
     if (industry !== undefined) company.industry = industry;
+    if (activePlan !== undefined) company.activePlan = activePlan;
+    if (primaryContact !== undefined) {
+      company.primaryContact = primaryContact;
+    }
 
     await company.save();
 
@@ -290,6 +317,8 @@ export async function updateCompany(req: Request, res: Response, next: NextFunct
         registrationNumber: company.registrationNumber,
         country: company.country,
         industry: company.industry,
+        activePlan: company.activePlan,
+        primaryContact: company.primaryContact,
       },
       ipAddress: req.ip,
       userAgent: req.headers["user-agent"],

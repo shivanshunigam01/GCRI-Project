@@ -8,12 +8,10 @@ import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
 import dotenv from "dotenv";
 import path from "path";
-import { fileURLToPath } from "url";
 import { User } from "../models/User.js";
 import { Company } from "../models/Company.js";
 
-const scriptDir = path.dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: path.resolve(scriptDir, "../../.env") });
+dotenv.config({ path: path.resolve(process.cwd(), ".env") });
 
 type SeedAccount = {
   email: string;
