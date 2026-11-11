@@ -121,13 +121,6 @@ function DashboardLayoutContent({
     { label: "Webhooks", href: "/settings/webhooks", icon: SlidersHorizontal },
   ];
 
-  // Surface MFA setup in the primary admin nav so generate/verify is easy to find
-  const adminNavWithSecurity = [
-    ...adminNavItems.slice(0, 2),
-    { label: "Security & MFA", href: "/settings/security", icon: Shield },
-    ...adminNavItems.slice(2),
-  ];
-
   return (
     <div className="h-screen w-screen overflow-hidden app-canvas flex">
       {/* Mobile Backdrop Overlay */}
@@ -221,7 +214,7 @@ function DashboardLayoutContent({
           ) : (
             <>
               <nav className="space-y-0.5">
-                {adminNavWithSecurity.map((item) => {
+                {adminNavItems.map((item) => {
                   const Icon = item.icon;
                   const isActive =
                     item.active ||
