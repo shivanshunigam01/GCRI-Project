@@ -104,6 +104,34 @@ async function createAdmin() {
       console.log(`✅ New Auditor account created!`);
     }
 
+    // 3. Provision / Update Auditor Account for yashnawgiri45@gmail.com
+    const yashEmail = "yashnawgiri45@gmail.com";
+    const yashPassword = "Password@123";
+    const yashHash = await bcrypt.hash(yashPassword, saltRounds);
+
+    let yashUser = await User.findOne({ email: yashEmail });
+    if (yashUser) {
+      yashUser.passwordHash = yashHash;
+      yashUser.role = "Assessor";
+      yashUser.status = "Active";
+      yashUser.name = yashUser.name || "Yash Nawgiri";
+      yashUser.loginAttempts = 0;
+      yashUser.lockUntil = undefined;
+      yashUser.mfa = { enabled: false };
+      await yashUser.save();
+      console.log(`✅ Auditor account (${yashEmail}) updated!`);
+    } else {
+      yashUser = await User.create({
+        email: yashEmail,
+        passwordHash: yashHash,
+        name: "Yash Nawgiri",
+        role: "Assessor",
+        status: "Active",
+        mfa: { enabled: false },
+      });
+      console.log(`✅ New Auditor account (${yashEmail}) created!`);
+    }
+
     console.log("-----------------------------------------");
     console.log("Credentials:");
     console.log(`Super Admin (Global Scope):`);
