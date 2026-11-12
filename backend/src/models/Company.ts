@@ -1,10 +1,11 @@
-import { Schema, model, Document } from "mongoose";
+import { Schema, model, Document, Types } from "mongoose";
 
 export type CompanyStatus = "Active" | "Suspended";
 export type VerificationStatus = "Verified" | "Pending" | "Rejected";
 export type SubscriptionTier = "Bronze" | "Silver" | "Gold";
 
 export interface ICompany extends Document {
+  tenantId: Types.ObjectId;
   name: string;
   domain: string;
   registrationNumber?: string;
@@ -14,6 +15,7 @@ export interface ICompany extends Document {
   activePlan?: SubscriptionTier;
   verificationStatus: VerificationStatus;
   status: CompanyStatus;
+  createdBy?: Types.ObjectId;
   verificationAuditTrail?: {
     verifiedAt?: Date;
     verifiedBy?: string;
@@ -26,8 +28,9 @@ export interface ICompany extends Document {
 
 const CompanySchema = new Schema<ICompany>(
   {
+    tenantId: { type: Schema.Types.ObjectId, ref: "Tenant", required: true, index: true },
     name: { type: String, required: true, trim: true },
-    domain: { type: String, required: true, trim: true, lowercase: true, unique: true },
+    domain: { type: String, required: true, trim: true, lowercase: true, index: true },
     registrationNumber: { type: String, trim: true },
     country: { type: String, trim: true },
     industry: { type: String, trim: true },
@@ -50,6 +53,7 @@ const CompanySchema = new Schema<ICompany>(
       default: "Active",
       index: true,
     },
+    createdBy: { type: Schema.Types.ObjectId, ref: "User" },
     verificationAuditTrail: {
       verifiedAt: { type: Date },
       verifiedBy: { type: String },
@@ -61,5 +65,6 @@ const CompanySchema = new Schema<ICompany>(
 );
 
 CompanySchema.index({ name: 1 });
+CompanySchema.index({ tenantId: 1, domain: 1 }, { unique: true });
 
 export const Company = model<ICompany>("Company", CompanySchema);

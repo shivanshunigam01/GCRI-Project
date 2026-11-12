@@ -2,6 +2,8 @@ import { Request, Response, NextFunction } from "express";
 import { AssessmentSession } from "../models/AssessmentSession.js";
 import { Company } from "../models/Company.js";
 import { User } from "../models/User.js";
+import { Tenant } from "../models/Tenant.js";
+import { TenantMembership } from "../models/TenantMembership.js";
 import { AuditLog } from "../models/AuditLog.js";
 import { AssessmentFramework } from "../models/AssessmentFramework.js";
 import { AuditorOrganization } from "../models/AuditorOrganization.js";
@@ -35,21 +37,119 @@ function resolvePillarInfo(pillarId?: string, pillarNumber?: number) {
 /**
  * Admin Operational Dashboard Summary (Screen 7 Alignment)
  * Exposes high-level administrative numbers without any confidential assessment content.
+ * - SuperAdmin: Platform-level tenant metadata only (no client organization or assessment access).
+ * - TenantAdmin: Tenant-scoped client organizations, auditors, and assessment metadata.
  */
 export async function getAdminDashboardSummary(req: Request, res: Response, next: NextFunction) {
   try {
-    if (req.user?.role !== "SuperAdmin" && req.user?.role !== "Admin") {
+    if (req.user?.role !== "SuperAdmin" && req.user?.role !== "TenantAdmin") {
       return sendError(res, "Access denied. Administrators only.", 403, "ADMIN_ROLE_REQUIRED");
     }
 
     const isSuperAdmin = req.user.role === "SuperAdmin";
-    const companyId = req.user.companyId;
 
-    // Filters based on role
-    const userFilter: Record<string, any> = isSuperAdmin ? {} : { companyId };
-    const auditorFilter: Record<string, any> = isSuperAdmin ? { role: "Assessor" } : { companyId, role: "Assessor" };
-    const orgFilter: Record<string, any> = isSuperAdmin ? {} : { _id: companyId };
-    const sessionFilter: Record<string, any> = isSuperAdmin ? {} : { companyId };
+    if (isSuperAdmin) {
+      const [
+        totalUsers,
+        totalTenantAdmins,
+        totalAuditors,
+        totalTenants,
+        activeTenants,
+        pendingTenants,
+        suspendedTenants,
+        retiredTenants,
+        frameworkCount,
+        recentTenants,
+        recentLogs,
+      ] = await Promise.all([
+        User.countDocuments({}),
+        User.countDocuments({ role: "TenantAdmin" }),
+        User.countDocuments({ role: "Auditor" }),
+        Tenant.countDocuments({}),
+        Tenant.countDocuments({ status: "Active" }),
+        Tenant.countDocuments({ status: "Pending" }),
+        Tenant.countDocuments({ status: "Suspended" }),
+        Tenant.countDocuments({ status: "Retired" }),
+        AssessmentFramework.distinct("version").then((v) => v.length),
+        Tenant.find({}).sort({ createdAt: -1 }).limit(5),
+        AuditLog.find({ action: { $ne: "AUTHORIZATION_DENIED" }, entity: { $in: ["Tenant", "User", "AssessmentFramework"] } })
+          .sort({ timestamp: -1 })
+          .limit(6),
+      ]);
+
+      const recentTenantsWithStats = await Promise.all(
+        recentTenants.map(async (tenant) => {
+          const userCount = await TenantMembership.countDocuments({
+            tenantId: tenant._id,
+            status: "Active",
+          });
+          return {
+            _id: tenant._id,
+            name: tenant.name,
+            slug: tenant.slug,
+            status: tenant.status,
+            userCount,
+            createdAt: tenant.createdAt,
+          };
+        })
+      );
+
+      const recentActivity = recentLogs.map((log) => ({
+        id: log._id,
+        title: log.action.replace(/_/g, " "),
+        description: `${log.actorEmail} performed ${log.action} on ${log.entity}`,
+        type: log.action,
+        timestamp: log.timestamp,
+      }));
+
+      return sendSuccess(res, {
+        stats: {
+          totalUsers,
+          totalTenantAdmins,
+          totalAuditors,
+          totalTenants,
+          totalOrganizations: totalTenants,
+          totalAssessments: 0,
+          frameworkVersions: frameworkCount || 1,
+          pillarsCount: 7,
+          controlsCount: 65,
+          questionsCount: 95,
+          evidenceItemsCount: 0,
+          reportsCount: 0,
+          activeSubscriptions: activeTenants,
+          permissionRolesCount: 3,
+        },
+        tenantsByStatus: {
+          total: totalTenants,
+          active: activeTenants,
+          pending: pendingTenants,
+          suspended: suspendedTenants,
+          retired: retiredTenants,
+        },
+        assessmentsByStatus: {
+          total: 0,
+          completed: 0,
+          inProgress: 0,
+          notStarted: 0,
+          overdue: 0,
+        },
+        subscriptionDistribution: {
+          total: totalTenants,
+          bronze: 0,
+          silver: 0,
+          gold: 0,
+        },
+        recentTenants: recentTenantsWithStats,
+        recentOrganizations: recentTenantsWithStats,
+        recentActivity,
+      });
+    }
+
+    // TenantAdmin view: strictly scoped to their tenant
+    const tenantId = req.user.tenantId;
+    const companyId = req.user.companyId;
+    const orgFilter: Record<string, any> = tenantId ? { tenantId } : { _id: companyId };
+    const sessionFilter: Record<string, any> = tenantId ? { tenantId } : { companyId };
 
     const [
       totalUsers,
@@ -62,15 +162,19 @@ export async function getAdminDashboardSummary(req: Request, res: Response, next
       companies,
       recentLogs,
     ] = await Promise.all([
-      User.countDocuments(userFilter),
-      User.countDocuments(auditorFilter),
+      tenantId
+        ? TenantMembership.countDocuments({ tenantId, status: "Active" })
+        : User.countDocuments({ companyId }),
+      tenantId
+        ? TenantMembership.countDocuments({ tenantId, role: "Auditor", status: "Active" })
+        : User.countDocuments({ companyId, role: "Auditor" }),
       Company.countDocuments(orgFilter),
       AssessmentSession.countDocuments(sessionFilter),
       AssessmentSession.countDocuments({ ...sessionFilter, status: "Submitted" }),
       AssessmentSession.countDocuments({ ...sessionFilter, status: "InProgress" }),
       AssessmentFramework.distinct("version").then((v) => v.length),
       Company.find(orgFilter).sort({ createdAt: -1 }).limit(5),
-      AuditLog.find(isSuperAdmin ? { action: { $ne: "AUTHORIZATION_DENIED" } } : { actorId: req.user.userId })
+      AuditLog.find(tenantId ? { tenantId } : { actorId: req.user.userId })
         .sort({ timestamp: -1 })
         .limit(6),
     ]);
@@ -85,16 +189,13 @@ export async function getAdminDashboardSummary(req: Request, res: Response, next
     // Assessment count by company for recent organizations widget
     const recentOrgsWithStats = await Promise.all(
       companies.map(async (comp) => {
-        const [assessCount, userCount] = await Promise.all([
-          AssessmentSession.countDocuments({ companyId: comp._id }),
-          User.countDocuments({ companyId: comp._id }),
-        ]);
+        const assessCount = await AssessmentSession.countDocuments({ companyId: comp._id });
         return {
           _id: comp._id,
           name: comp.name,
           activePlan: comp.activePlan || "Bronze",
           assessmentCount: assessCount,
-          userCount,
+          userCount: totalAuditors,
           status: comp.status,
           createdAt: comp.createdAt,
         };
@@ -120,10 +221,16 @@ export async function getAdminDashboardSummary(req: Request, res: Response, next
         pillarsCount: 7,
         controlsCount: 65,
         questionsCount: 95,
-        evidenceItemsCount: await AssessmentSession.countDocuments({ "answers.evidenceAttachmentUrl": { $exists: true, $ne: "" } }),
-        reportsCount: await AssessmentSession.countDocuments({ reportMetadata: { $exists: true } }),
+        evidenceItemsCount: await AssessmentSession.countDocuments({
+          ...sessionFilter,
+          "answers.evidenceAttachmentUrl": { $exists: true, $ne: "" },
+        }),
+        reportsCount: await AssessmentSession.countDocuments({
+          ...sessionFilter,
+          reportMetadata: { $exists: true },
+        }),
         activeSubscriptions: bronzeCount + silverCount + goldCount,
-        permissionRolesCount: 2,
+        permissionRolesCount: 3,
       },
       assessmentsByStatus: {
         total: totalAssessments,
@@ -149,11 +256,21 @@ export async function getAdminDashboardSummary(req: Request, res: Response, next
 /**
  * Admin Filterable Assessment Metadata Table (Screen 7 Alignment)
  * Strictly excludes answers, scores, and evidence URLs.
+ * SuperAdmin is blocked from viewing tenant assessment metadata/records.
  */
 export async function getAdminDashboardAssessments(req: Request, res: Response, next: NextFunction) {
   try {
-    if (req.user?.role !== "SuperAdmin" && req.user?.role !== "Admin") {
+    if (req.user?.role !== "SuperAdmin" && req.user?.role !== "TenantAdmin") {
       return sendError(res, "Access denied. Administrators only.", 403, "ADMIN_ROLE_REQUIRED");
+    }
+
+    if (req.user?.role === "SuperAdmin") {
+      return sendError(
+        res,
+        "SuperAdmin sees tenant metadata only and cannot access tenant assessment records.",
+        403,
+        "SUPER_ADMIN_CONTENT_ACCESS_RESTRICTED"
+      );
     }
 
     const { status, search, assessmentType } = req.query as {
@@ -167,8 +284,10 @@ export async function getAdminDashboardAssessments(req: Request, res: Response, 
 
     const query: any = {};
 
-    // Organization Admins are strictly scoped to their own company
-    if (req.user?.role === "Admin") {
+    // TenantAdmins are strictly scoped to their own tenant
+    if (req.user?.tenantId) {
+      query.tenantId = req.user.tenantId;
+    } else if (req.user?.companyId) {
       query.companyId = req.user.companyId;
     }
 
@@ -180,15 +299,15 @@ export async function getAdminDashboardAssessments(req: Request, res: Response, 
     }
 
     if (search) {
-      const matchingCompanies = await Company.find({
+      const companyFilter: Record<string, any> = {
         name: { $regex: search, $options: "i" },
-      }).select("_id");
-      const companyIds = matchingCompanies.map((c) => c._id);
-      if (req.user?.role === "Admin") {
-        query.companyId = req.user.companyId;
-      } else {
-        query.companyId = { $in: companyIds };
+      };
+      if (req.user?.tenantId) {
+        companyFilter.tenantId = req.user.tenantId;
       }
+      const matchingCompanies = await Company.find(companyFilter).select("_id");
+      const companyIds = matchingCompanies.map((c) => c._id);
+      query.companyId = { $in: companyIds };
     }
 
     const [total, sessions] = await Promise.all([
@@ -244,14 +363,19 @@ export async function getAuditorDashboardSummary(req: Request, res: Response, ne
       return sendError(res, "Authentication required", 401, "UNAUTHORIZED");
     }
 
-    const assignedOrgIds = await getAssignedOrganizationIds(auditorId);
+    const assignedOrgIds = await getAssignedOrganizationIds(auditorId, req.user?.tenantId);
 
-    const sessionQuery = {
+    const sessionQuery: Record<string, any> = {
       $or: [
         { conductedByUserId: auditorId },
-        { companyId: { $in: assignedOrgIds } },
+        { createdByUserId: auditorId },
+        { "sharedWith.auditorId": auditorId },
       ],
     };
+
+    if (req.user?.tenantId) {
+      sessionQuery.tenantId = req.user.tenantId;
+    }
 
     const [allSessions, assignedCompanies] = await Promise.all([
       AssessmentSession.find(sessionQuery).populate("companyId", "name domain industry status activePlan"),
@@ -433,14 +557,17 @@ export async function getAuditorDashboardAssessments(req: Request, res: Response
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 10));
     const skip = (page - 1) * limit;
 
-    const assignedOrgIds = await getAssignedOrganizationIds(auditorId);
-
     const query: any = {
       $or: [
         { conductedByUserId: auditorId },
-        { companyId: { $in: assignedOrgIds } },
+        { createdByUserId: auditorId },
+        { "sharedWith.auditorId": auditorId },
       ],
     };
+
+    if (req.user?.tenantId) {
+      query.tenantId = req.user.tenantId;
+    }
 
     if (status && status !== "all") {
       query.status = status;
@@ -520,16 +647,25 @@ export async function getAuditorOrganizations(req: Request, res: Response, next:
       return sendError(res, "Authentication required", 401, "UNAUTHORIZED");
     }
 
-    const assignedOrgIds = await getAssignedOrganizationIds(auditorId);
+    const assignedOrgIds = await getAssignedOrganizationIds(auditorId, req.user?.tenantId);
     const companies = await Company.find({ _id: { $in: assignedOrgIds } }).sort({ name: 1 });
+
+    const auditorVisibilityFilter = {
+      $or: [
+        { conductedByUserId: auditorId },
+        { createdByUserId: auditorId },
+        { "sharedWith.auditorId": auditorId },
+      ],
+    };
 
     const organizationsWithStats = await Promise.all(
       companies.map(async (c) => {
+        const baseFilter = { companyId: c._id, ...auditorVisibilityFilter };
         const [total, inProgress, completed, latest] = await Promise.all([
-          AssessmentSession.countDocuments({ companyId: c._id }),
-          AssessmentSession.countDocuments({ companyId: c._id, status: "InProgress" }),
-          AssessmentSession.countDocuments({ companyId: c._id, status: "Submitted" }),
-          AssessmentSession.findOne({ companyId: c._id }).sort({ createdAt: -1 }),
+          AssessmentSession.countDocuments(baseFilter),
+          AssessmentSession.countDocuments({ ...baseFilter, status: "InProgress" }),
+          AssessmentSession.countDocuments({ ...baseFilter, status: "Submitted" }),
+          AssessmentSession.findOne(baseFilter).sort({ createdAt: -1 }),
         ]);
 
         return {

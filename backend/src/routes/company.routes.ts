@@ -25,51 +25,22 @@ const router = Router();
  * @openapi
  * /api/v1/companies:
  *   post:
- *     summary: Onboard a new organization
- *     description: Creates a company profile, triggers automated DNS domain legitimacy verification, and associates unassigned Assessors with the new company.
+ *     summary: Onboard a new Client Organization (TenantAdmin only)
+ *     description: Creates a Client Organization within the TenantAdmin's tenant with name, domain, plan tier (Gold, Silver, Bronze), industry, and country, and triggers DNS verification.
  *     tags:
  *       - Company Management
  *     security:
  *       - BearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - name
- *               - domain
- *             properties:
- *               name:
- *                 type: string
- *                 example: Acme AI Corporation
- *               domain:
- *                 type: string
- *                 example: acme-ai.com
- *               registrationNumber:
- *                 type: string
- *                 example: REG-2026-9921
- *               country:
- *                 type: string
- *                 example: United States
- *               industry:
- *                 type: string
- *                 example: FinTech / AI
  *     responses:
  *       201:
- *         description: Company onboarded successfully
- *       400:
- *         description: Invalid input or domain format
- *       409:
- *         description: Domain already onboarded
- *       401:
- *         description: Unauthorized
+ *         description: Client Organization onboarded successfully
+ *       403:
+ *         description: TenantAdmin role required
  */
 router.post(
   "/",
   authenticate,
-  authorize("SuperAdmin", "Admin", "Assessor"),
+  authorize("TenantAdmin"),
   validateRequest(CreateCompanySchema),
   createCompany
 );
@@ -78,72 +49,35 @@ router.post(
  * @openapi
  * /api/v1/companies:
  *   get:
- *     summary: List companies
- *     description: Lists companies with pagination and search. Assessors only see their assigned company; Admins see all.
+ *     summary: List Client Organizations in the active tenant
+ *     description: Visible only to the owning tenant's TenantAdmins and Auditors.
  *     tags:
  *       - Company Management
  *     security:
  *       - BearerAuth: []
- *     parameters:
- *       - in: query
- *         name: page
- *         schema:
- *           type: integer
- *           default: 1
- *       - in: query
- *         name: limit
- *         schema:
- *           type: integer
- *           default: 20
- *       - in: query
- *         name: search
- *         schema:
- *           type: string
- *       - in: query
- *         name: status
- *         schema:
- *           type: string
- *           enum: [Active, Suspended]
- *       - in: query
- *         name: verificationStatus
- *         schema:
- *           type: string
- *           enum: [Verified, Pending, Rejected]
  *     responses:
  *       200:
- *         description: Paginated company list
- *       401:
- *         description: Unauthorized
+ *         description: Paginated Client Organization list
  */
-router.get("/", authenticate, getCompanies);
+router.get("/", authenticate, authorize("TenantAdmin", "Auditor"), getCompanies);
 
 /**
  * @openapi
  * /api/v1/companies/{id}:
  *   get:
- *     summary: Get company profile by ID
- *     description: Retrieves company profile. Strictly protected by tenant isolation guards (IDOR prevention).
+ *     summary: Get Client Organization profile by ID
  *     tags:
  *       - Company Management
  *     security:
  *       - BearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
  *     responses:
  *       200:
- *         description: Company profile
- *       403:
- *         description: Cross-company access denied
- *       404:
- *         description: Company not found
+ *         description: Client Organization profile
  */
 router.get(
   "/:id",
   authenticate,
+  authorize("TenantAdmin", "Auditor"),
   validateRequest(CompanyParamSchema),
   requireCompanyScope("id"),
   getCompanyById
@@ -153,43 +87,19 @@ router.get(
  * @openapi
  * /api/v1/companies/{id}:
  *   patch:
- *     summary: Update company profile
- *     description: Updates company metadata. Guarded by tenant isolation policies.
+ *     summary: Update Client Organization profile or plan tier (TenantAdmin only)
  *     tags:
  *       - Company Management
  *     security:
  *       - BearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *     requestBody:
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               name:
- *                 type: string
- *               registrationNumber:
- *                 type: string
- *               country:
- *                 type: string
- *               industry:
- *                 type: string
  *     responses:
  *       200:
- *         description: Company profile updated
- *       403:
- *         description: Forbidden
- *       404:
- *         description: Company not found
+ *         description: Client Organization profile updated
  */
 router.patch(
   "/:id",
   authenticate,
+  authorize("TenantAdmin"),
   validateRequest(UpdateCompanySchema),
   requireCompanyScope("id"),
   updateCompany
@@ -199,46 +109,21 @@ router.patch(
  * @openapi
  * /api/v1/companies/{id}/verify:
  *   post:
- *     summary: Manually verify or reject company legitimacy (Admin only)
- *     description: Admin override to transition company legitimacy to Verified, Rejected, or Pending with audit notes.
+ *     summary: Verify Client Organization DNS legitimacy and set plan tier (TenantAdmin only)
  *     tags:
  *       - Company Management
  *     security:
  *       - BearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - verificationStatus
- *             properties:
- *               verificationStatus:
- *                 type: string
- *                 enum: [Verified, Pending, Rejected]
- *               notes:
- *                 type: string
- *                 example: Verified business registration via official state portal.
  *     responses:
  *       200:
  *         description: Verification status updated
- *       403:
- *         description: Admin role required
- *       404:
- *         description: Company not found
  */
 router.post(
   "/:id/verify",
   authenticate,
-  authorize("SuperAdmin"),
+  authorize("TenantAdmin"),
   validateRequest(VerifyCompanySchema),
+  requireCompanyScope("id"),
   verifyCompany
 );
 
@@ -246,43 +131,21 @@ router.post(
  * @openapi
  * /api/v1/companies/{id}/status:
  *   patch:
- *     summary: Update company operational status (Active / Suspended) (Admin only)
- *     description: Suspends or reactivates a company across the assessment platform.
+ *     summary: Update Client Organization operational status (Active / Suspended) (TenantAdmin only)
  *     tags:
  *       - Company Management
  *     security:
  *       - BearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - status
- *             properties:
- *               status:
- *                 type: string
- *                 enum: [Active, Suspended]
- *               reason:
- *                 type: string
  *     responses:
  *       200:
  *         description: Status updated
- *       403:
- *         description: Admin role required
  */
 router.patch(
   "/:id/status",
   authenticate,
-  authorize("SuperAdmin"),
+  authorize("TenantAdmin"),
   validateRequest(UpdateCompanyStatusSchema),
+  requireCompanyScope("id"),
   updateCompanyStatus
 );
 
@@ -290,32 +153,22 @@ router.patch(
  * @openapi
  * /api/v1/companies/{id}/trends:
  *   get:
- *     summary: Retrieve historical assessment trends and score progression for an organization
- *     description: Returns sequential assessment scores, maturity level progression, and delta improvement percentage across finalized assessments.
+ *     summary: Retrieve historical assessment trends and score progression for a Client Organization
  *     tags:
  *       - Assessment Analytics
  *     security:
  *       - BearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
  *     responses:
  *       200:
  *         description: Historical trend progression retrieved successfully
- *       403:
- *         description: Access denied
- *       404:
- *         description: Company not found
  */
 router.get(
   "/:id/trends",
   authenticate,
+  authorize("TenantAdmin", "Auditor"),
   validateRequest(CompanyParamSchema),
+  requireCompanyScope("id"),
   getCompanyTrends
 );
 
 export default router;
-

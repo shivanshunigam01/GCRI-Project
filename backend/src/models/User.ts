@@ -1,6 +1,6 @@
 import { Schema, model, Document, Types } from "mongoose";
 
-export type UserRole = "SuperAdmin" | "Admin" | "Assessor" | "MembershipApprover";
+export type UserRole = "SuperAdmin" | "TenantAdmin" | "Auditor";
 export type UserStatus = "Active" | "Deactivated";
 
 export interface IUser extends Document {
@@ -10,6 +10,7 @@ export interface IUser extends Document {
   phone?: string;
   role: UserRole;
   status: UserStatus;
+  tenantId?: Types.ObjectId;
   companyId?: Types.ObjectId;
   authProvider?: "credentials" | "google" | "microsoft";
   oauthId?: string;
@@ -39,8 +40,8 @@ const UserSchema = new Schema<IUser>(
     phone: { type: String, trim: true },
     role: {
       type: String,
-      enum: ["SuperAdmin", "Admin", "Assessor", "MembershipApprover"],
-      default: "Assessor",
+      enum: ["SuperAdmin", "TenantAdmin", "Auditor"],
+      default: "Auditor",
       index: true,
     },
     status: {
@@ -49,6 +50,7 @@ const UserSchema = new Schema<IUser>(
       default: "Active",
       index: true,
     },
+    tenantId: { type: Schema.Types.ObjectId, ref: "Tenant", index: true },
     companyId: { type: Schema.Types.ObjectId, ref: "Company", index: true },
     authProvider: {
       type: String,

@@ -22,25 +22,29 @@ export async function assignAuditor(req: Request, res: Response, next: NextFunct
       return sendError(res, "Organization not found", 404, "ORGANIZATION_NOT_FOUND");
     }
 
-    // Tenant check: Org Admin cannot map auditors to other organizations
-    if (req.user?.role === "Admin" && req.user.companyId !== organizationId.toString()) {
+    // Tenant check: TenantAdmin cannot map auditors to other tenants' organizations
+    if (
+      req.user?.role === "TenantAdmin" &&
+      organization.tenantId &&
+      req.user.tenantId !== organization.tenantId.toString()
+    ) {
       return sendError(
         res,
-        "Access denied. You can only assign auditors to your own organization.",
+        "Access denied. You can only assign auditors to organizations in your own tenant.",
         403,
         "CROSS_COMPANY_ACCESS_DENIED"
       );
     }
 
-    // 2. Verify auditor exists and has Assessor role
+    // 2. Verify auditor exists and has Auditor role
     const auditor = await User.findById(auditorId);
     if (!auditor) {
       return sendError(res, "Auditor user not found", 404, "AUDITOR_NOT_FOUND");
     }
-    if (auditor.role !== "Assessor") {
+    if (auditor.role !== "Auditor") {
       return sendError(
         res,
-        `User ${auditor.email} does not have the Assessor role.`,
+        `User ${auditor.email} does not have the Auditor role.`,
         400,
         "INVALID_AUDITOR_ROLE"
       );
@@ -119,11 +123,15 @@ export async function getAuditorMappings(req: Request, res: Response, next: Next
     if (status && status !== "All") {
       filter.status = status;
     }
-    if (req.user?.role === "Admin") {
-      if (!req.user.companyId) {
+    if (req.user?.role === "TenantAdmin") {
+      if (req.user.tenantId) {
+        const tenantOrgs = await Company.find({ tenantId: req.user.tenantId }).select("_id");
+        filter.organizationId = { $in: tenantOrgs.map((c) => c._id) };
+      } else if (req.user.companyId) {
+        filter.organizationId = new Types.ObjectId(req.user.companyId);
+      } else {
         return sendSuccess(res, { mappings: [], pagination: { page: 1, limit: 20, total: 0, totalPages: 0 } });
       }
-      filter.organizationId = new Types.ObjectId(req.user.companyId);
     } else if (organizationId) {
       filter.organizationId = new Types.ObjectId(organizationId as string);
     }
@@ -199,8 +207,8 @@ export async function getOrganizationsForAuditor(req: Request, res: Response, ne
   try {
     const { auditorId } = req.params;
 
-    // Assessors can only query their own assignments unless they are Admin
-    if (req.user?.role !== "Admin" && req.user?.userId !== auditorId) {
+    // Auditors can only query their own assignments unless they are TenantAdmin/SuperAdmin
+    if (req.user?.role !== "TenantAdmin" && req.user?.role !== "SuperAdmin" && req.user?.userId !== auditorId) {
       return sendError(
         res,
         "You do not have permission to view assignments for another auditor.",
@@ -245,14 +253,17 @@ export async function removeAuditorMapping(req: Request, res: Response, next: Ne
       return sendError(res, "Auditor mapping not found", 404, "MAPPING_NOT_FOUND");
     }
 
-    // Tenant check: Org Admin can only unassign from own organization
-    if (req.user?.role === "Admin" && mapping.organizationId.toString() !== req.user.companyId) {
-      return sendError(
-        res,
-        "Access denied. You can only unassign auditors from your own organization.",
-        403,
-        "CROSS_COMPANY_ACCESS_DENIED"
-      );
+    // Tenant check: TenantAdmin can only unassign from own tenant's organizations
+    if (req.user?.role === "TenantAdmin") {
+      const org = await Company.findById(mapping.organizationId);
+      if (org?.tenantId && org.tenantId.toString() !== req.user.tenantId) {
+        return sendError(
+          res,
+          "Access denied. You can only unassign auditors from organizations in your own tenant.",
+          403,
+          "CROSS_COMPANY_ACCESS_DENIED"
+        );
+      }
     }
 
     mapping.status = "Inactive";

@@ -28,6 +28,15 @@ export async function getAuditLogs(
 
     const filter: Record<string, any> = {};
 
+    // Scope TenantAdmin strictly to their own tenant's audit trail
+    if (req.user?.role === "TenantAdmin") {
+      if (req.user.tenantId) {
+        filter.tenantId = req.user.tenantId;
+      } else {
+        filter.actorId = req.user.userId;
+      }
+    }
+
     if (actorId) filter.actorId = actorId;
     if (actorEmail) filter.actorEmail = { $regex: actorEmail.trim(), $options: "i" };
     if (action) filter.action = action;
@@ -89,6 +98,17 @@ export async function getAuditLogStats(
 ) {
   try {
     const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const baseFilter: Record<string, any> = {};
+
+    if (req.user?.role === "TenantAdmin") {
+      if (req.user.tenantId) {
+        baseFilter.tenantId = req.user.tenantId;
+      } else {
+        baseFilter.actorId = req.user.userId;
+      }
+    }
+
+    const matchStage = Object.keys(baseFilter).length > 0 ? [{ $match: baseFilter }] : [];
 
     const [
       totalEvents,
@@ -97,15 +117,17 @@ export async function getAuditLogStats(
       topActions,
       topEntities,
     ] = await Promise.all([
-      AuditLog.countDocuments(),
-      AuditLog.countDocuments({ timestamp: { $gte: oneDayAgo } }),
-      AuditLog.countDocuments({ action: "AUTHORIZATION_DENIED" }),
+      AuditLog.countDocuments(baseFilter),
+      AuditLog.countDocuments({ ...baseFilter, timestamp: { $gte: oneDayAgo } }),
+      AuditLog.countDocuments({ ...baseFilter, action: "AUTHORIZATION_DENIED" }),
       AuditLog.aggregate([
+        ...matchStage,
         { $group: { _id: "$action", count: { $sum: 1 } } },
         { $sort: { count: -1 } },
         { $limit: 8 },
       ]),
       AuditLog.aggregate([
+        ...matchStage,
         { $group: { _id: "$entity", count: { $sum: 1 } } },
         { $sort: { count: -1 } },
         { $limit: 8 },

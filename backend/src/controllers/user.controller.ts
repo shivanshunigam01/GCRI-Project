@@ -2,10 +2,14 @@ import { Request, Response, NextFunction } from "express";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import { User, IUser } from "../models/User.js";
+import { Types } from "mongoose";
+import { User } from "../models/User.js";
+import { Tenant } from "../models/Tenant.js";
+import { TenantMembership } from "../models/TenantMembership.js";
 import { AuditLog } from "../models/AuditLog.js";
 import { sendSuccess, sendError } from "../utils/response.js";
 import { NotificationService } from "../services/notification.service.js";
+import { normalizeUserRole } from "../middlewares/auth.js";
 
 /**
  * Get profile of currently authenticated user
@@ -15,13 +19,23 @@ export async function getMe(req: Request, res: Response, next: NextFunction) {
     const userId = req.user?.userId;
     const user = await User.findById(userId)
       .select("-passwordHash -mfa.secret -mfa.tempSecret -mfa.recoveryCodes")
+      .populate("tenantId", "name slug status")
       .populate("companyId", "name domain verificationStatus status");
 
     if (!user) {
       return sendError(res, "User not found", 404, "USER_NOT_FOUND");
     }
 
-    return sendSuccess(res, user);
+    const memberships = await TenantMembership.find({
+      userId: user._id,
+      status: "Active",
+    }).populate("tenantId", "name slug status");
+
+    return sendSuccess(res, {
+      ...user.toObject(),
+      activeTenantId: req.user?.tenantId || user.tenantId || null,
+      tenantMemberships: memberships,
+    });
   } catch (err) {
     next(err);
   }
@@ -47,6 +61,7 @@ export async function updateMe(req: Request, res: Response, next: NextFunction) 
     await user.save();
 
     await AuditLog.create({
+      tenantId: user.tenantId,
       actorId: user._id,
       actorEmail: user.email,
       action: "USER_PROFILE_UPDATED",
@@ -71,9 +86,10 @@ export async function updateMe(req: Request, res: Response, next: NextFunction) 
 }
 
 /**
- * List all users with filtering, search, and pagination (SuperAdmin or Admin)
- * SuperAdmins see all users across all organizations.
- * Admins are strictly scoped to users in their own organization.
+ * List users with filtering, search, and pagination.
+ * - SuperAdmin sees platform-level users (or filters by tenantId).
+ * - TenantAdmin sees users belonging to their own tenant (via TenantMembership or user.tenantId).
+ * - Auditor sees other active Auditors in their current tenant (for intra-tenant assessment sharing).
  */
 export async function getUsers(req: Request, res: Response, next: NextFunction) {
   try {
@@ -82,34 +98,70 @@ export async function getUsers(req: Request, res: Response, next: NextFunction) 
     const skip = (page - 1) * limit;
 
     const filter: Record<string, unknown> = {};
+    const actorRole = req.user?.role;
 
-    // Organization Admins are strictly scoped to their own company
-    if (req.user?.role === "Admin") {
-      if (!req.user.companyId) {
-        return sendSuccess(res, [], 200, { page, limit, total: 0, totalPages: 0 });
+    if (actorRole === "TenantAdmin" || actorRole === "Auditor") {
+      const activeTenantId = req.user?.tenantId;
+      if (!activeTenantId) {
+        if (req.user?.companyId) {
+          filter.companyId = req.user.companyId;
+        } else {
+          return sendSuccess(res, [], 200, { page, limit, total: 0, totalPages: 0 });
+        }
+      } else {
+        const memberships = await TenantMembership.find({
+          tenantId: new Types.ObjectId(activeTenantId),
+          ...(actorRole === "Auditor" ? { role: "Auditor", status: "Active" } : {}),
+        }).select("userId");
+
+        const memberUserIds = memberships.map((m) => m.userId);
+        filter.$or = [
+          { _id: { $in: memberUserIds } },
+          { tenantId: new Types.ObjectId(activeTenantId) },
+        ];
+
+        if (actorRole === "Auditor") {
+          filter.role = "Auditor";
+          filter.status = "Active";
+        }
       }
-      filter.companyId = req.user.companyId;
-    } else if (req.query.companyId && typeof req.query.companyId === "string") {
-      // SuperAdmin can filter by specific organization
-      filter.companyId = req.query.companyId;
+    } else if (actorRole === "SuperAdmin") {
+      if (req.query.tenantId && typeof req.query.tenantId === "string") {
+        const memberships = await TenantMembership.find({
+          tenantId: new Types.ObjectId(req.query.tenantId),
+        }).select("userId");
+        filter.$or = [
+          { _id: { $in: memberships.map((m) => m.userId) } },
+          { tenantId: new Types.ObjectId(req.query.tenantId) },
+        ];
+      }
+      if (req.query.companyId && typeof req.query.companyId === "string") {
+        filter.companyId = req.query.companyId;
+      }
     }
 
-    if (req.query.role && typeof req.query.role === "string") {
-      filter.role = req.query.role;
+    if (actorRole !== "Auditor" && req.query.role && typeof req.query.role === "string") {
+      filter.role = normalizeUserRole(req.query.role);
     }
 
-    if (req.query.status && typeof req.query.status === "string") {
+    if (actorRole !== "Auditor" && req.query.status && typeof req.query.status === "string") {
       filter.status = req.query.status;
     }
 
     if (req.query.search && typeof req.query.search === "string") {
       const regex = new RegExp(req.query.search.trim(), "i");
-      filter.$or = [{ name: regex }, { email: regex }];
+      if (filter.$or) {
+        filter.$and = [{ $or: filter.$or as unknown[] }, { $or: [{ name: regex }, { email: regex }] }];
+        delete filter.$or;
+      } else {
+        filter.$or = [{ name: regex }, { email: regex }];
+      }
     }
 
     const [users, total] = await Promise.all([
       User.find(filter)
         .select("-passwordHash -mfa.secret -mfa.tempSecret -mfa.recoveryCodes")
+        .populate("tenantId", "name slug status")
         .populate("companyId", "name domain")
         .sort({ createdAt: -1 })
         .skip(skip)
@@ -131,27 +183,46 @@ export async function getUsers(req: Request, res: Response, next: NextFunction) 
 }
 
 /**
- * Get individual user by ID (SuperAdmin or Admin)
+ * Get individual user by ID (SuperAdmin or TenantAdmin of same tenant)
  */
 export async function getUserById(req: Request, res: Response, next: NextFunction) {
   try {
     const { id } = req.params;
     const user = await User.findById(id)
       .select("-passwordHash -mfa.secret -mfa.tempSecret -mfa.recoveryCodes")
+      .populate("tenantId", "name slug status")
       .populate("companyId", "name domain verificationStatus status");
 
     if (!user) {
       return sendError(res, "User not found", 404, "USER_NOT_FOUND");
     }
 
-    // Tenant isolation: Org Admins cannot inspect users belonging to other organizations
-    if (req.user?.role === "Admin") {
-      if (!user.companyId || user.companyId.toString() !== req.user.companyId) {
+    if (req.user?.role === "TenantAdmin") {
+      const activeTenantId = req.user.tenantId;
+      let belongsToTenant = false;
+
+      if (activeTenantId) {
+        const membership = await TenantMembership.findOne({
+          tenantId: new Types.ObjectId(activeTenantId),
+          userId: user._id,
+        });
+        const userTenantId =
+          (user.tenantId as unknown as { _id?: Types.ObjectId })?._id?.toString() ||
+          user.tenantId?.toString();
+        belongsToTenant = Boolean(membership || userTenantId === activeTenantId);
+      } else if (req.user.companyId) {
+        const userCompId =
+          (user.companyId as unknown as { _id?: Types.ObjectId })?._id?.toString() ||
+          user.companyId?.toString();
+        belongsToTenant = userCompId === req.user.companyId;
+      }
+
+      if (!belongsToTenant) {
         return sendError(
           res,
-          "Access denied. You cannot view users outside your organization.",
+          "Access denied. You cannot view users outside your tenant.",
           403,
-          "CROSS_COMPANY_ACCESS_DENIED"
+          "CROSS_TENANT_ACCESS_DENIED"
         );
       }
     }
@@ -163,113 +234,253 @@ export async function getUserById(req: Request, res: Response, next: NextFunctio
 }
 
 /**
- * Invite a new user, assessor, or admin (SuperAdmin or Admin)
- * SuperAdmins can invite Admins for a specific company, Assessors, or other SuperAdmins.
- * Org Admins can only invite Assessors or MembershipApprovers for their own company.
+ * Invite a new user according to the strict top-down GCRAI hierarchy:
+ * - "Each level can only create the level directly beneath it."
+ * - SuperAdmin can ONLY invite TenantAdmin (into a specified tenantId).
+ * - TenantAdmin can ONLY invite Auditor (into their own tenantId).
+ *   An existing Auditor in another tenant can be invited into this tenant with a separate TenantMembership.
  */
 export async function inviteUser(req: Request, res: Response, next: NextFunction) {
   try {
-    const { email, name, role, companyId } = req.body;
+    const { email, name, role: rawRole, tenantId, companyId } = req.body;
+    const role = normalizeUserRole(rawRole);
     const actorId = req.user?.userId;
     const actorRole = req.user?.role;
     const actorEmail = req.user?.email || "unknown";
 
-    let targetCompanyId = companyId;
-
-    // RBAC Guardrails
-    if (actorRole === "Admin") {
-      // Organization Admins cannot invite SuperAdmins or other Admins
-      if (role === "SuperAdmin" || role === "Admin") {
-        return sendError(
-          res,
-          "Organization Admins cannot invite Admin or SuperAdmin accounts.",
-          403,
-          "PRIVILEGE_ESCALATION_DENIED"
-        );
-      }
-      // Force companyId to actor's organization to prevent cross-tenant user creation
-      targetCompanyId = req.user?.companyId;
-      if (!targetCompanyId) {
-        return sendError(
-          res,
-          "Your administrative account is not linked to an organization.",
-          400,
-          "COMPANY_NOT_LINKED"
-        );
-      }
-    } else if (actorRole === "SuperAdmin") {
-      // When SuperAdmin creates an Admin, an organization MUST be specified
-      if (role === "Admin" && !companyId) {
-        return sendError(
-          res,
-          "Organization ID (companyId) is required when inviting an Admin for an organization.",
-          400,
-          "COMPANY_ID_REQUIRED"
-        );
-      }
-    }
-
     const cleanEmail = email.toLowerCase().trim();
-
-    const existing = await User.findOne({ email: cleanEmail });
-    if (existing) {
-      return sendError(
-        res,
-        "An account with this email address already exists",
-        409,
-        "USER_EXISTS"
-      );
-    }
-
-    // Generate cryptographic invitation token
     const rawToken = crypto.randomBytes(32).toString("hex");
     const hashedToken = crypto.createHash("sha256").update(rawToken).digest("hex");
     const expires = new Date(Date.now() + 48 * 60 * 60 * 1000); // 48 hours validity
 
-    const user = await User.create({
-      email: cleanEmail,
-      name,
-      role,
-      companyId: targetCompanyId || undefined,
-      status: "Active",
-      invitationToken: hashedToken,
-      invitationExpires: expires,
-      invitedBy: actorId,
-    });
+    if (actorRole === "SuperAdmin") {
+      // SuperAdmin can only onboard TenantAdmin (the level directly beneath it)
+      if (role !== "TenantAdmin") {
+        return sendError(
+          res,
+          "Each level can only create the level directly beneath it. SuperAdmin can only invite a TenantAdmin.",
+          403,
+          "HIERARCHY_VIOLATION"
+        );
+      }
 
-    await AuditLog.create({
-      actorId,
-      actorEmail,
-      action: "USER_INVITED",
-      entity: "User",
-      entityId: user._id.toString(),
-      after: { email: user.email, role: user.role, companyId: user.companyId },
-      ipAddress: req.ip,
-      userAgent: req.headers["user-agent"],
-    });
+      const targetTenantId = tenantId;
+      if (!targetTenantId) {
+        return sendError(
+          res,
+          "Tenant ID (tenantId) is required when inviting a TenantAdmin.",
+          400,
+          "TENANT_ID_REQUIRED"
+        );
+      }
 
-    await NotificationService.onUserInvited(
-      user,
-      { id: actorId || "", email: actorEmail },
-      rawToken
-    );
+      const tenant = await Tenant.findById(targetTenantId);
+      if (!tenant) {
+        return sendError(res, "Target tenant not found", 404, "TENANT_NOT_FOUND");
+      }
 
-    return sendSuccess(
-      res,
-      {
-        message: "User invitation generated successfully",
-        user: {
-          id: user._id,
-          email: user.email,
-          name: user.name,
-          role: user.role,
-          companyId: user.companyId,
-          invitationExpires: expires,
+      const existing = await User.findOne({ email: cleanEmail });
+      if (existing) {
+        return sendError(
+          res,
+          "An account with this email address already exists. A TenantAdmin can only belong to one tenant.",
+          409,
+          "USER_EXISTS"
+        );
+      }
+
+      const user = await User.create({
+        email: cleanEmail,
+        name,
+        role: "TenantAdmin",
+        tenantId: tenant._id,
+        companyId: companyId || undefined,
+        status: "Active",
+        invitationToken: hashedToken,
+        invitationExpires: expires,
+        invitedBy: actorId,
+      });
+
+      await TenantMembership.create({
+        tenantId: tenant._id,
+        userId: user._id,
+        role: "TenantAdmin",
+        status: "Invited",
+        invitedBy: new Types.ObjectId(actorId),
+        invitationToken: hashedToken,
+        invitationExpires: expires,
+      });
+
+      if (!tenant.firstTenantAdminId) {
+        tenant.firstTenantAdminId = user._id as Types.ObjectId;
+        await tenant.save();
+      }
+
+      await AuditLog.create({
+        tenantId: tenant._id as Types.ObjectId,
+        actorId: new Types.ObjectId(actorId),
+        actorEmail,
+        action: "USER_INVITED",
+        entity: "User",
+        entityId: user._id.toString(),
+        after: { email: user.email, role: user.role, tenantId: tenant._id },
+        ipAddress: req.ip,
+        userAgent: req.headers["user-agent"],
+      });
+
+      await NotificationService.onUserInvited(
+        user,
+        { id: actorId || "", email: actorEmail },
+        rawToken
+      );
+
+      return sendSuccess(
+        res,
+        {
+          message: "TenantAdmin invitation generated successfully",
+          user: {
+            id: user._id,
+            email: user.email,
+            name: user.name,
+            role: user.role,
+            status: user.status,
+            tenantId: tenant._id,
+            invitationExpires: expires,
+          },
+          invitationToken: rawToken,
         },
-        invitationToken: rawToken, // Provided for direct testing & outbound delivery
-      },
-      201
-    );
+        201
+      );
+    }
+
+    if (actorRole === "TenantAdmin") {
+      // TenantAdmin can only onboard Auditor (the level directly beneath it)
+      if (role !== "Auditor") {
+        return sendError(
+          res,
+          "Each level can only create the level directly beneath it. TenantAdmin can only invite an Auditor.",
+          403,
+          "PRIVILEGE_ESCALATION_DENIED"
+        );
+      }
+
+      const targetTenantId = req.user?.tenantId;
+      if (!targetTenantId) {
+        return sendError(
+          res,
+          "Your TenantAdmin account is not linked to an active tenant.",
+          400,
+          "TENANT_NOT_LINKED"
+        );
+      }
+
+      // Check if an account with this email already exists
+      let user = await User.findOne({ email: cleanEmail });
+
+      if (user) {
+        // Multi-tenant Auditor support: "the same auditor can also be invited into other tenants, with a separate membership in each."
+        if (normalizeUserRole(user.role) !== "Auditor") {
+          return sendError(
+            res,
+            "An administrative account with this email already exists and cannot be invited as an Auditor.",
+            409,
+            "USER_EXISTS"
+          );
+        }
+
+        const existingMembership = await TenantMembership.findOne({
+          tenantId: new Types.ObjectId(targetTenantId),
+          userId: user._id,
+        });
+
+        if (existingMembership && existingMembership.status === "Active") {
+          return sendError(
+            res,
+            "This auditor is already an active member of your tenant.",
+            409,
+            "AUDITOR_ALREADY_IN_TENANT"
+          );
+        }
+
+        if (existingMembership) {
+          existingMembership.status = "Invited";
+          existingMembership.invitationToken = hashedToken;
+          existingMembership.invitationExpires = expires;
+          existingMembership.invitedBy = new Types.ObjectId(actorId);
+          await existingMembership.save();
+        } else {
+          await TenantMembership.create({
+            tenantId: new Types.ObjectId(targetTenantId),
+            userId: user._id,
+            role: "Auditor",
+            status: "Invited",
+            invitedBy: new Types.ObjectId(actorId),
+            invitationToken: hashedToken,
+            invitationExpires: expires,
+          });
+        }
+      } else {
+        user = await User.create({
+          email: cleanEmail,
+          name,
+          role: "Auditor",
+          tenantId: new Types.ObjectId(targetTenantId),
+          companyId: req.user?.companyId ? new Types.ObjectId(req.user.companyId) : undefined,
+          status: "Active",
+          invitationToken: hashedToken,
+          invitationExpires: expires,
+          invitedBy: actorId,
+        });
+
+        await TenantMembership.create({
+          tenantId: new Types.ObjectId(targetTenantId),
+          userId: user._id,
+          role: "Auditor",
+          status: "Invited",
+          invitedBy: new Types.ObjectId(actorId),
+          invitationToken: hashedToken,
+          invitationExpires: expires,
+        });
+      }
+
+      await AuditLog.create({
+        tenantId: new Types.ObjectId(targetTenantId),
+        actorId: new Types.ObjectId(actorId),
+        actorEmail,
+        action: "USER_INVITED",
+        entity: "User",
+        entityId: user._id.toString(),
+        after: { email: user.email, role: "Auditor", tenantId: targetTenantId },
+        ipAddress: req.ip,
+        userAgent: req.headers["user-agent"],
+      });
+
+      await NotificationService.onUserInvited(
+        user,
+        { id: actorId || "", email: actorEmail },
+        rawToken
+      );
+
+      return sendSuccess(
+        res,
+        {
+          message: "Auditor invitation generated successfully",
+          user: {
+            id: user._id,
+            email: user.email,
+            name: user.name,
+            role: "Auditor",
+            status: user.status,
+            tenantId: targetTenantId,
+            invitationExpires: expires,
+          },
+          invitationToken: rawToken,
+        },
+        201
+      );
+    }
+
+    return sendError(res, "Forbidden", 403, "FORBIDDEN");
   } catch (err) {
     next(err);
   }
@@ -277,6 +488,8 @@ export async function inviteUser(req: Request, res: Response, next: NextFunction
 
 /**
  * Accept invitation and configure account password (Public endpoint)
+ * - Activates TenantMembership.
+ * - If accepting user is a TenantAdmin for a Pending tenant, transitions the Tenant to Active!
  */
 export async function acceptInvite(req: Request, res: Response, next: NextFunction) {
   try {
@@ -284,10 +497,18 @@ export async function acceptInvite(req: Request, res: Response, next: NextFuncti
 
     const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
 
-    const user = await User.findOne({
+    // 1. Check TenantMembership invitation first (supports multi-tenant Auditor invites)
+    const membership = await TenantMembership.findOne({
       invitationToken: hashedToken,
       invitationExpires: { $gt: new Date() },
     });
+
+    let user = membership
+      ? await User.findById(membership.userId)
+      : await User.findOne({
+          invitationToken: hashedToken,
+          invitationExpires: { $gt: new Date() },
+        });
 
     if (!user) {
       return sendError(
@@ -298,14 +519,75 @@ export async function acceptInvite(req: Request, res: Response, next: NextFuncti
       );
     }
 
-    const saltRounds = parseInt(process.env.BCRYPT_SALT_ROUNDS || "12", 10);
-    user.passwordHash = await bcrypt.hash(password, saltRounds);
+    if (!user.passwordHash && !password) {
+      return sendError(
+        res,
+        "Password is required to initialize your account.",
+        400,
+        "PASSWORD_REQUIRED"
+      );
+    }
+
+    if (password) {
+      const saltRounds = parseInt(process.env.BCRYPT_SALT_ROUNDS || "12", 10);
+      user.passwordHash = await bcrypt.hash(password, saltRounds);
+    }
+
+    user.role = normalizeUserRole(user.role);
     user.invitationToken = undefined;
     user.invitationExpires = undefined;
     user.status = "Active";
+    if (membership && !user.tenantId) {
+      user.tenantId = membership.tenantId;
+    }
     await user.save();
 
+    const activeTenantId = membership?.tenantId || user.tenantId;
+
+    if (membership) {
+      membership.status = "Active";
+      membership.acceptedAt = new Date();
+      membership.invitationToken = undefined;
+      membership.invitationExpires = undefined;
+      await membership.save();
+    } else if (activeTenantId && user.role !== "SuperAdmin") {
+      await TenantMembership.findOneAndUpdate(
+        { tenantId: activeTenantId, userId: user._id },
+        {
+          $set: {
+            role: user.role,
+            status: "Active",
+            acceptedAt: new Date(),
+          },
+        },
+        { upsert: true }
+      );
+    }
+
+    // Onboarding Flow 1c: "Tenant becomes active once the Tenant Admin accepts."
+    if (user.role === "TenantAdmin" && activeTenantId) {
+      const tenant = await Tenant.findById(activeTenantId);
+      if (tenant && tenant.status === "Pending") {
+        tenant.status = "Active";
+        await tenant.save();
+
+        await AuditLog.create({
+          tenantId: tenant._id as Types.ObjectId,
+          actorId: user._id,
+          actorEmail: user.email,
+          action: "TENANT_ACTIVATED",
+          entity: "Tenant",
+          entityId: tenant._id.toString(),
+          before: { status: "Pending" },
+          after: { status: "Active" },
+          ipAddress: req.ip,
+          userAgent: req.headers["user-agent"],
+        });
+      }
+    }
+
     await AuditLog.create({
+      tenantId: activeTenantId,
       actorId: user._id,
       actorEmail: user.email,
       action: "USER_INVITATION_ACCEPTED",
@@ -315,6 +597,12 @@ export async function acceptInvite(req: Request, res: Response, next: NextFuncti
       userAgent: req.headers["user-agent"],
     });
 
+    const allMemberships = await TenantMembership.find({
+      userId: user._id,
+      status: "Active",
+    }).select("tenantId");
+    const tenantIds = allMemberships.map((m) => m.tenantId.toString());
+
     const secret = process.env.JWT_SECRET || "default_jwt_secret_dev";
     const expiresIn = process.env.JWT_EXPIRES_IN || "7d";
 
@@ -323,6 +611,8 @@ export async function acceptInvite(req: Request, res: Response, next: NextFuncti
         userId: user._id.toString(),
         email: user.email,
         role: user.role,
+        tenantId: activeTenantId?.toString(),
+        tenantIds,
         companyId: user.companyId?.toString(),
       },
       secret,
@@ -337,6 +627,9 @@ export async function acceptInvite(req: Request, res: Response, next: NextFuncti
         email: user.email,
         name: user.name,
         role: user.role,
+        status: user.status,
+        tenantId: activeTenantId || null,
+        tenantIds,
         companyId: user.companyId || null,
       },
     });
@@ -346,9 +639,7 @@ export async function acceptInvite(req: Request, res: Response, next: NextFuncti
 }
 
 /**
- * Toggle user active/deactivated status (SuperAdmin or Admin)
- * SuperAdmins can toggle any Admin or user.
- * Org Admins can only toggle Assessors/users within their own organization.
+ * Toggle user active/deactivated status (SuperAdmin or TenantAdmin)
  */
 export async function updateUserStatus(req: Request, res: Response, next: NextFunction) {
   try {
@@ -358,7 +649,6 @@ export async function updateUserStatus(req: Request, res: Response, next: NextFu
     const actorRole = req.user?.role;
     const actorEmail = req.user?.email || "unknown";
 
-    // Safety Guard: Prevent user from deactivating own account
     if (actorId === id && status === "Deactivated") {
       return sendError(
         res,
@@ -373,28 +663,42 @@ export async function updateUserStatus(req: Request, res: Response, next: NextFu
       return sendError(res, "User not found", 404, "USER_NOT_FOUND");
     }
 
-    // Role-based boundary enforcement
-    if (actorRole === "Admin") {
-      // Organization Admin cannot touch SuperAdmin or other Admins
-      if (user.role === "SuperAdmin" || user.role === "Admin") {
+    const targetRole = normalizeUserRole(user.role);
+
+    if (actorRole === "TenantAdmin") {
+      if (targetRole === "SuperAdmin" || targetRole === "TenantAdmin") {
         return sendError(
           res,
-          "Organization Admins cannot modify Admin or SuperAdmin accounts.",
+          "Tenant Admins cannot modify TenantAdmin or SuperAdmin accounts.",
           403,
           "FORBIDDEN"
         );
       }
-      // Must be within own organization
-      if (!user.companyId || user.companyId.toString() !== req.user?.companyId) {
+
+      const activeTenantId = req.user?.tenantId;
+      if (!activeTenantId) {
+        return sendError(res, "No active tenant associated with your account.", 403, "FORBIDDEN");
+      }
+
+      const membership = await TenantMembership.findOne({
+        tenantId: new Types.ObjectId(activeTenantId),
+        userId: user._id,
+      });
+
+      if (!membership && user.tenantId?.toString() !== activeTenantId) {
         return sendError(
           res,
-          "Access denied. You cannot modify users outside your organization.",
+          "Access denied. You cannot modify users outside your tenant.",
           403,
-          "CROSS_COMPANY_ACCESS_DENIED"
+          "CROSS_TENANT_ACCESS_DENIED"
         );
       }
-    } else if (actorRole === "SuperAdmin" && user.role === "SuperAdmin" && status === "Deactivated") {
-      // Prevent deactivating sole active SuperAdmin
+
+      if (membership) {
+        membership.status = status === "Active" ? "Active" : "Deactivated";
+        await membership.save();
+      }
+    } else if (actorRole === "SuperAdmin" && targetRole === "SuperAdmin" && status === "Deactivated") {
       const superAdminCount = await User.countDocuments({ role: "SuperAdmin", status: "Active" });
       if (superAdminCount <= 1) {
         return sendError(
@@ -411,6 +715,7 @@ export async function updateUserStatus(req: Request, res: Response, next: NextFu
     await user.save();
 
     await AuditLog.create({
+      tenantId: req.user?.tenantId ? new Types.ObjectId(req.user.tenantId) : user.tenantId,
       actorId,
       actorEmail,
       action: "USER_STATUS_UPDATED",
@@ -442,12 +747,11 @@ export async function updateUserStatus(req: Request, res: Response, next: NextFu
 
 /**
  * Reassign user role (SuperAdmin only)
- * Only SuperAdmins have authority to elevate or demote roles.
  */
 export async function updateUserRole(req: Request, res: Response, next: NextFunction) {
   try {
     const { id } = req.params;
-    const { role } = req.body;
+    const role = normalizeUserRole(req.body.role);
     const actorId = req.user?.userId;
     const actorRole = req.user?.role;
     const actorEmail = req.user?.email || "unknown";
@@ -466,8 +770,9 @@ export async function updateUserRole(req: Request, res: Response, next: NextFunc
       return sendError(res, "User not found", 404, "USER_NOT_FOUND");
     }
 
-    // Safety Guard: Prevent user from demoting their own SuperAdmin account
-    if (actorId === id && user.role === "SuperAdmin" && role !== "SuperAdmin") {
+    const currentRole = normalizeUserRole(user.role);
+
+    if (actorId === id && currentRole === "SuperAdmin" && role !== "SuperAdmin") {
       return sendError(
         res,
         "You cannot demote your own Super Administrator account.",
@@ -476,8 +781,7 @@ export async function updateUserRole(req: Request, res: Response, next: NextFunc
       );
     }
 
-    // Safety Guard: Prevent last SuperAdmin from demoting themselves or others
-    if (user.role === "SuperAdmin" && role !== "SuperAdmin") {
+    if (currentRole === "SuperAdmin" && role !== "SuperAdmin") {
       const superAdminCount = await User.countDocuments({ role: "SuperAdmin", status: "Active" });
       if (superAdminCount <= 1) {
         return sendError(
@@ -489,13 +793,12 @@ export async function updateUserRole(req: Request, res: Response, next: NextFunc
       }
     }
 
-    // Guard: An Admin must belong to an organization
-    if (role === "Admin" && !user.companyId) {
+    if (role === "TenantAdmin" && !user.tenantId && !user.companyId) {
       return sendError(
         res,
-        "Cannot promote user to Organization Admin without an associated organization (companyId).",
+        "Cannot promote user to TenantAdmin without an associated tenantId.",
         400,
-        "COMPANY_ASSOCIATION_REQUIRED"
+        "TENANT_ASSOCIATION_REQUIRED"
       );
     }
 
@@ -504,6 +807,7 @@ export async function updateUserRole(req: Request, res: Response, next: NextFunc
     await user.save();
 
     await AuditLog.create({
+      tenantId: user.tenantId,
       actorId,
       actorEmail,
       action: "USER_ROLE_UPDATED",
@@ -529,9 +833,7 @@ export async function updateUserRole(req: Request, res: Response, next: NextFunc
 }
 
 /**
- * Admin-initiated password reset token generation (SuperAdmin or Admin)
- * SuperAdmin can reset for anyone.
- * Org Admin can only reset for users in their own organization.
+ * Admin-initiated password reset token generation (SuperAdmin or TenantAdmin)
  */
 export async function adminResetPassword(
   req: Request,
@@ -549,35 +851,45 @@ export async function adminResetPassword(
       return sendError(res, "User not found", 404, "USER_NOT_FOUND");
     }
 
-    // Org Admin boundary check
-    if (actorRole === "Admin") {
-      if (user.role === "SuperAdmin" || user.role === "Admin") {
+    const targetRole = normalizeUserRole(user.role);
+
+    if (actorRole === "TenantAdmin") {
+      if (targetRole === "SuperAdmin" || targetRole === "TenantAdmin") {
         return sendError(
           res,
-          "Organization Admins cannot reset password for Admin or SuperAdmin accounts.",
+          "Tenant Admins cannot reset password for TenantAdmin or SuperAdmin accounts.",
           403,
           "FORBIDDEN"
         );
       }
-      if (!user.companyId || user.companyId.toString() !== req.user?.companyId) {
+      const activeTenantId = req.user?.tenantId;
+      const membership = activeTenantId
+        ? await TenantMembership.findOne({
+            tenantId: new Types.ObjectId(activeTenantId),
+            userId: user._id,
+          })
+        : null;
+
+      if (!membership && user.tenantId?.toString() !== activeTenantId) {
         return sendError(
           res,
-          "Access denied. You cannot reset password for users outside your organization.",
+          "Access denied. You cannot reset password for users outside your tenant.",
           403,
-          "CROSS_COMPANY_ACCESS_DENIED"
+          "CROSS_TENANT_ACCESS_DENIED"
         );
       }
     }
 
     const rawToken = crypto.randomBytes(32).toString("hex");
     const hashedToken = crypto.createHash("sha256").update(rawToken).digest("hex");
-    const expires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+    const expires = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
     user.resetPasswordToken = hashedToken;
     user.resetPasswordExpires = expires;
     await user.save();
 
     await AuditLog.create({
+      tenantId: req.user?.tenantId ? new Types.ObjectId(req.user.tenantId) : user.tenantId,
       actorId,
       actorEmail,
       action: "ADMIN_PASSWORD_RESET_INITIATED",
@@ -610,7 +922,7 @@ export async function adminResetPassword(
 }
 
 /**
- * Admin update of user profile details (SuperAdmin or Admin)
+ * Admin update of user profile details (SuperAdmin or TenantAdmin)
  */
 export async function adminUpdateUser(
   req: Request,
@@ -622,42 +934,51 @@ export async function adminUpdateUser(
     const actorId = req.user?.userId;
     const actorRole = req.user?.role;
     const actorEmail = req.user?.email || "admin";
-    const { name, phone, companyId, role, status } = req.body;
+    const { name, phone, tenantId, companyId, role, status } = req.body;
 
     const user = await User.findById(id);
     if (!user) {
       return sendError(res, "User not found", 404, "USER_NOT_FOUND");
     }
 
-    // Role-based isolation
-    if (actorRole === "Admin") {
-      if (user.role === "SuperAdmin" || user.role === "Admin") {
+    const targetRole = normalizeUserRole(user.role);
+
+    if (actorRole === "TenantAdmin") {
+      if (targetRole === "SuperAdmin" || targetRole === "TenantAdmin") {
         return sendError(
           res,
-          "Organization Admins cannot modify Admin or SuperAdmin accounts.",
+          "Tenant Admins cannot modify TenantAdmin or SuperAdmin accounts.",
           403,
           "FORBIDDEN"
         );
       }
-      if (!user.companyId || user.companyId.toString() !== req.user?.companyId) {
+
+      const activeTenantId = req.user?.tenantId;
+      const membership = activeTenantId
+        ? await TenantMembership.findOne({
+            tenantId: new Types.ObjectId(activeTenantId),
+            userId: user._id,
+          })
+        : null;
+
+      if (!membership && user.tenantId?.toString() !== activeTenantId) {
         return sendError(
           res,
-          "Access denied. You cannot modify users outside your organization.",
+          "Access denied. You cannot modify users outside your tenant.",
           403,
-          "CROSS_COMPANY_ACCESS_DENIED"
+          "CROSS_TENANT_ACCESS_DENIED"
         );
       }
-      // Org Admins cannot alter roles or company associations
-      if (role !== undefined || companyId !== undefined) {
+
+      if (role !== undefined || tenantId !== undefined || companyId !== undefined) {
         return sendError(
           res,
-          "Organization Admins cannot reassign roles or company associations.",
+          "Tenant Admins cannot reassign roles or tenant associations.",
           403,
           "PRIVILEGE_ESCALATION_DENIED"
         );
       }
     } else if (actorRole === "SuperAdmin") {
-      // Protection: Prevent last SuperAdmin from demoting or deactivating themselves
       if (actorId === id && ((role && role !== "SuperAdmin") || (status && status !== "Active"))) {
         const superAdminCount = await User.countDocuments({ role: "SuperAdmin", status: "Active" });
         if (superAdminCount <= 1) {
@@ -674,6 +995,7 @@ export async function adminUpdateUser(
     const before = {
       name: user.name,
       phone: user.phone,
+      tenantId: user.tenantId,
       companyId: user.companyId,
       role: user.role,
       status: user.status,
@@ -681,13 +1003,15 @@ export async function adminUpdateUser(
 
     if (name !== undefined) user.name = name;
     if (phone !== undefined) user.phone = phone;
+    if (actorRole === "SuperAdmin" && tenantId !== undefined) user.tenantId = tenantId;
     if (actorRole === "SuperAdmin" && companyId !== undefined) user.companyId = companyId;
-    if (actorRole === "SuperAdmin" && role !== undefined) user.role = role;
+    if (actorRole === "SuperAdmin" && role !== undefined) user.role = normalizeUserRole(role);
     if (status !== undefined) user.status = status;
 
     await user.save();
 
     await AuditLog.create({
+      tenantId: req.user?.tenantId ? new Types.ObjectId(req.user.tenantId) : user.tenantId,
       actorId,
       actorEmail,
       action: "USER_UPDATED_BY_ADMIN",
@@ -697,6 +1021,7 @@ export async function adminUpdateUser(
       after: {
         name: user.name,
         phone: user.phone,
+        tenantId: user.tenantId,
         companyId: user.companyId,
         role: user.role,
         status: user.status,
@@ -714,6 +1039,7 @@ export async function adminUpdateUser(
         phone: user.phone,
         role: user.role,
         status: user.status,
+        tenantId: user.tenantId,
         companyId: user.companyId,
       },
     });

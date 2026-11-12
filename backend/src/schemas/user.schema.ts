@@ -13,9 +13,10 @@ export const InviteUserSchema = z.object({
   body: z.object({
     email: z.string().trim().email("Invalid email address").toLowerCase(),
     name: z.string().trim().min(2, "Name must be at least 2 characters").max(100),
-    role: z.enum(["SuperAdmin", "Admin", "Assessor", "MembershipApprover"], {
-      message: "Role must be SuperAdmin, Admin, Assessor, or MembershipApprover",
+    role: z.enum(["SuperAdmin", "TenantAdmin", "Auditor"], {
+      message: "Role must be SuperAdmin, TenantAdmin, or Auditor",
     }),
+    tenantId: z.string().regex(objectIdRegex, "Invalid Tenant ID format").optional(),
     companyId: z.string().regex(objectIdRegex, "Invalid Company ID format").optional(),
   }),
 });
@@ -23,7 +24,7 @@ export const InviteUserSchema = z.object({
 export const AcceptInviteSchema = z.object({
   body: z.object({
     token: z.string().trim().min(10, "Invitation token is required"),
-    password: z.string().min(8, "Password must be at least 8 characters"),
+    password: z.string().min(8, "Password must be at least 8 characters").optional(),
   }),
 });
 
@@ -43,8 +44,8 @@ export const UpdateUserRoleSchema = z.object({
     id: z.string().regex(objectIdRegex, "Invalid User ID format"),
   }),
   body: z.object({
-    role: z.enum(["SuperAdmin", "Admin", "Assessor", "MembershipApprover"], {
-      message: "Role must be SuperAdmin, Admin, Assessor, or MembershipApprover",
+    role: z.enum(["SuperAdmin", "TenantAdmin", "Auditor"], {
+      message: "Role must be SuperAdmin, TenantAdmin, or Auditor",
     }),
   }),
 });

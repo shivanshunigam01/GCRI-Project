@@ -1,3 +1,5 @@
+export * from "./Tenant.js";
+export * from "./TenantMembership.js";
 export * from "./Company.js";
 export * from "./User.js";
 export * from "./AuditLog.js";

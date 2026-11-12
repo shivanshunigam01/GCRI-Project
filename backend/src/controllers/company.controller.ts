@@ -1,62 +1,80 @@
 import { Request, Response, NextFunction } from "express";
-import bcrypt from "bcryptjs";
+import { Types } from "mongoose";
 import { Company } from "../models/Company.js";
-import { User } from "../models/User.js";
 import { AuditLog } from "../models/AuditLog.js";
 import { AssessmentSession } from "../models/AssessmentSession.js";
 import { sendSuccess, sendError } from "../utils/response.js";
 import { verifyDomainLegitimacy } from "../services/verification.service.js";
 import { NotificationService } from "../services/notification.service.js";
-import { scopeQueryByCompany, isAuditorAssignedToOrg } from "../middlewares/companyScope.js";
+import { isAuditorAssignedToOrg } from "../middlewares/companyScope.js";
 
 /**
- * Onboard a new organization with automated DNS domain verification and optional client account creation
+ * 3. Client Organization Onboarding (TenantAdmin only)
+ * - Creates a Client Organization within the TenantAdmin's tenant with name, domain,
+ *   plan tier (Gold, Silver, Bronze), industry, and country.
+ * - Verifies domain ownership through DNS (Pending -> Verified or Rejected).
+ * - Client Organizations have no login; auditors collect their evidence.
  */
 export async function createCompany(req: Request, res: Response, next: NextFunction) {
   try {
-    const { name, domain, registrationNumber, country, industry, user: userData } = req.body;
+    const { name, domain, registrationNumber, country, industry, activePlan } = req.body;
     const actorId = req.user?.userId;
     const actorEmail = req.user?.email || "unknown";
+    const tenantId = req.user?.tenantId;
 
-    // Clean and lowercase domain
-    const cleanDomain = domain.toLowerCase().trim().replace(/^https?:\/\//, "").replace(/\/.*$/, "");
-
-    // Check domain uniqueness
-    const existing = await Company.findOne({ domain: cleanDomain });
-    if (existing) {
+    if (req.user?.role !== "TenantAdmin") {
       return sendError(
         res,
-        `A company with domain '${cleanDomain}' is already onboarded.`,
-        409,
-        "DOMAIN_EXISTS"
+        "Only a TenantAdmin can onboard client organizations.",
+        403,
+        "TENANT_ADMIN_REQUIRED"
       );
     }
 
-    // Check client user email uniqueness if provided
-    if (userData?.email) {
-      const cleanEmail = userData.email.toLowerCase().trim();
-      const existingUser = await User.findOne({ email: cleanEmail });
-      if (existingUser) {
-        return sendError(
-          res,
-          `An account with email '${cleanEmail}' already exists.`,
-          409,
-          "USER_EXISTS"
-        );
-      }
+    if (!tenantId) {
+      return sendError(
+        res,
+        "Your TenantAdmin account is not associated with an active tenant.",
+        400,
+        "TENANT_NOT_LINKED"
+      );
+    }
+
+    // Clean and lowercase domain
+    const cleanDomain = domain
+      .toLowerCase()
+      .trim()
+      .replace(/^https?:\/\//, "")
+      .replace(/\/.*$/, "");
+
+    // Check domain uniqueness within this tenant
+    const existing = await Company.findOne({
+      tenantId: new Types.ObjectId(tenantId),
+      domain: cleanDomain,
+    });
+    if (existing) {
+      return sendError(
+        res,
+        `A client organization with domain '${cleanDomain}' is already onboarded in your tenant.`,
+        409,
+        "DOMAIN_EXISTS"
+      );
     }
 
     // Run automated DNS legitimacy check
     const verificationResult = await verifyDomainLegitimacy(cleanDomain);
 
     const company = await Company.create({
+      tenantId: new Types.ObjectId(tenantId),
       name,
       domain: cleanDomain,
       registrationNumber,
       country,
       industry,
+      activePlan: activePlan || "Bronze",
       verificationStatus: verificationResult.verificationStatus,
       status: "Active",
+      createdBy: actorId ? new Types.ObjectId(actorId) : undefined,
       verificationAuditTrail: {
         verifiedAt: new Date(),
         verifiedBy: "SYSTEM_DNS_VERIFIER",
@@ -65,83 +83,40 @@ export async function createCompany(req: Request, res: Response, next: NextFunct
       },
     });
 
-    // Create client user account (Role: Assessor) linked to this company
-    let createdUser = null;
-    if (userData?.email) {
-      const saltRounds = parseInt(process.env.BCRYPT_SALT_ROUNDS || "12", 10);
-      const passwordHash = userData.password
-        ? await bcrypt.hash(userData.password, saltRounds)
-        : undefined;
-
-      createdUser = await User.create({
-        name: userData.name || name,
-        email: userData.email.toLowerCase().trim(),
-        passwordHash,
-        role: "Assessor",
-        status: "Active",
-        companyId: company._id,
-      });
-
-      await AuditLog.create({
-        actorId,
-        actorEmail,
-        action: "USER_INVITED",
-        entity: "User",
-        entityId: createdUser._id.toString(),
-        after: {
-          name: createdUser.name,
-          email: createdUser.email,
-          role: createdUser.role,
-          companyId: company._id.toString(),
-        },
-        ipAddress: req.ip,
-        userAgent: req.headers["user-agent"],
-      });
-    } else if (req.user?.role === "Assessor" && actorId) {
-      // Auto-associate assessor with company if assessor is unassigned
-      const user = await User.findById(actorId);
-      if (user && !user.companyId) {
-        user.companyId = company._id;
-        await user.save();
-        createdUser = user;
-      }
-    }
-
-    // Audit Logging
     await AuditLog.create({
+      tenantId: new Types.ObjectId(tenantId),
       actorId,
       actorEmail,
       action: "COMPANY_ONBOARDED",
       entity: "Company",
       entityId: company._id.toString(),
       after: {
+        tenantId,
         name: company.name,
         domain: company.domain,
+        activePlan: company.activePlan,
         verificationStatus: company.verificationStatus,
       },
       ipAddress: req.ip,
       userAgent: req.headers["user-agent"],
     });
 
-    // Notification Hooks
-    await NotificationService.onCompanyOnboarded(company, { id: actorId || "", email: actorEmail });
+    await NotificationService.onCompanyOnboarded(company, {
+      id: actorId || "",
+      email: actorEmail,
+    });
     if (company.verificationStatus === "Pending") {
-      await NotificationService.onDomainVerificationPending(company, verificationResult.diagnosticNotes);
+      await NotificationService.onDomainVerificationPending(
+        company,
+        verificationResult.diagnosticNotes
+      );
     }
 
     return sendSuccess(
       res,
       {
         company,
-        user: createdUser
-          ? {
-              _id: createdUser._id,
-              name: createdUser.name,
-              email: createdUser.email,
-              role: createdUser.role,
-              status: createdUser.status,
-            }
-          : null,
+        user: null, // Client Organizations have no login
         verification: {
           dnsResolved: verificationResult.dnsResolved,
           recordsFound: verificationResult.recordsFound,
@@ -156,27 +131,34 @@ export async function createCompany(req: Request, res: Response, next: NextFunct
 }
 
 /**
- * List companies with role scoping, search, and pagination
+ * List Client Organizations within the caller's active tenant.
+ * Visible to TenantAdmin and any Auditor belonging to that tenant.
  */
 export async function getCompanies(req: Request, res: Response, next: NextFunction) {
   try {
+    if (req.user?.role === "SuperAdmin") {
+      return sendError(
+        res,
+        "Super Admin manages tenants at the platform level and cannot view tenant client organizations.",
+        403,
+        "SUPER_ADMIN_TENANT_DATA_RESTRICTED"
+      );
+    }
+
     const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
     const limit = Math.min(200, Math.max(1, parseInt(req.query.limit as string, 10) || 20));
     const skip = (page - 1) * limit;
 
-    const baseFilter: Record<string, unknown> = {};
+    const scopedFilter: Record<string, unknown> = {};
 
-    if (req.user?.role !== "SuperAdmin" && !req.user?.companyId && req.user?.userId) {
-      const u = await User.findById(req.user.userId);
-      if (u?.companyId) {
-        req.user.companyId = u.companyId.toString();
-      }
+    if (req.user?.tenantId) {
+      scopedFilter.tenantId = new Types.ObjectId(req.user.tenantId);
+    } else if (req.user?.companyId) {
+      scopedFilter._id = new Types.ObjectId(req.user.companyId);
+    } else {
+      return sendSuccess(res, [], 200, { page, limit, total: 0, totalPages: 0 });
     }
 
-    // Apply company scoping for non-Admins using '_id' as the document key
-    const scopedFilter = scopeQueryByCompany(req, baseFilter, "_id");
-
-    // Search query for Admins
     if (req.query.search && typeof req.query.search === "string") {
       const regex = new RegExp(req.query.search.trim(), "i");
       scopedFilter.$or = [{ name: regex }, { domain: regex }];
@@ -195,22 +177,10 @@ export async function getCompanies(req: Request, res: Response, next: NextFuncti
       Company.countDocuments(scopedFilter),
     ]);
 
-    // Attach client user for each company
-    const companyIds = companies.map((c) => c._id);
-    const users = await User.find({ companyId: { $in: companyIds } })
-      .select("name email role status companyId");
-    const userMap = new Map();
-    users.forEach((u) => {
-      if (u.companyId) userMap.set(u.companyId.toString(), u);
-    });
-
-    const enriched = companies.map((c) => {
-      const obj = c.toObject();
-      return {
-        ...obj,
-        clientUser: userMap.get(c._id.toString()) || null,
-      };
-    });
+    const enriched = companies.map((c) => ({
+      ...c.toObject(),
+      clientUser: null, // Client Organizations have no login
+    }));
 
     const totalPages = Math.ceil(total / limit);
 
@@ -226,7 +196,7 @@ export async function getCompanies(req: Request, res: Response, next: NextFuncti
 }
 
 /**
- * Fetch company profile by ID
+ * Fetch Client Organization profile by ID (TenantAdmin or Auditor in same tenant)
  */
 export async function getCompanyById(req: Request, res: Response, next: NextFunction) {
   try {
@@ -237,12 +207,9 @@ export async function getCompanyById(req: Request, res: Response, next: NextFunc
       return sendError(res, "Company not found", 404, "COMPANY_NOT_FOUND");
     }
 
-    const clientUser = await User.findOne({ companyId: id })
-      .select("-passwordHash -mfa.secret -mfa.tempSecret -mfa.recoveryCodes");
-
     return sendSuccess(res, {
       ...company.toObject(),
-      clientUser: clientUser || null,
+      clientUser: null,
     });
   } catch (err) {
     next(err);
@@ -250,12 +217,12 @@ export async function getCompanyById(req: Request, res: Response, next: NextFunc
 }
 
 /**
- * Update company profile metadata
+ * Update Client Organization profile metadata & plan tier (TenantAdmin only, own tenant)
  */
 export async function updateCompany(req: Request, res: Response, next: NextFunction) {
   try {
     const { id } = req.params;
-    const { name, registrationNumber, country, industry } = req.body;
+    const { name, registrationNumber, country, industry, activePlan } = req.body;
     const actorId = req.user?.userId;
     const actorEmail = req.user?.email || "unknown";
 
@@ -269,16 +236,19 @@ export async function updateCompany(req: Request, res: Response, next: NextFunct
       registrationNumber: company.registrationNumber,
       country: company.country,
       industry: company.industry,
+      activePlan: company.activePlan,
     };
 
     if (name) company.name = name;
     if (registrationNumber !== undefined) company.registrationNumber = registrationNumber;
     if (country !== undefined) company.country = country;
     if (industry !== undefined) company.industry = industry;
+    if (activePlan !== undefined) company.activePlan = activePlan;
 
     await company.save();
 
     await AuditLog.create({
+      tenantId: company.tenantId,
       actorId,
       actorEmail,
       action: "COMPANY_UPDATED",
@@ -290,6 +260,7 @@ export async function updateCompany(req: Request, res: Response, next: NextFunct
         registrationNumber: company.registrationNumber,
         country: company.country,
         industry: company.industry,
+        activePlan: company.activePlan,
       },
       ipAddress: req.ip,
       userAgent: req.headers["user-agent"],
@@ -302,12 +273,13 @@ export async function updateCompany(req: Request, res: Response, next: NextFunct
 }
 
 /**
- * Administrative verification override (Verified / Pending / Rejected)
+ * Verify client DNS & optionally set plan tier (TenantAdmin only, own tenant)
+ * Pending -> Verified or Rejected
  */
 export async function verifyCompany(req: Request, res: Response, next: NextFunction) {
   try {
     const { id } = req.params;
-    const { verificationStatus, notes } = req.body;
+    const { verificationStatus, activePlan, notes } = req.body;
     const actorId = req.user?.userId;
     const actorEmail = req.user?.email || "unknown";
 
@@ -317,25 +289,31 @@ export async function verifyCompany(req: Request, res: Response, next: NextFunct
     }
 
     const previousStatus = company.verificationStatus;
+    const previousPlan = company.activePlan;
     company.verificationStatus = verificationStatus;
+    if (activePlan) {
+      company.activePlan = activePlan;
+    }
     company.verificationAuditTrail = {
       verifiedAt: new Date(),
       verifiedBy: actorEmail,
       dnsCheckResult: company.verificationAuditTrail?.dnsCheckResult ?? true,
-      notes: notes || `Manually marked as ${verificationStatus} by Admin ${actorEmail}`,
+      notes: notes || `Manually marked as ${verificationStatus} by TenantAdmin ${actorEmail}`,
     };
 
     await company.save();
 
     await AuditLog.create({
+      tenantId: company.tenantId,
       actorId,
       actorEmail,
       action: "COMPANY_VERIFICATION_UPDATED",
       entity: "Company",
       entityId: company._id.toString(),
-      before: { verificationStatus: previousStatus },
+      before: { verificationStatus: previousStatus, activePlan: previousPlan },
       after: {
         verificationStatus: company.verificationStatus,
+        activePlan: company.activePlan,
         notes: company.verificationAuditTrail.notes,
       },
       ipAddress: req.ip,
@@ -343,7 +321,7 @@ export async function verifyCompany(req: Request, res: Response, next: NextFunct
     });
 
     return sendSuccess(res, {
-      message: `Company verification status updated to '${verificationStatus}'`,
+      message: `Client organization verification status updated to '${verificationStatus}'`,
       company,
     });
   } catch (err) {
@@ -352,7 +330,7 @@ export async function verifyCompany(req: Request, res: Response, next: NextFunct
 }
 
 /**
- * Administrative status toggle (Active / Suspended)
+ * Suspend or reactivate a Client Organization (TenantAdmin only, own tenant)
  */
 export async function updateCompanyStatus(req: Request, res: Response, next: NextFunction) {
   try {
@@ -370,14 +348,8 @@ export async function updateCompanyStatus(req: Request, res: Response, next: Nex
     company.status = status;
     await company.save();
 
-    // Synchronize client user account status with company status (only affects client Assessors, never staff/Admin)
-    const userNewStatus = status === "Active" ? "Active" : "Deactivated";
-    await User.updateMany(
-      { companyId: id, role: "Assessor" },
-      { status: userNewStatus }
-    );
-
     await AuditLog.create({
+      tenantId: company.tenantId,
       actorId,
       actorEmail,
       action: "COMPANY_STATUS_UPDATED",
@@ -390,7 +362,7 @@ export async function updateCompanyStatus(req: Request, res: Response, next: Nex
     });
 
     return sendSuccess(res, {
-      message: `Company operational status updated to '${status}'`,
+      message: `Client organization operational status updated to '${status}'`,
       company,
     });
   } catch (err) {
@@ -399,7 +371,8 @@ export async function updateCompanyStatus(req: Request, res: Response, next: Nex
 }
 
 /**
- * Retrieve historical assessment trends and score progression for an organization
+ * Retrieve historical assessment trends and score progression for a Client Organization
+ * Accessible to TenantAdmin (own tenant) and Auditor (own tenant, scoped to accessible sessions)
  */
 export async function getCompanyTrends(req: Request, res: Response, next: NextFunction) {
   try {
@@ -408,15 +381,23 @@ export async function getCompanyTrends(req: Request, res: Response, next: NextFu
       return sendError(res, "Authentication required", 401, "UNAUTHORIZED");
     }
 
-    if (req.user.role === "Admin") {
-      if (!req.user.companyId || req.user.companyId.toString() !== id.toString()) {
-        return sendError(res, "Access denied. You cannot view trends outside your organization.", 403, "CROSS_COMPANY_ACCESS_DENIED");
-      }
-    } else if (req.user.role !== "SuperAdmin") {
-      const isAssigned = await isAuditorAssignedToOrg(req.user.userId, id);
-      if (!isAssigned) {
-        return sendError(res, "Access denied. You are not assigned to this organization.", 403, "CROSS_COMPANY_ACCESS_DENIED");
-      }
+    if (req.user.role === "SuperAdmin") {
+      return sendError(
+        res,
+        "Super Admin cannot read assessment content or score trends.",
+        403,
+        "SUPER_ADMIN_CONTENT_ACCESS_RESTRICTED"
+      );
+    }
+
+    const isAllowed = await isAuditorAssignedToOrg(req.user.userId, id, req.user.tenantId);
+    if (!isAllowed) {
+      return sendError(
+        res,
+        "Access denied. This client organization belongs to another tenant.",
+        403,
+        "CROSS_TENANT_ACCESS_DENIED"
+      );
     }
 
     const company = await Company.findById(id);
@@ -424,11 +405,23 @@ export async function getCompanyTrends(req: Request, res: Response, next: NextFu
       return sendError(res, "Company not found", 404, "COMPANY_NOT_FOUND");
     }
 
-    const sessions = await AssessmentSession.find({
+    const sessionFilter: Record<string, unknown> = {
       companyId: id,
       status: "Submitted",
       scoreSnapshot: { $exists: true },
-    }).sort({ submittedAt: 1 });
+    };
+
+    // Auditors only see assessments they created or that were explicitly shared with them
+    if (req.user.role === "Auditor") {
+      const uid = new Types.ObjectId(req.user.userId);
+      sessionFilter.$or = [
+        { conductedByUserId: uid },
+        { createdByUserId: uid },
+        { "sharedWith.auditorId": uid },
+      ];
+    }
+
+    const sessions = await AssessmentSession.find(sessionFilter).sort({ submittedAt: 1 });
 
     const trends = sessions.map((s) => ({
       assessmentId: s._id,
@@ -439,14 +432,14 @@ export async function getCompanyTrends(req: Request, res: Response, next: NextFu
       maturityLevel: s.scoreSnapshot?.maturityLevel || "Initial",
       controlsAssessed: s.scoreSnapshot?.totalControlsAssessed || 0,
       exceptionsNoted: s.scoreSnapshot?.totalExceptionsNoted || 0,
-      pillarScores: s.scoreSnapshot?.pillarScores.map((p) => ({
-        pillarId: p.pillarId,
-        pillarName: p.pillarName,
-        percentage: p.percentage,
-      })) || [],
+      pillarScores:
+        s.scoreSnapshot?.pillarScores.map((p) => ({
+          pillarId: p.pillarId,
+          pillarName: p.pillarName,
+          percentage: p.percentage,
+        })) || [],
     }));
 
-    // Calculate progression delta if multiple sessions exist
     let progressionDelta = 0;
     if (trends.length >= 2) {
       const latest = trends[trends.length - 1].overallPercentage;
@@ -469,4 +462,3 @@ export async function getCompanyTrends(req: Request, res: Response, next: NextFu
     next(err);
   }
 }
-

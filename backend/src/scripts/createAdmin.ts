@@ -3,6 +3,10 @@ import bcrypt from "bcryptjs";
 import dotenv from "dotenv";
 import path from "path";
 import { User } from "../models/User.js";
+import { Tenant } from "../models/Tenant.js";
+import { TenantMembership } from "../models/TenantMembership.js";
+import { Company } from "../models/Company.js";
+import { AssessmentSession } from "../models/AssessmentSession.js";
 
 dotenv.config({ path: path.resolve(__dirname, "../../.env") });
 
@@ -17,12 +21,7 @@ async function createAdmin() {
     await mongoose.connect(uri);
     console.log("Connected to MongoDB.");
 
-    const email = (process.env.ADMIN_EMAIL || "admin@graice.io").toLowerCase();
-    const password = process.env.ADMIN_PASSWORD || "Admin@123456";
-    const name = process.env.ADMIN_NAME || "System Administrator";
-
     const saltRounds = parseInt(process.env.BCRYPT_SALT_ROUNDS || "12", 10);
-    const passwordHash = await bcrypt.hash(password, saltRounds);
 
     // 10 reusable recovery codes
     const recoveryCodes = [
@@ -31,6 +30,13 @@ async function createAdmin() {
     ];
     const hashedRecoveryCodes = await Promise.all(
       recoveryCodes.map(code => bcrypt.hash(code, saltRounds))
+    );
+
+    // Migrate any legacy roles in database to canonical role names
+    await User.updateMany({ role: "Admin" as any }, { $set: { role: "TenantAdmin" } });
+    await User.updateMany(
+      { role: { $in: ["Assessor", "MembershipApprover"] as any } },
+      { $set: { role: "Auditor" } }
     );
 
     // 1. Provision / Update Super Admin Account (Global Platform Owner)
@@ -76,7 +82,73 @@ async function createAdmin() {
       console.log(`✅ Upgraded legacy admin@graice.io to SuperAdmin.`);
     }
 
-    // 2. Also provision/update a standard Auditor account for seamless 1-click testing (no MFA needed)
+    // 2. Provision Default Active Tenant & TenantAdmin Account
+    let defaultTenant = await Tenant.findOne({ slug: "default-gcrai-tenant" });
+    if (!defaultTenant) {
+      defaultTenant = await Tenant.create({
+        name: "Default GCRAI Tenant",
+        slug: "default-gcrai-tenant",
+        status: "Active",
+        createdBy: superAdminUser._id,
+      });
+      console.log(`✅ Default Tenant created!`);
+    } else if (defaultTenant.status !== "Active") {
+      defaultTenant.status = "Active";
+      await defaultTenant.save();
+    }
+
+    const tenantAdminEmail = (process.env.TENANT_ADMIN_EMAIL || "tenantadmin@graice.io").toLowerCase();
+    const tenantAdminPassword = process.env.TENANT_ADMIN_PASSWORD || "TenantAdmin@123456";
+    const tenantAdminHash = await bcrypt.hash(tenantAdminPassword, saltRounds);
+
+    let tenantAdminUser = await User.findOne({ email: tenantAdminEmail });
+    if (tenantAdminUser) {
+      tenantAdminUser.passwordHash = tenantAdminHash;
+      tenantAdminUser.role = "TenantAdmin";
+      tenantAdminUser.tenantId = defaultTenant._id;
+      tenantAdminUser.status = "Active";
+      tenantAdminUser.name = "Default Tenant Admin";
+      tenantAdminUser.loginAttempts = 0;
+      tenantAdminUser.lockUntil = undefined;
+      tenantAdminUser.mfa = {
+        enabled: true,
+        recoveryCodes: hashedRecoveryCodes,
+      };
+      await tenantAdminUser.save();
+      console.log(`✅ TenantAdmin account updated!`);
+    } else {
+      tenantAdminUser = await User.create({
+        email: tenantAdminEmail,
+        passwordHash: tenantAdminHash,
+        name: "Default Tenant Admin",
+        role: "TenantAdmin",
+        tenantId: defaultTenant._id,
+        status: "Active",
+        mfa: {
+          enabled: true,
+          recoveryCodes: hashedRecoveryCodes,
+        },
+      });
+      console.log(`✅ New TenantAdmin account created!`);
+    }
+
+    defaultTenant.firstTenantAdminId = tenantAdminUser._id;
+    await defaultTenant.save();
+
+    await TenantMembership.findOneAndUpdate(
+      { tenantId: defaultTenant._id, userId: tenantAdminUser._id },
+      {
+        tenantId: defaultTenant._id,
+        userId: tenantAdminUser._id,
+        role: "TenantAdmin",
+        status: "Active",
+        invitedBy: superAdminUser._id,
+        acceptedAt: new Date(),
+      },
+      { upsert: true, new: true }
+    );
+
+    // 3. Provision / update standard Auditor account for seamless 1-click testing (no MFA needed)
     const auditorEmail = "auditor@graice.io";
     const auditorPassword = "Auditor@123456";
     const auditorHash = await bcrypt.hash(auditorPassword, saltRounds);
@@ -84,7 +156,8 @@ async function createAdmin() {
     let auditorUser = await User.findOne({ email: auditorEmail });
     if (auditorUser) {
       auditorUser.passwordHash = auditorHash;
-      auditorUser.role = "Assessor";
+      auditorUser.role = "Auditor";
+      auditorUser.tenantId = defaultTenant._id;
       auditorUser.status = "Active";
       auditorUser.name = "Piyush Napit";
       auditorUser.loginAttempts = 0;
@@ -97,14 +170,28 @@ async function createAdmin() {
         email: auditorEmail,
         passwordHash: auditorHash,
         name: "Piyush Napit",
-        role: "Assessor",
+        role: "Auditor",
+        tenantId: defaultTenant._id,
         status: "Active",
         mfa: { enabled: false },
       });
       console.log(`✅ New Auditor account created!`);
     }
 
-    // 3. Provision / Update Auditor Account for yashnawgiri45@gmail.com
+    await TenantMembership.findOneAndUpdate(
+      { tenantId: defaultTenant._id, userId: auditorUser._id },
+      {
+        tenantId: defaultTenant._id,
+        userId: auditorUser._id,
+        role: "Auditor",
+        status: "Active",
+        invitedBy: tenantAdminUser._id,
+        acceptedAt: new Date(),
+      },
+      { upsert: true, new: true }
+    );
+
+    // 4. Provision / Update Auditor Account for yashnawgiri45@gmail.com
     const yashEmail = "yashnawgiri45@gmail.com";
     const yashPassword = "Password@123";
     const yashHash = await bcrypt.hash(yashPassword, saltRounds);
@@ -112,7 +199,8 @@ async function createAdmin() {
     let yashUser = await User.findOne({ email: yashEmail });
     if (yashUser) {
       yashUser.passwordHash = yashHash;
-      yashUser.role = "Assessor";
+      yashUser.role = "Auditor";
+      yashUser.tenantId = defaultTenant._id;
       yashUser.status = "Active";
       yashUser.name = yashUser.name || "Yash Nawgiri";
       yashUser.loginAttempts = 0;
@@ -125,12 +213,36 @@ async function createAdmin() {
         email: yashEmail,
         passwordHash: yashHash,
         name: "Yash Nawgiri",
-        role: "Assessor",
+        role: "Auditor",
+        tenantId: defaultTenant._id,
         status: "Active",
         mfa: { enabled: false },
       });
       console.log(`✅ New Auditor account (${yashEmail}) created!`);
     }
+
+    await TenantMembership.findOneAndUpdate(
+      { tenantId: defaultTenant._id, userId: yashUser._id },
+      {
+        tenantId: defaultTenant._id,
+        userId: yashUser._id,
+        role: "Auditor",
+        status: "Active",
+        invitedBy: tenantAdminUser._id,
+        acceptedAt: new Date(),
+      },
+      { upsert: true, new: true }
+    );
+
+    // Backfill tenantId on existing Company and AssessmentSession records if missing
+    await Company.updateMany(
+      { tenantId: { $exists: false } },
+      { $set: { tenantId: defaultTenant._id } }
+    );
+    await AssessmentSession.updateMany(
+      { tenantId: { $exists: false } },
+      { $set: { tenantId: defaultTenant._id } }
+    );
 
     console.log("-----------------------------------------");
     console.log("Credentials:");
@@ -140,6 +252,12 @@ async function createAdmin() {
     console.log(`Role:          ${superAdminUser.role}`);
     console.log(`MFA Recovery:  12345678 (or any in pool)`);
     console.log("-----------------------------------------");
+    console.log(`Tenant Admin (Default GCRAI Tenant):`);
+    console.log(`Email:         ${tenantAdminEmail}`);
+    console.log(`Password:      ${tenantAdminPassword}`);
+    console.log(`Role:          ${tenantAdminUser.role}`);
+    console.log(`MFA Recovery:  12345678 (or any in pool)`);
+    console.log("-----------------------------------------");
     console.log("Auditor (Direct Login - No MFA):");
     console.log(`Email:         ${auditorEmail}`);
     console.log(`Password:      ${auditorPassword}`);
@@ -147,7 +265,7 @@ async function createAdmin() {
     console.log("-----------------------------------------");
 
     // Also list all existing users so the user has full visibility
-    const allUsers = await User.find({}, "email role name status companyId").lean();
+    const allUsers = await User.find({}, "email role name status tenantId companyId").lean();
     console.log("\nAll registered users in database:");
     console.table(allUsers);
   } catch (err) {

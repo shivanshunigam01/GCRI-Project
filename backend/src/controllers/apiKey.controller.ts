@@ -21,6 +21,19 @@ export async function createApiKey(req: Request, res: Response, next: NextFuncti
       return sendError(res, "Company not found", 404, "COMPANY_NOT_FOUND");
     }
 
+    if (
+      req.user?.role === "TenantAdmin" &&
+      company.tenantId &&
+      company.tenantId.toString() !== req.user.tenantId
+    ) {
+      return sendError(
+        res,
+        "Access denied. You can only create API keys for client organizations in your own tenant.",
+        403,
+        "CROSS_TENANT_ACCESS_DENIED"
+      );
+    }
+
     // Generate cryptographic key: prefix + secret
     const prefix = `grc_${crypto.randomBytes(4).toString("hex")}`;
     const rawSecret = crypto.randomBytes(24).toString("hex");
@@ -36,6 +49,7 @@ export async function createApiKey(req: Request, res: Response, next: NextFuncti
       name,
       prefix,
       keyHash,
+      tenantId: company.tenantId || req.user?.tenantId,
       companyId: company._id,
       role,
       permissions,
@@ -45,6 +59,7 @@ export async function createApiKey(req: Request, res: Response, next: NextFuncti
     });
 
     await AuditLog.create({
+      tenantId: company.tenantId || req.user?.tenantId,
       actorId: req.user!.userId,
       actorEmail: req.user!.email,
       action: "API_KEY_CREATED",
@@ -84,6 +99,10 @@ export async function listApiKeys(req: Request, res: Response, next: NextFunctio
   try {
     const { companyId } = req.query;
     const filter: Record<string, unknown> = {};
+
+    if (req.user?.role === "TenantAdmin" && req.user.tenantId) {
+      filter.tenantId = req.user.tenantId;
+    }
 
     if (companyId) {
       filter.companyId = companyId;

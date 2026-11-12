@@ -4,6 +4,9 @@ import {
   createAssessment,
   getAssessmentById,
   getAssessments,
+  shareAssessment,
+  revokeAssessmentShare,
+  coSignAssessment,
   saveAnswers,
   getAssessmentProgress,
   submitAssessment,
@@ -28,6 +31,9 @@ import {
   SubmitAnswersSchema,
   AssessmentParamSchema,
   PresignedUrlSchema,
+  ShareAssessmentSchema,
+  RevokeShareAssessmentSchema,
+  CoSignAssessmentSchema,
 } from "../schemas/assessment.schema.js";
 
 const upload = multer({
@@ -41,44 +47,19 @@ const router = Router();
  * @openapi
  * /api/v1/assessments:
  *   post:
- *     summary: Initialize a new assessment session
- *     description: Creates an assessment session (Light or Full) for an organization, binding it to the published framework.
+ *     summary: Initialize a new assessment session (TenantAdmin or Auditor)
  *     tags:
  *       - Assessment Sessions
  *     security:
  *       - BearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - companyId
- *               - assessmentType
- *             properties:
- *               companyId:
- *                 type: string
- *                 example: 64b8f0a2e3129841cb027891
- *               assessmentType:
- *                 type: string
- *                 enum: [Light, Full]
- *                 example: Full
- *               frameworkVersion:
- *                 type: string
- *                 example: "2026.1"
  *     responses:
  *       201:
  *         description: Assessment session initialized
- *       400:
- *         description: Validation error
- *       403:
- *         description: Cross-company access denied
  */
 router.post(
   "/",
   authenticate,
-  authorize("SuperAdmin", "Admin", "Assessor"),
+  authorize("TenantAdmin", "Auditor"),
   validateRequest(CreateAssessmentSchema),
   createAssessment
 );
@@ -87,112 +68,118 @@ router.post(
  * @openapi
  * /api/v1/assessments:
  *   get:
- *     summary: List assessment sessions
- *     description: Returns assessment sessions. Assessors only see their company's sessions; Admins see all.
+ *     summary: List assessment sessions (TenantAdmin sees own tenant; Auditor sees created or shared)
  *     tags:
  *       - Assessment Sessions
  *     security:
  *       - BearerAuth: []
- *     parameters:
- *       - in: query
- *         name: status
- *         schema:
- *           type: string
- *           enum: [InProgress, Submitted, Archived]
- *       - in: query
- *         name: assessmentType
- *         schema:
- *           type: string
- *           enum: [Light, Full]
- *       - in: query
- *         name: companyId
- *         schema:
- *           type: string
  *     responses:
  *       200:
  *         description: Paginated sessions list
  */
-router.get("/", authenticate, getAssessments);
+router.get("/", authenticate, authorize("TenantAdmin", "Auditor"), getAssessments);
 
 /**
  * @openapi
  * /api/v1/assessments/{id}:
  *   get:
- *     summary: Retrieve session state & answers (Save & Resume)
- *     description: Returns saved state, answer history, and associated framework questions.
+ *     summary: Retrieve session state & answers (TenantAdmin or authorized Auditor)
  *     tags:
  *       - Assessment Sessions
  *     security:
  *       - BearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
  *     responses:
  *       200:
  *         description: Session details & saved answers
- *       404:
- *         description: Session not found
  */
-router.get("/:id", authenticate, validateRequest(AssessmentParamSchema), getAssessmentById);
+router.get(
+  "/:id",
+  authenticate,
+  authorize("TenantAdmin", "Auditor"),
+  validateRequest(AssessmentParamSchema),
+  getAssessmentById
+);
+
+/**
+ * @openapi
+ * /api/v1/assessments/{id}/share:
+ *   post:
+ *     summary: Share assessment with other Auditors in the same tenant (TenantAdmin or Auditor)
+ *     tags:
+ *       - Assessment Sessions
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Assessment shared with target auditor(s)
+ */
+router.post(
+  "/:id/share",
+  authenticate,
+  authorize("TenantAdmin", "Auditor"),
+  validateRequest(ShareAssessmentSchema),
+  shareAssessment
+);
+
+/**
+ * @openapi
+ * /api/v1/assessments/{id}/share/{auditorId}:
+ *   delete:
+ *     summary: Revoke assessment share from an Auditor (TenantAdmin or Auditor)
+ *     tags:
+ *       - Assessment Sessions
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Share access revoked
+ */
+router.delete(
+  "/:id/share/:auditorId",
+  authenticate,
+  authorize("TenantAdmin", "Auditor"),
+  validateRequest(RevokeShareAssessmentSchema),
+  revokeAssessmentShare
+);
+
+/**
+ * @openapi
+ * /api/v1/assessments/{id}/co-sign:
+ *   post:
+ *     summary: Co-sign a shared or conducted assessment (Auditor only)
+ *     tags:
+ *       - Assessment Sessions
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Assessment co-signed
+ */
+router.post(
+  "/:id/co-sign",
+  authenticate,
+  authorize("Auditor"),
+  validateRequest(CoSignAssessmentSchema),
+  coSignAssessment
+);
 
 /**
  * @openapi
  * /api/v1/assessments/{id}/answers:
  *   put:
- *     summary: Submit single or batch answers
- *     description: Updates question answers for an InProgress assessment session.
+ *     summary: Submit single or batch answers (Auditor only)
  *     tags:
  *       - Assessment Sessions
  *     security:
  *       - BearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - answers
- *             properties:
- *               answers:
- *                 type: array
- *                 items:
- *                   type: object
- *                   required:
- *                     - questionId
- *                   properties:
- *                     questionId:
- *                       type: string
- *                       example: P1-C01
- *                     testStatus:
- *                       type: string
- *                       enum: [NotStarted, InProgress, Complete]
- *                     exceptionStatus:
- *                       type: string
- *                       enum: [NoExceptionNoted, ExceptionNoted, NotAssessed]
- *                     evidenceNotes:
- *                       type: string
- *                     workPaperReference:
- *                       type: string
  *     responses:
  *       200:
  *         description: Answers saved
- *       400:
- *         description: Assessment already submitted
  */
 router.put(
   "/:id/answers",
   authenticate,
-  authorize("SuperAdmin", "Admin", "Assessor"),
+  authorize("Auditor"),
   validateRequest(SubmitAnswersSchema),
   saveAnswers
 );
@@ -202,17 +189,10 @@ router.put(
  * /api/v1/assessments/{id}/progress:
  *   get:
  *     summary: Real-time progress calculation
- *     description: Calculates completion percentage overall and broken down across all 7 GRAICE Pillars.
  *     tags:
  *       - Assessment Sessions
  *     security:
  *       - BearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
  *     responses:
  *       200:
  *         description: Real-time progress metrics
@@ -220,6 +200,7 @@ router.put(
 router.get(
   "/:id/progress",
   authenticate,
+  authorize("TenantAdmin", "Auditor"),
   validateRequest(AssessmentParamSchema),
   getAssessmentProgress
 );
@@ -228,28 +209,19 @@ router.get(
  * @openapi
  * /api/v1/assessments/{id}/submit:
  *   post:
- *     summary: Finalize and submit assessment
- *     description: Locks session answers from editing, executes deterministic scoring engine, and persists immutable score snapshot.
+ *     summary: Finalize and submit assessment (Auditor only)
  *     tags:
  *       - Assessment Sessions
  *     security:
  *       - BearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
  *     responses:
  *       200:
  *         description: Assessment finalized and scored
- *       400:
- *         description: Already submitted
  */
 router.post(
   "/:id/submit",
   authenticate,
-  authorize("SuperAdmin", "Admin", "Assessor"),
+  authorize("Auditor"),
   validateRequest(AssessmentParamSchema),
   submitAssessment
 );
@@ -258,38 +230,11 @@ router.post(
  * @openapi
  * /api/v1/assessments/{id}/evidence/presigned-url:
  *   post:
- *     summary: Generate S3 presigned upload URL for audit evidence
- *     description: Issues a secure, temporary presigned PUT URL allowing clients to upload evidence files directly to S3.
+ *     summary: Generate S3 presigned upload URL for audit evidence (Auditor only)
  *     tags:
  *       - Evidence Storage
  *     security:
  *       - BearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - questionId
- *               - fileName
- *               - contentType
- *             properties:
- *               questionId:
- *                 type: string
- *                 example: P1-C01
- *               fileName:
- *                 type: string
- *                 example: Board_Charter_2026.pdf
- *               contentType:
- *                 type: string
- *                 example: application/pdf
  *     responses:
  *       200:
  *         description: Presigned upload URL generated
@@ -297,7 +242,7 @@ router.post(
 router.post(
   "/:id/evidence/presigned-url",
   authenticate,
-  authorize("SuperAdmin", "Admin", "Assessor"),
+  authorize("Auditor"),
   validateRequest(PresignedUrlSchema),
   getEvidencePresignedUrl
 );
@@ -306,18 +251,11 @@ router.post(
  * @openapi
  * /api/v1/assessments/{id}/evidence/upload:
  *   post:
- *     summary: Direct evidence file upload to S3
- *     description: Multi-part form upload that streams file directly to S3 and attaches URL to question response.
+ *     summary: Direct evidence file upload to S3 (Auditor only)
  *     tags:
  *       - Evidence Storage
  *     security:
  *       - BearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
  *     responses:
  *       200:
  *         description: File uploaded and linked
@@ -325,7 +263,7 @@ router.post(
 router.post(
   "/:id/evidence/upload",
   authenticate,
-  authorize("SuperAdmin", "Admin", "Assessor"),
+  authorize("Auditor"),
   upload.single("file"),
   uploadEvidenceDirect
 );
@@ -334,29 +272,28 @@ router.post(
  * @openapi
  * /api/v1/assessments/{id}/gaps:
  *   get:
- *     summary: Get governance gaps & findings
- *     description: Lists all controls with noted exceptions or zero scores, mapped to regulatory requirements.
+ *     summary: Get governance gaps & findings (TenantAdmin or authorized Auditor)
  *     tags:
  *       - Assessment Sessions
  *     security:
  *       - BearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
  *     responses:
  *       200:
  *         description: Governance gaps extracted
  */
-router.get("/:id/gaps", authenticate, validateRequest(AssessmentParamSchema), getAssessmentGaps);
+router.get(
+  "/:id/gaps",
+  authenticate,
+  authorize("TenantAdmin", "Auditor"),
+  validateRequest(AssessmentParamSchema),
+  getAssessmentGaps
+);
 
 /**
  * @openapi
- * /api/v1/companies/{companyId}/assessments:
+ * /api/v1/assessments/company/{companyId}:
  *   get:
- *     summary: List all assessment sessions for a company
+ *     summary: List assessment sessions for a Client Organization
  *     tags:
  *       - Assessment Sessions
  *     security:
@@ -365,6 +302,7 @@ router.get("/:id/gaps", authenticate, validateRequest(AssessmentParamSchema), ge
 router.get(
   "/company/:companyId",
   authenticate,
+  authorize("TenantAdmin", "Auditor"),
   getCompanyAssessments
 );
 
@@ -372,215 +310,142 @@ router.get(
  * @openapi
  * /api/v1/assessments/{id}/summary:
  *   get:
- *     summary: Retrieve executive maturity summary for an assessment
- *     description: Returns overall compliance %, score, maturity level, and control counts for an authorized assessment session. Admin role is strictly denied.
+ *     summary: Retrieve executive maturity summary for an assessment (TenantAdmin or authorized Auditor)
  *     tags:
  *       - Assessment Analytics
  *     security:
  *       - BearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: Assessment summary retrieved successfully
- *       403:
- *         description: Forbidden (Admin content access restricted or cross-company denied)
  */
-router.get("/:id/summary", authenticate, validateRequest(AssessmentParamSchema), getAssessmentSummary);
+router.get(
+  "/:id/summary",
+  authenticate,
+  authorize("TenantAdmin", "Auditor"),
+  validateRequest(AssessmentParamSchema),
+  getAssessmentSummary
+);
 
 /**
  * @openapi
  * /api/v1/assessments/{id}/pillars:
  *   get:
  *     summary: Retrieve 7-pillar breakdown formatted for radar/spider charts
- *     description: Returns pillar-level scores, compliance percentages, and exception counts for authorized assessors. Admin role is strictly denied.
  *     tags:
  *       - Assessment Analytics
  *     security:
  *       - BearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: Pillar breakdown retrieved successfully
- *       403:
- *         description: Forbidden
  */
-router.get("/:id/pillars", authenticate, validateRequest(AssessmentParamSchema), getAssessmentPillars);
+router.get(
+  "/:id/pillars",
+  authenticate,
+  authorize("TenantAdmin", "Auditor"),
+  validateRequest(AssessmentParamSchema),
+  getAssessmentPillars
+);
 
 /**
  * @openapi
  * /api/v1/assessments/{id}/recommendations:
  *   get:
  *     summary: Retrieve tailored recommendations mapped to identified exceptions & gaps
- *     description: Returns remediation guidance, regulatory alignments, and priority levels for all controls with noted exceptions. Admin role is strictly denied.
  *     tags:
  *       - Assessment Analytics
  *     security:
  *       - BearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: Recommendations retrieved successfully
- *       403:
- *         description: Forbidden
  */
-router.get("/:id/recommendations", authenticate, validateRequest(AssessmentParamSchema), getAssessmentRecommendations);
+router.get(
+  "/:id/recommendations",
+  authenticate,
+  authorize("TenantAdmin", "Auditor"),
+  validateRequest(AssessmentParamSchema),
+  getAssessmentRecommendations
+);
 
 /**
  * @openapi
  * /api/v1/assessments/{id}/findings:
  *   get:
  *     summary: Retrieve structured findings matching Screen 5 (Findings & Exceptions)
- *     description: Returns findings table with severity (High/Medium/Low), status (Open/In Progress/Resolved), control info, and remediation actions. Admin role is strictly denied.
  *     tags:
  *       - Assessment Analytics
  *     security:
  *       - BearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: Findings retrieved successfully
- *       403:
- *         description: Forbidden
  */
-router.get("/:id/findings", authenticate, validateRequest(AssessmentParamSchema), getAssessmentFindings);
+router.get(
+  "/:id/findings",
+  authenticate,
+  authorize("TenantAdmin", "Auditor"),
+  validateRequest(AssessmentParamSchema),
+  getAssessmentFindings
+);
 
 /**
  * @openapi
  * /api/v1/assessments/{id}/report:
  *   post:
  *     summary: Generate PDF audit report using PDFKit
- *     description: Generates a multi-page executive governance report, saves to disk/S3, and persists report metadata. Admin role is strictly denied.
  *     tags:
  *       - Reports & Exports
  *     security:
  *       - BearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: Report generated successfully
- *       403:
- *         description: Forbidden
  */
-router.post("/:id/report", authenticate, validateRequest(AssessmentParamSchema), generateAssessmentReport);
+router.post(
+  "/:id/report",
+  authenticate,
+  authorize("TenantAdmin", "Auditor"),
+  validateRequest(AssessmentParamSchema),
+  generateAssessmentReport
+);
 
 /**
  * @openapi
  * /api/v1/assessments/{id}/report:
  *   get:
  *     summary: Download generated PDF audit report
- *     description: Streams the executive PDF report for download. Admin role is strictly denied.
  *     tags:
  *       - Reports & Exports
  *     security:
  *       - BearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: PDF file stream
- *       403:
- *         description: Forbidden
  */
-router.get("/:id/report", authenticate, validateRequest(AssessmentParamSchema), downloadAssessmentReport);
+router.get(
+  "/:id/report",
+  authenticate,
+  authorize("TenantAdmin", "Auditor"),
+  validateRequest(AssessmentParamSchema),
+  downloadAssessmentReport
+);
 
 /**
  * @openapi
  * /api/v1/assessments/{id}/export:
  *   get:
  *     summary: Export assessment findings to Excel (.xlsx) workbook
- *     description: Generates and streams structured 3-sheet XLSX workbook containing executive summary, pillar breakdown, and control evaluations. Admin role is strictly denied.
  *     tags:
  *       - Reports & Exports
  *     security:
  *       - BearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: Excel spreadsheet stream
- *       403:
- *         description: Forbidden
  */
-router.get("/:id/export", authenticate, validateRequest(AssessmentParamSchema), exportAssessmentExcel);
+router.get(
+  "/:id/export",
+  authenticate,
+  authorize("TenantAdmin", "Auditor"),
+  validateRequest(AssessmentParamSchema),
+  exportAssessmentExcel
+);
 
 /**
  * @openapi
  * /api/v1/assessments/{id}/remind:
  *   post:
  *     summary: Trigger manual assessment reminder notification
- *     description: Dispatches an assessment reminder email to client contact or auditor with deep-link resumption aid.
  *     tags:
  *       - Assessment Sessions
  *     security:
  *       - BearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: Reminder email dispatched
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/AssessmentReminderResponse'
- *       400:
- *         description: Invalid session state
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
- *       403:
- *         description: Forbidden
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
- *       404:
- *         description: Assessment not found
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
  */
 router.post(
   "/:id/remind",
   authenticate,
+  authorize("TenantAdmin", "Auditor"),
   validateRequest(AssessmentParamSchema),
   sendAssessmentReminderNotification
 );
@@ -590,49 +455,17 @@ router.post(
  * /api/v1/assessments/{id}/notifications/completion:
  *   post:
  *     summary: Trigger assessment completion scorecard alert
- *     description: Dispatches completion confirmation email with executive maturity scorecard and PDF report download link.
  *     tags:
  *       - Assessment Sessions
  *     security:
  *       - BearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: Completion alert dispatched
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/AssessmentCompletionResponse'
- *       400:
- *         description: Assessment not yet submitted
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
- *       403:
- *         description: Forbidden
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
- *       404:
- *         description: Assessment not found
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
  */
 router.post(
   "/:id/notifications/completion",
   authenticate,
+  authorize("TenantAdmin", "Auditor"),
   validateRequest(AssessmentParamSchema),
   sendAssessmentCompletionNotification
 );
 
 export default router;
-

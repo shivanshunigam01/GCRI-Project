@@ -17,13 +17,7 @@ export const CreateCompanySchema = z.object({
     registrationNumber: z.string().trim().max(60).optional(),
     country: z.string().trim().min(2).max(100).optional(),
     industry: z.string().trim().min(2).max(100).optional(),
-    user: z
-      .object({
-        name: z.string().trim().min(2, "Contact name must be at least 2 characters"),
-        email: z.string().trim().toLowerCase().email("Please provide a valid email address"),
-        password: z.string().min(8, "Password must be at least 8 characters").optional(),
-      })
-      .optional(),
+    activePlan: z.enum(["Bronze", "Silver", "Gold"]).optional(),
   }),
 });
 
@@ -36,6 +30,7 @@ export const UpdateCompanySchema = z.object({
     registrationNumber: z.string().trim().max(60).optional(),
     country: z.string().trim().min(2).max(100).optional(),
     industry: z.string().trim().min(2).max(100).optional(),
+    activePlan: z.enum(["Bronze", "Silver", "Gold"]).optional(),
   }),
 });
 
@@ -47,6 +42,7 @@ export const VerifyCompanySchema = z.object({
     verificationStatus: z.enum(["Verified", "Pending", "Rejected"], {
       message: "Status must be Verified, Pending, or Rejected",
     }),
+    activePlan: z.enum(["Bronze", "Silver", "Gold"]).optional(),
     notes: z.string().trim().max(500).optional(),
   }),
 });

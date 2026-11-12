@@ -33,7 +33,7 @@ const router = Router();
  *       403:
  *         description: Platform administrators only
  */
-router.get("/admin/summary", authenticate, authorize("SuperAdmin", "Admin"), getAdminDashboardSummary);
+router.get("/admin/summary", authenticate, authorize("SuperAdmin", "TenantAdmin"), getAdminDashboardSummary);
 
 /**
  * @openapi
@@ -77,7 +77,7 @@ router.get("/admin/summary", authenticate, authorize("SuperAdmin", "Admin"), get
 router.get(
   "/admin/assessments",
   authenticate,
-  authorize("SuperAdmin", "Admin"),
+  authorize("SuperAdmin", "TenantAdmin"),
   validateRequest(AdminDashboardAssessmentsQuerySchema),
   getAdminDashboardAssessments
 );
@@ -100,7 +100,7 @@ router.get(
  *       403:
  *         description: Assessors only
  */
-router.get("/auditor/summary", authenticate, authorize("Assessor"), getAuditorDashboardSummary);
+router.get("/auditor/summary", authenticate, authorize("Auditor"), getAuditorDashboardSummary);
 
 /**
  * @openapi
@@ -142,7 +142,7 @@ router.get("/auditor/summary", authenticate, authorize("Assessor"), getAuditorDa
 router.get(
   "/auditor/assessments",
   authenticate,
-  authorize("Assessor"),
+  authorize("Auditor"),
   validateRequest(AuditorDashboardAssessmentsQuerySchema),
   getAuditorDashboardAssessments
 );
@@ -161,6 +161,6 @@ router.get(
  *       200:
  *         description: Accessible organizations retrieved successfully
  */
-router.get("/auditor/organizations", authenticate, authorize("Assessor"), getAuditorOrganizations);
+router.get("/auditor/organizations", authenticate, authorize("Auditor"), getAuditorOrganizations);
 
 export default router;

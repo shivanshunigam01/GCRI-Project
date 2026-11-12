@@ -13,8 +13,9 @@ export const AdminUpdateUserSchema = z.object({
   body: z.object({
     name: z.string().trim().min(1).optional(),
     phone: z.string().trim().optional(),
+    tenantId: z.string().regex(/^[0-9a-fA-F]{24}$/, "Invalid Tenant ObjectId").nullable().optional(),
     companyId: z.string().regex(/^[0-9a-fA-F]{24}$/, "Invalid Company ObjectId").nullable().optional(),
-    role: z.enum(["SuperAdmin", "Admin", "Assessor", "MembershipApprover"]).optional(),
+    role: z.enum(["SuperAdmin", "TenantAdmin", "Auditor"]).optional(),
     status: z.enum(["Active", "Deactivated"]).optional(),
   }),
 });

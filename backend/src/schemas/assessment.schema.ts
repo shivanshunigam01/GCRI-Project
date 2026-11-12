@@ -17,6 +17,7 @@ export const CreateAssessmentSchema = z.object({
     }),
     frameworkVersion: z.string().trim().optional(),
     clientContact: ClientContactSchema.optional(),
+    conductedByUserId: z.string().regex(objectIdRegex, "Invalid Auditor ID format").optional(),
   }),
 });
 
@@ -56,5 +57,38 @@ export const PresignedUrlSchema = z.object({
     questionId: z.string().trim().min(2, "Question ID is required"),
     fileName: z.string().trim().min(1, "File name is required"),
     contentType: z.string().trim().min(1, "Content-Type is required"),
+  }),
+});
+
+export const ShareAssessmentSchema = z.object({
+  params: z.object({
+    id: z.string().regex(objectIdRegex, "Invalid Assessment Session ID"),
+  }),
+  body: z
+    .object({
+      auditorId: z.string().regex(objectIdRegex, "Invalid Auditor ID format").optional(),
+      auditorIds: z
+        .array(z.string().regex(objectIdRegex, "Invalid Auditor ID format"))
+        .optional(),
+    })
+    .refine(
+      (data) => Boolean(data.auditorId || (data.auditorIds && data.auditorIds.length > 0)),
+      { message: "Provide auditorId or auditorIds array to share the assessment with" }
+    ),
+});
+
+export const RevokeShareAssessmentSchema = z.object({
+  params: z.object({
+    id: z.string().regex(objectIdRegex, "Invalid Assessment Session ID"),
+    auditorId: z.string().regex(objectIdRegex, "Invalid Auditor ID format"),
+  }),
+});
+
+export const CoSignAssessmentSchema = z.object({
+  params: z.object({
+    id: z.string().regex(objectIdRegex, "Invalid Assessment Session ID"),
+  }),
+  body: z.object({
+    attestationNotes: z.string().trim().max(1000).optional(),
   }),
 });
