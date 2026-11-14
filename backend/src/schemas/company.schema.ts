@@ -35,6 +35,10 @@ export const CreateCompanySchema = z.object({
     country: optionalText(100),
     industry: optionalText(100),
     activePlan: z.enum(["Bronze", "Silver", "Gold"]).optional(),
+    tenantId: z
+      .string()
+      .regex(objectIdRegex, "Invalid tenant ID format")
+      .optional(),
     primaryContact: PrimaryContactSchema,
     user: z
       .object({

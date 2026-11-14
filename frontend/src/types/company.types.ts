@@ -56,6 +56,8 @@ export interface CreateCompanyPayload {
   industry?: string;
   size?: string;
   activePlan?: SubscriptionTier;
+  /** Super Admin: link org to selected workspace; Tenant Admin uses JWT tenant automatically */
+  tenantId?: string;
   primaryContact?: CompanyPrimaryContact;
   user?: {
     name?: string;

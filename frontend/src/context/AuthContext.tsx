@@ -15,6 +15,7 @@ interface AuthContextType {
   isSuperAdmin: boolean;
   isAdmin: boolean;
   isOrgAdmin: boolean;
+  isTenantAdmin: boolean;
   isAssessor: boolean;
 }
 
@@ -52,6 +53,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           avatar: (res.data as User)?.avatar ?? normalized.avatar,
           phone: (res.data as User)?.phone ?? normalized.phone,
           companyId: (res.data as User)?.companyId ?? normalized.companyId,
+          tenantId: (res.data as User)?.tenantId ?? normalized.tenantId,
         };
         setUser(enriched);
         storage.setUser(enriched);
@@ -86,9 +88,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const isSuperAdmin = Boolean(user && user.role === "SuperAdmin" && user.status === "Active");
-  const isOrgAdmin = Boolean(user && user.role === "Admin" && user.status === "Active");
-  const isAdmin = Boolean(user && (user.role === "SuperAdmin" || user.role === "Admin") && user.status === "Active");
-  const isAssessor = Boolean(user && user.role === "Assessor" && user.status === "Active");
+  const isTenantAdmin = Boolean(user && user.role === "TenantAdmin" && user.status === "Active");
+  const isOrgAdmin = Boolean(
+    user && (user.role === "Admin" || user.role === "TenantAdmin") && user.status === "Active"
+  );
+  const isAdmin = Boolean(
+    user &&
+      (user.role === "SuperAdmin" || user.role === "Admin" || user.role === "TenantAdmin") &&
+      user.status === "Active"
+  );
+  const isAssessor = Boolean(
+    user && (user.role === "Assessor" || user.role === "Auditor") && user.status === "Active"
+  );
 
   return (
     <AuthContext.Provider
@@ -101,6 +112,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isSuperAdmin,
         isAdmin,
         isOrgAdmin,
+        isTenantAdmin,
         isAssessor,
       }}
     >

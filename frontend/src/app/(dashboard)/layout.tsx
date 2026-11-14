@@ -36,6 +36,8 @@ import {
   DashboardScopeProvider,
   useDashboardScope,
 } from "@/context/DashboardScopeContext";
+import { TenantProvider } from "@/context/TenantContext";
+import { TenantWorkspaceSwitcher } from "@/components/shared/TenantWorkspaceSwitcher";
 import { DashboardShellContentSkeleton } from "@/components/shared/PageSkeletons";
 import { BrandLogo } from "@/components/shared/BrandLogo";
 import { ThemeToggle } from "@/components/shared/ThemeToggle";
@@ -49,7 +51,9 @@ export default function DashboardLayout({
 }) {
   return (
     <DashboardScopeProvider>
-      <DashboardLayoutContent>{children}</DashboardLayoutContent>
+      <TenantProvider>
+        <DashboardLayoutContent>{children}</DashboardLayoutContent>
+      </TenantProvider>
     </DashboardScopeProvider>
   );
 }
@@ -61,7 +65,7 @@ function DashboardLayoutContent({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, loading, logout, isSuperAdmin, isOrgAdmin, isAdmin } = useAuth();
+  const { user, loading, logout, isSuperAdmin, isOrgAdmin, isAdmin, isTenantAdmin } = useAuth();
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -99,6 +103,7 @@ function DashboardLayoutContent({
         { label: "Organizations", href: "/organizations", icon: Building2 },
         { label: "Users & Admins", href: "/admin/users", icon: Users },
         { label: "Assessments", href: "/assessments", icon: FileCheck2 },
+        { label: "Tenant workspaces", href: "/admin/tenants", icon: FolderLock },
         { label: "Framework Versions", href: "/admin/frameworks", icon: Layers },
         { label: "Auditor Mappings", href: "/admin/auditor-mappings", icon: UserCheck },
         { label: "API Keys", href: "/admin/api-keys", icon: Lock },
@@ -293,6 +298,7 @@ function DashboardLayoutContent({
 
           {/* Right Action Icons & User Profile */}
           <div className="flex items-center gap-2 sm:gap-4 shrink-0">
+            <TenantWorkspaceSwitcher />
             <ThemeToggle />
 
             {/* Notification Bell */}
@@ -324,7 +330,13 @@ function DashboardLayoutContent({
                     {user?.name || "User"}
                   </div>
                   <div className="text-xs text-slate-500 dark:text-slate-400 leading-tight">
-                    {isSuperAdmin ? "Super Admin" : isOrgAdmin ? "Org Admin" : "Auditor"}
+                    {isSuperAdmin
+                      ? "Super Admin"
+                      : isTenantAdmin
+                        ? "Tenant Admin"
+                        : isOrgAdmin
+                          ? "Org Admin"
+                          : "Auditor"}
                   </div>
                 </div>
                 <ChevronDown className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-slate-400" />
@@ -371,7 +383,8 @@ function DashboardLayoutContent({
             pathname?.includes("/admin/assessors") ||
             pathname?.includes("/admin/users") ||
             pathname?.includes("/admin/auditor-mappings") ||
-            pathname?.includes("/organizations")
+            pathname?.includes("/organizations") ||
+            pathname?.includes("/admin/tenants")
               ? "p-4 sm:p-5 overflow-hidden flex flex-col"
               : "p-4 sm:p-6 lg:p-8 overflow-y-auto"
           }`}

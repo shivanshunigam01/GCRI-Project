@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from "express";
+import { Types } from "mongoose";
 import bcrypt from "bcryptjs";
 import { Company } from "../models/Company.js";
 import { User } from "../models/User.js";
@@ -22,16 +23,29 @@ export async function createCompany(req: Request, res: Response, next: NextFunct
       industry,
       activePlan,
       primaryContact,
+      tenantId: tenantIdBody,
       user: userData,
     } = req.body;
     const actorId = req.user?.userId;
     const actorEmail = req.user?.email || "unknown";
+    const actorRole = req.user?.role;
+
+    let tenantId: Types.ObjectId | undefined;
+    if (actorRole === "TenantAdmin" || actorRole === "Admin") {
+      if (req.user?.tenantId) {
+        tenantId = new Types.ObjectId(req.user.tenantId);
+      }
+    } else if (tenantIdBody) {
+      tenantId = new Types.ObjectId(tenantIdBody);
+    }
 
     // Clean and lowercase domain
     const cleanDomain = domain.toLowerCase().trim().replace(/^https?:\/\//, "").replace(/\/.*$/, "");
 
-    // Check domain uniqueness
-    const existing = await Company.findOne({ domain: cleanDomain });
+  // Check domain uniqueness (scoped per tenant when tenantId is set)
+    const domainQuery: { domain: string; tenantId?: Types.ObjectId } = { domain: cleanDomain };
+    if (tenantId) domainQuery.tenantId = tenantId;
+    const existing = await Company.findOne(domainQuery);
     if (existing) {
       return sendError(
         res,
@@ -76,6 +90,7 @@ export async function createCompany(req: Request, res: Response, next: NextFunct
       industry,
       activePlan: activePlan || "Bronze",
       primaryContact: contactPayload,
+      ...(tenantId ? { tenantId } : {}),
       verificationStatus: verificationResult.verificationStatus,
       status: "Active",
       verificationAuditTrail: {

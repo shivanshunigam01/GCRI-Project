@@ -33,6 +33,7 @@ export function normalizeLoginUser(raw: Record<string, unknown> | null | undefin
     },
     mfaEnabled,
     companyId: (raw.companyId as User["companyId"]) ?? null,
+    tenantId: (raw.tenantId as User["tenantId"]) ?? null,
     authProvider: raw.authProvider as User["authProvider"],
   };
 }
@@ -100,5 +101,5 @@ export function getUserFacingApiError(err: unknown, contextLabel: string): strin
 
 /** SuperAdmin and Org Admin — MFA cannot be disabled per product policy. */
 export function isMfaMandatoryRole(role: string | undefined): boolean {
-  return role === "SuperAdmin" || role === "Admin";
+  return role === "SuperAdmin" || role === "Admin" || role === "TenantAdmin";
 }
