@@ -9,6 +9,7 @@ import { sendSuccess, sendError } from "../utils/response.js";
 import { verifyDomainLegitimacy } from "../services/verification.service.js";
 import { NotificationService } from "../services/notification.service.js";
 import { scopeQueryByCompany, isAuditorAssignedToOrg } from "../middlewares/companyScope.js";
+import { normalizeUserRole } from "../middlewares/auth.js";
 
 /**
  * Onboard a new organization with automated DNS domain verification and optional client account creation
@@ -28,12 +29,21 @@ export async function createCompany(req: Request, res: Response, next: NextFunct
     } = req.body;
     const actorId = req.user?.userId;
     const actorEmail = req.user?.email || "unknown";
-    const actorRole = req.user?.role;
+    const actorRole = normalizeUserRole(req.user?.role);
 
     let tenantId: Types.ObjectId | undefined;
-    if (actorRole === "TenantAdmin" || actorRole === "Admin") {
+    if (actorRole === "TenantAdmin") {
       if (req.user?.tenantId) {
         tenantId = new Types.ObjectId(req.user.tenantId);
+      } else if (tenantIdBody) {
+        tenantId = new Types.ObjectId(tenantIdBody);
+      } else {
+        return sendError(
+          res,
+          "Active tenant context is required to onboard a client organization.",
+          400,
+          "TENANT_ID_REQUIRED"
+        );
       }
     } else if (tenantIdBody) {
       tenantId = new Types.ObjectId(tenantIdBody);
@@ -196,6 +206,15 @@ export async function createCompany(req: Request, res: Response, next: NextFunct
  */
 export async function getCompanies(req: Request, res: Response, next: NextFunction) {
   try {
+    if (normalizeUserRole(req.user?.role) === "SuperAdmin") {
+      return sendError(
+        res,
+        "Super Admin manages tenants at the platform level and cannot view tenant client organizations.",
+        403,
+        "SUPER_ADMIN_TENANT_DATA_RESTRICTED"
+      );
+    }
+
     const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
     const limit = Math.min(200, Math.max(1, parseInt(req.query.limit as string, 10) || 20));
     const skip = (page - 1) * limit;

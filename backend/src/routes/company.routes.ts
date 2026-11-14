@@ -74,7 +74,7 @@ const router = Router();
 router.post(
   "/",
   authenticate,
-  authorize("SuperAdmin", "Admin", "Assessor"),
+  authorize("TenantAdmin", "Admin"),
   validateRequest(CreateCompanySchema),
   createCompany
 );
@@ -120,7 +120,7 @@ router.post(
  *       401:
  *         description: Unauthorized
  */
-router.get("/", authenticate, getCompanies);
+router.get("/", authenticate, authorize("TenantAdmin", "Admin", "Auditor", "Assessor"), getCompanies);
 
 /**
  * @openapi

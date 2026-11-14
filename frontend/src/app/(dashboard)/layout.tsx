@@ -100,10 +100,8 @@ function DashboardLayoutContent({
   const adminNavItems = isSuperAdmin
     ? [
         { label: "Dashboard", href: "/dashboard", icon: Home, active: pathname === "/dashboard" },
-        { label: "Organizations", href: "/organizations", icon: Building2 },
-        { label: "Users & Admins", href: "/admin/users", icon: Users },
-        { label: "Assessments", href: "/assessments", icon: FileCheck2 },
         { label: "Tenant workspaces", href: "/admin/tenants", icon: FolderLock },
+        { label: "Users & Admins", href: "/admin/users", icon: Users },
         { label: "Framework Versions", href: "/admin/frameworks", icon: Layers },
         { label: "Auditor Mappings", href: "/admin/auditor-mappings", icon: UserCheck },
         { label: "API Keys", href: "/admin/api-keys", icon: Lock },

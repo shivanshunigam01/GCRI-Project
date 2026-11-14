@@ -14,10 +14,11 @@ export const InviteUserSchema = z.object({
     email: z.string().trim().email("Invalid email address").toLowerCase(),
     name: z.string().trim().min(2, "Name must be at least 2 characters").max(100),
     // SuperAdmin is sole/platform-seeded — not inviteable
-    role: z.enum(["Admin", "Assessor", "MembershipApprover"], {
-      message: "Role must be Admin, Assessor, or MembershipApprover",
+    role: z.enum(["Admin", "TenantAdmin", "Assessor", "Auditor", "MembershipApprover"], {
+      message: "Role must be Admin, TenantAdmin, Assessor, Auditor, or MembershipApprover",
     }),
     companyId: z.string().regex(objectIdRegex, "Invalid Company ID format").optional(),
+    tenantId: z.string().regex(objectIdRegex, "Invalid tenant ID format").optional(),
   }),
 });
 
