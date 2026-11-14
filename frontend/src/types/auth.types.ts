@@ -80,6 +80,7 @@ export interface InviteUserPayload {
   email: string;
   role: UserRole;
   companyId?: string;
+  tenantId?: string;
 }
 
 export interface AdminUpdateUserPayload {

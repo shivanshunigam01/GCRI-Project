@@ -10,6 +10,8 @@ import {
   AuditorAssessmentsItem,
   AdminAssessmentItem,
 } from "@/types/dashboard.types";
+import { AssessmentSession, AssessmentType } from "@/types/assessment.types";
+import { AssessmentShareModal } from "@/components/features/assessments/AssessmentShareModal";
 import { AssessmentListSkeleton } from "@/components/shared/PageSkeletons";
 import { ListPagination } from "@/components/shared/ListPagination";
 import { useClientPagination } from "@/hooks/useClientPagination";
@@ -29,13 +31,16 @@ import {
   Lock,
   ExternalLink,
   RefreshCw,
+  Share2,
 } from "lucide-react";
 
 export default function AssessmentsPage() {
   const router = useRouter();
-  const { user, isAdmin } = useAuth();
+  const { user, isAdmin, isSuperAdmin, isOrgAdmin, isAssessor } = useAuth();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [tenantSessions, setTenantSessions] = useState<AssessmentSession[]>([]);
+  const [shareTarget, setShareTarget] = useState<{ id: string; label: string } | null>(null);
 
   // Filters
   const [statusFilter, setStatusFilter] = useState<string>("All");
@@ -50,7 +55,23 @@ export default function AssessmentsPage() {
     setLoading(true);
     setError(null);
     try {
-      if (isAdmin) {
+      if (isSuperAdmin) {
+        setAdminAssessments([]);
+        setTenantSessions([]);
+        setAuditorAssessments([]);
+        return;
+      }
+      if (isOrgAdmin) {
+        const res = await assessmentService.getAssessments({
+          status: statusFilter === "All" ? undefined : statusFilter,
+          assessmentType:
+            typeFilter === "All" ? undefined : (typeFilter as AssessmentType),
+          limit: 100,
+        });
+        const list = Array.isArray(res?.data) ? res.data : [];
+        setTenantSessions(list);
+        setAdminAssessments([]);
+      } else if (isAdmin) {
         const res = await dashboardService.getAdminAssessments({
           status: statusFilter === "All" ? undefined : statusFilter,
           assessmentType: typeFilter === "All" ? undefined : typeFilter,
@@ -79,7 +100,18 @@ export default function AssessmentsPage() {
 
   useEffect(() => {
     fetchAssessments();
-  }, [isAdmin, statusFilter, typeFilter]);
+  }, [isAdmin, isOrgAdmin, isSuperAdmin, statusFilter, typeFilter]);
+
+  const filteredTenantSessions = tenantSessions.filter((s) => {
+    if (!searchQuery) return true;
+    const name =
+      typeof s.companyId === "object" && s.companyId
+        ? (s.companyId as { name?: string }).name?.toLowerCase() || ""
+        : "";
+    return name.includes(searchQuery.toLowerCase());
+  });
+
+  const tenantPagination = useClientPagination(filteredTenantSessions);
 
   // Client-side search filtering for auditor assessments
   const filteredAuditorAssessments = auditorAssessments.filter((item) => {
@@ -113,7 +145,7 @@ export default function AssessmentsPage() {
           </p>
         </div>
 
-        {!isAdmin && (
+        {(isAssessor || isOrgAdmin) && !isSuperAdmin && (
           <div>
             <Link
               href="/assessments/new"
@@ -189,6 +221,88 @@ export default function AssessmentsPage() {
           >
             Retry
           </button>
+        </div>
+      ) : isSuperAdmin ? (
+        <div className="p-10 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 text-center space-y-3">
+          <Lock className="h-8 w-8 text-slate-400 mx-auto" />
+          <p className="text-sm font-semibold text-slate-800">
+            Super Admin does not access assessment content
+          </p>
+          <p className="text-xs text-slate-500 max-w-md mx-auto">
+            Manage <Link href="/admin/tenants" className="text-teal-700 font-semibold hover:underline">tenant workspaces</Link> and
+            invite Tenant Admins. They run client assessments inside each workspace.
+          </p>
+        </div>
+      ) : isOrgAdmin ? (
+        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200/90 dark:border-slate-700 shadow-xs overflow-hidden">
+          <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-700 uppercase tracking-wider">
+              Tenant sessions ({tenantPagination.total})
+            </span>
+            <span className="text-xs text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+              Metadata only — share with auditors; no answer access
+            </span>
+          </div>
+          {tenantPagination.total > 0 ? (
+            <>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="text-[11px] font-semibold text-slate-400 uppercase bg-slate-50/80 border-b">
+                    <tr>
+                      <th className="py-3 px-5">Organization</th>
+                      <th className="py-3 px-4">Lead auditor</th>
+                      <th className="py-3 px-4">Type</th>
+                      <th className="py-3 px-4">Status</th>
+                      <th className="py-3 px-4 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {tenantPagination.pageItems.map((s) => {
+                      const orgName =
+                        typeof s.companyId === "object" && s.companyId
+                          ? (s.companyId as { name?: string }).name
+                          : "Client";
+                      const lead =
+                        typeof s.conductedByUserId === "object" && s.conductedByUserId
+                          ? (s.conductedByUserId as { name?: string }).name
+                          : "—";
+                      return (
+                        <tr key={s._id} className="hover:bg-slate-50/80">
+                          <td className="py-3.5 px-5 font-semibold text-slate-900">{orgName}</td>
+                          <td className="py-3.5 px-4 text-slate-600">{lead}</td>
+                          <td className="py-3.5 px-4">{s.assessmentType}</td>
+                          <td className="py-3.5 px-4">{s.status}</td>
+                          <td className="py-3.5 px-4 text-right">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setShareTarget({ id: s._id, label: `${orgName} · ${s.assessmentType}` })
+                              }
+                              className="inline-flex items-center gap-1 text-teal-700 font-semibold hover:underline"
+                            >
+                              <Share2 className="h-3.5 w-3.5" /> Share
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <ListPagination
+                page={tenantPagination.page}
+                totalPages={tenantPagination.totalPages}
+                total={tenantPagination.total}
+                from={tenantPagination.from}
+                to={tenantPagination.to}
+                onPrevious={tenantPagination.goPrev}
+                onNext={tenantPagination.goNext}
+                itemLabel="assessments"
+              />
+            </>
+          ) : (
+            <div className="p-12 text-center text-xs text-slate-500">No assessments in this workspace yet.</div>
+          )}
         </div>
       ) : isAdmin ? (
         /* Admin Assessment Pipeline Table */
@@ -438,6 +552,12 @@ export default function AssessmentsPage() {
           )}
         </div>
       )}
+      <AssessmentShareModal
+        open={Boolean(shareTarget)}
+        sessionId={shareTarget?.id ?? ""}
+        sessionLabel={shareTarget?.label}
+        onClose={() => setShareTarget(null)}
+      />
     </div>
   );
 }

@@ -69,10 +69,28 @@ export interface ScoreSnapshot {
   calculatedAt: string;
 }
 
+export interface SharedAuditorRef {
+  auditorId: string | { _id: string; name: string; email: string; role?: string };
+  sharedByUserId?: string | { _id: string; name: string; email: string };
+  sharedAt?: string;
+}
+
+export interface CoSignatureRecord {
+  auditorId: string;
+  auditorName?: string;
+  auditorEmail?: string;
+  signedAt?: string;
+  attestationNotes?: string;
+}
+
 export interface AssessmentSession {
   _id: string;
+  tenantId?: string;
   companyId: string | Company;
+  createdByUserId?: string | { _id: string; name: string; email: string; role?: string };
   conductedByUserId: string | { _id: string; name: string; email: string; role?: string };
+  sharedWith?: SharedAuditorRef[];
+  coSignatures?: CoSignatureRecord[];
   frameworkVersion: string;
   assessmentType: AssessmentType;
   status: AssessmentStatus;

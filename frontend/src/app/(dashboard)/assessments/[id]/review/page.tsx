@@ -20,6 +20,7 @@ import {
 import { clearAssessmentDraft } from "@/lib/assessmentDraftStorage";
 import { getApiErrorMessage, getUserFacingApiError } from "@/lib/authUser";
 import { useToast } from "@/context/ToastContext";
+import { useAuth } from "@/context/AuthContext";
 import { AssessmentSession, AssessmentType } from "@/types/assessment.types";
 import { FrameworkQuestion } from "@/types/framework.types";
 import {
@@ -122,6 +123,10 @@ function LightAssessmentReviewContent({ assessmentId }: { assessmentId: string }
   const [acknowledged, setAcknowledged] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitResult, setSubmitResult] = useState<string | null>(null);
+  const [coSignNotes, setCoSignNotes] = useState("");
+  const [coSignBusy, setCoSignBusy] = useState(false);
+  const [coSignMsg, setCoSignMsg] = useState<string | null>(null);
+  const { isAssessor, isOrgAdmin } = useAuth();
 
   const load = useCallback(async () => {
     if (!assessmentId) return;
@@ -388,6 +393,48 @@ function LightAssessmentReviewContent({ assessmentId }: { assessmentId: string }
           </p>
         </div>
       </section>
+
+      {isAssessor && !isOrgAdmin && (
+        <section className="bg-white rounded-2xl border border-teal-200 p-5 space-y-3">
+          <p className="text-sm font-semibold text-slate-900">Co-sign attestation</p>
+          <p className="text-xs text-slate-500">
+            Record your review signature before or after final submit (shared auditors may co-sign per GCRAI model).
+          </p>
+          <textarea
+            value={coSignNotes}
+            onChange={(e) => setCoSignNotes(e.target.value)}
+            rows={2}
+            placeholder="Optional attestation notes…"
+            className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2"
+          />
+          {coSignMsg && (
+            <p className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-2 py-1">
+              {coSignMsg}
+            </p>
+          )}
+          <button
+            type="button"
+            disabled={coSignBusy}
+            onClick={async () => {
+              setCoSignBusy(true);
+              setCoSignMsg(null);
+              try {
+                await assessmentService.coSignAssessment(assessmentId, {
+                  attestationNotes: coSignNotes.trim() || undefined,
+                });
+                setCoSignMsg("Co-signature recorded.");
+              } catch (err: unknown) {
+                setCoSignMsg(getApiErrorMessage(err, "Co-sign failed."));
+              } finally {
+                setCoSignBusy(false);
+              }
+            }}
+            className="text-xs font-semibold px-3 py-1.5 bg-teal-600 text-white rounded-lg disabled:opacity-50"
+          >
+            {coSignBusy ? "Saving…" : "Save co-signature"}
+          </button>
+        </section>
+      )}
 
       <section className="bg-slate-50 rounded-2xl border border-slate-200 p-5 space-y-4">
         <label className="flex items-start gap-3 cursor-pointer">

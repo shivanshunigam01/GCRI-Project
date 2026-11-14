@@ -54,6 +54,23 @@ export const assessmentService = {
   submitAssessment: (id: string) =>
     apiClient.post<SubmitAssessmentResponse>(`/assessments/${id}/submit`),
 
+  shareAssessment: (id: string, payload: { auditorId?: string; auditorIds?: string[] }) =>
+    apiClient.post<{ message: string; session: AssessmentSession }>(
+      `/assessments/${id}/share`,
+      payload
+    ),
+
+  revokeAssessmentShare: (id: string, auditorId: string) =>
+    apiClient.delete<{ message: string; sharedWith: unknown[] }>(
+      `/assessments/${id}/share/${auditorId}`
+    ),
+
+  coSignAssessment: (id: string, payload?: { attestationNotes?: string }) =>
+    apiClient.post<{ message: string; coSignatures: unknown[] }>(
+      `/assessments/${id}/co-sign`,
+      payload ?? {}
+    ),
+
   getPresignedUrl: (
     id: string,
     payload: { questionId: string; fileName: string; contentType: string }

@@ -110,7 +110,7 @@ function DashboardLayoutContent({
       ]
     : [
         { label: "Dashboard", href: "/dashboard", icon: Home, active: pathname === "/dashboard" },
-        { label: "Organization", href: "/organizations", icon: Building2 },
+        { label: "Organizations", href: "/organizations", icon: Building2 },
         { label: "Assessors / Team", href: "/admin/users", icon: Users },
         { label: "Assessments", href: "/assessments", icon: FileCheck2 },
         { label: "Auditor Mappings", href: "/admin/auditor-mappings", icon: UserCheck },

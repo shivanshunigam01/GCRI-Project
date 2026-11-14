@@ -148,10 +148,16 @@ export default function DashboardPage() {
     setDashboardWarning(null);
     try {
       if (roleView === "Admin") {
+        const assessPromise = isSuperAdmin
+          ? Promise.resolve({ data: { assessments: [] } })
+          : dashboardService.getAdminAssessments({ limit: 100 });
+        const compPromise = isSuperAdmin
+          ? Promise.resolve({ data: [] })
+          : companyService.getCompanies({ limit: 100 });
         const [sumResult, assessResult, compResult, analyticsResult] = await Promise.allSettled([
           dashboardService.getAdminSummary(),
-          dashboardService.getAdminAssessments({ limit: 100 }),
-          companyService.getCompanies({ limit: 100 }),
+          assessPromise,
+          compPromise,
           dashboardService.getAdminAnalytics({
             range: analyticsRange,
             companyId:

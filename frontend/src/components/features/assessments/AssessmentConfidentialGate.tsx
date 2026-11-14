@@ -5,7 +5,7 @@ import Link from "next/link";
 import { ShieldAlert } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 
-/** Blocks Org Admin from confidential assessment content (backend also enforces). */
+/** Blocks Tenant / Org Admin from confidential assessment content (backend also enforces). */
 export function useCanViewConfidentialAssessment(): boolean {
   const { isOrgAdmin, loading } = useAuth();
   if (loading) return false;
@@ -27,7 +27,7 @@ export function AssessmentConfidentialGate({ children }: { children: React.React
         <ShieldAlert className="h-10 w-10 text-amber-600 mx-auto" />
         <h1 className="text-lg font-bold text-slate-900">Access restricted</h1>
         <p className="text-sm text-slate-600 leading-relaxed">
-          Organization administrators cannot view confidential assessment answers, scores, findings,
+          Tenant administrators cannot view confidential assessment answers, scores, findings,
           or audit reports. Contact your accredited assessor or platform super administrator if you
           need operational metadata only.
         </p>

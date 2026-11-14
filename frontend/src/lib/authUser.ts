@@ -34,6 +34,9 @@ export function normalizeLoginUser(raw: Record<string, unknown> | null | undefin
     mfaEnabled,
     companyId: (raw.companyId as User["companyId"]) ?? null,
     tenantId: (raw.tenantId as User["tenantId"]) ?? null,
+    tenantIds: Array.isArray(raw.tenantIds)
+      ? (raw.tenantIds as string[])
+      : undefined,
     authProvider: raw.authProvider as User["authProvider"],
   };
 }

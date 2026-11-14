@@ -40,12 +40,14 @@ import { companyService } from "@/services/company.service";
 import { User, UserRole, UserStatus } from "@/types/auth.types";
 import { Company } from "@/types/company.types";
 import { useAuth } from "@/context/AuthContext";
+import { useTenant } from "@/context/TenantContext";
 import { EntityImage } from "@/components/shared/EntityImage";
 import { MetricListModal, MetricListRow } from "@/components/shared/MetricListModal";
 import { SummaryMetricTile } from "@/components/shared/SummaryMetricTile";
 
 export default function AdminAssessorsPage() {
-  const { isSuperAdmin, isOrgAdmin, user: currentUser } = useAuth();
+  const { isSuperAdmin, isOrgAdmin, isTenantAdmin, user: currentUser } = useAuth();
+  const { activeTenantId } = useTenant();
   // Live State
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
@@ -365,11 +367,19 @@ export default function AdminAssessorsPage() {
     setInviteError(null);
 
     try {
+      const apiRole =
+        inviteForm.role === "Assessor" ? "Auditor" : inviteForm.role;
       const res = await userService.inviteUser({
         name: inviteForm.name.trim(),
         email: inviteForm.email.trim(),
-        role: inviteForm.role,
+        role: apiRole as UserRole,
         companyId: inviteForm.companyId ? inviteForm.companyId : undefined,
+        tenantId:
+          apiRole === "TenantAdmin" && activeTenantId
+            ? activeTenantId
+            : (isTenantAdmin || isOrgAdmin) && activeTenantId
+              ? activeTenantId
+              : undefined,
       });
 
       if (res && res.data) {
@@ -1124,9 +1134,22 @@ export default function AdminAssessorsPage() {
                         }
                         className="w-full text-xs py-2 px-2.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition cursor-pointer"
                       >
-                        <option value="Assessor">Assessor</option>
-                        {isSuperAdmin && <option value="Admin">Organization Admin</option>}
-                        <option value="MembershipApprover">Membership Approver</option>
+                        {isSuperAdmin && (
+                          <option value="TenantAdmin">Tenant Admin</option>
+                        )}
+                        {(isTenantAdmin || (!isSuperAdmin && isOrgAdmin)) && (
+                          <>
+                            <option value="Auditor">Auditor</option>
+                            <option value="Assessor">Auditor (legacy label)</option>
+                          </>
+                        )}
+                        {!isSuperAdmin && !isTenantAdmin && (
+                          <option value="Assessor">Assessor</option>
+                        )}
+                        {isSuperAdmin && <option value="Admin">Org Admin (legacy)</option>}
+                        {!isTenantAdmin && (
+                          <option value="MembershipApprover">Membership Approver</option>
+                        )}
                       </select>
                     </div>
 
@@ -1139,9 +1162,10 @@ export default function AdminAssessorsPage() {
                         onChange={(e) =>
                           setInviteForm({ ...inviteForm, companyId: e.target.value })
                         }
-                        className="w-full text-xs py-2 px-2.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition cursor-pointer"
+                        disabled={isTenantAdmin}
+                        className="w-full text-xs py-2 px-2.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition cursor-pointer disabled:opacity-60"
                       >
-                        <option value="">None / Independent</option>
+                        <option value="">None / tenant-scoped</option>
                         {companies.map((c) => (
                           <option key={c._id} value={c._id}>
                             {c.name}
@@ -1150,6 +1174,11 @@ export default function AdminAssessorsPage() {
                       </select>
                     </div>
                   </div>
+                  {isSuperAdmin && inviteForm.role === "TenantAdmin" && !activeTenantId && (
+                    <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5">
+                      Select a tenant in the header workspace switcher before inviting a Tenant Admin.
+                    </p>
+                  )}
 
                   <div className="pt-3 flex items-center justify-end gap-2 border-t border-slate-100">
                     <button

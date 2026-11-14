@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { OrganizationsTableSkeleton } from "@/components/shared/PageSkeletons";
 import {
   Building2,
@@ -101,8 +102,15 @@ export default function OrganizationsPage() {
   });
   const [onboardLogoFile, setOnboardLogoFile] = useState<File | null>(null);
 
+  const router = useRouter();
   const { user: currentUser, isSuperAdmin, isAdmin } = useAuth();
   const { activeTenantId, activeTenant, platformMode } = useTenant();
+
+  useEffect(() => {
+    if (isSuperAdmin) {
+      router.replace("/admin/tenants");
+    }
+  }, [isSuperAdmin, router]);
   const onboardTenantId =
     activeTenantId || currentUser?.tenantId || undefined;
 
