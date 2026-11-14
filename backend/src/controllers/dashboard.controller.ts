@@ -214,7 +214,16 @@ export async function getAuditorDashboardAnalytics(req: Request, res: Response, 
  */
 export async function getAdminDashboardAssessments(req: Request, res: Response, next: NextFunction) {
   try {
-    if (req.user?.role !== "SuperAdmin" && req.user?.role !== "Admin") {
+    if (req.user?.role === "SuperAdmin") {
+      return sendError(
+        res,
+        "Super Admin sees tenant metadata only and cannot list assessment operational data.",
+        403,
+        "SUPER_ADMIN_CONTENT_ACCESS_RESTRICTED"
+      );
+    }
+    const actorRole = req.user?.role;
+    if (actorRole !== "Admin" && actorRole !== "TenantAdmin") {
       return sendError(res, "Access denied. Administrators only.", 403, "ADMIN_ROLE_REQUIRED");
     }
 
@@ -229,8 +238,10 @@ export async function getAdminDashboardAssessments(req: Request, res: Response, 
 
     const query: any = {};
 
-    // Organization Admins are strictly scoped to their own company
-    if (req.user?.role === "Admin") {
+    // Tenant / org admins: scope by active tenant or legacy company
+    if (req.user?.role === "TenantAdmin" && req.user.tenantId) {
+      query.tenantId = req.user.tenantId;
+    } else if (req.user?.role === "Admin") {
       query.companyId = req.user.companyId;
     }
 

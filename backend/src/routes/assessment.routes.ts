@@ -20,6 +20,9 @@ import {
   exportAssessmentExcel,
   sendAssessmentReminderNotification,
   sendAssessmentCompletionNotification,
+  shareAssessment,
+  revokeAssessmentShare,
+  coSignAssessment,
 } from "../controllers/assessment.controller.js";
 import { authenticate, authorize } from "../middlewares/auth.js";
 import { validateRequest } from "../middlewares/validate.js";
@@ -28,6 +31,9 @@ import {
   SubmitAnswersSchema,
   AssessmentParamSchema,
   PresignedUrlSchema,
+  ShareAssessmentSchema,
+  RevokeShareAssessmentSchema,
+  CoSignAssessmentSchema,
 } from "../schemas/assessment.schema.js";
 
 const upload = multer({
@@ -78,7 +84,7 @@ const router = Router();
 router.post(
   "/",
   authenticate,
-  authorize("SuperAdmin", "Admin", "Assessor"),
+  authorize("TenantAdmin", "Admin", "Auditor", "Assessor"),
   validateRequest(CreateAssessmentSchema),
   createAssessment
 );
@@ -112,7 +118,7 @@ router.post(
  *       200:
  *         description: Paginated sessions list
  */
-router.get("/", authenticate, getAssessments);
+router.get("/", authenticate, authorize("TenantAdmin", "Admin", "Auditor", "Assessor"), getAssessments);
 
 /**
  * @openapi
@@ -136,7 +142,37 @@ router.get("/", authenticate, getAssessments);
  *       404:
  *         description: Session not found
  */
-router.get("/:id", authenticate, validateRequest(AssessmentParamSchema), getAssessmentById);
+router.get(
+  "/:id",
+  authenticate,
+  authorize("TenantAdmin", "Admin", "Auditor", "Assessor"),
+  validateRequest(AssessmentParamSchema),
+  getAssessmentById
+);
+
+router.post(
+  "/:id/share",
+  authenticate,
+  authorize("TenantAdmin", "Admin", "Auditor", "Assessor"),
+  validateRequest(ShareAssessmentSchema),
+  shareAssessment
+);
+
+router.delete(
+  "/:id/share/:auditorId",
+  authenticate,
+  authorize("TenantAdmin", "Admin", "Auditor", "Assessor"),
+  validateRequest(RevokeShareAssessmentSchema),
+  revokeAssessmentShare
+);
+
+router.post(
+  "/:id/co-sign",
+  authenticate,
+  authorize("Auditor", "Assessor"),
+  validateRequest(CoSignAssessmentSchema),
+  coSignAssessment
+);
 
 /**
  * @openapi
@@ -192,7 +228,7 @@ router.get("/:id", authenticate, validateRequest(AssessmentParamSchema), getAsse
 router.put(
   "/:id/answers",
   authenticate,
-  authorize("SuperAdmin", "Admin", "Assessor"),
+  authorize("TenantAdmin", "Admin", "Auditor", "Assessor"),
   validateRequest(SubmitAnswersSchema),
   saveAnswers
 );
@@ -249,7 +285,7 @@ router.get(
 router.post(
   "/:id/submit",
   authenticate,
-  authorize("SuperAdmin", "Admin", "Assessor"),
+  authorize("TenantAdmin", "Admin", "Auditor", "Assessor"),
   validateRequest(AssessmentParamSchema),
   submitAssessment
 );
@@ -297,7 +333,7 @@ router.post(
 router.post(
   "/:id/evidence/presigned-url",
   authenticate,
-  authorize("SuperAdmin", "Admin", "Assessor"),
+  authorize("TenantAdmin", "Admin", "Auditor", "Assessor"),
   validateRequest(PresignedUrlSchema),
   getEvidencePresignedUrl
 );
@@ -325,7 +361,7 @@ router.post(
 router.post(
   "/:id/evidence/upload",
   authenticate,
-  authorize("SuperAdmin", "Admin", "Assessor"),
+  authorize("TenantAdmin", "Admin", "Auditor", "Assessor"),
   upload.single("file"),
   uploadEvidenceDirect
 );
