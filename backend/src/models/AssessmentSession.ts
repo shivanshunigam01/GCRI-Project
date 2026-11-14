@@ -67,9 +67,27 @@ export interface IReportMetadata {
   storageType: "s3" | "local";
 }
 
+export interface ISharedAuditor {
+  auditorId: Types.ObjectId;
+  sharedByUserId: Types.ObjectId;
+  sharedAt: Date;
+}
+
+export interface ICoSignature {
+  auditorId: Types.ObjectId;
+  auditorName: string;
+  auditorEmail: string;
+  signedAt: Date;
+  attestationNotes?: string;
+}
+
 export interface IAssessmentSession extends Document {
+  tenantId?: Types.ObjectId;
   companyId: Types.ObjectId;
+  createdByUserId?: Types.ObjectId;
   conductedByUserId: Types.ObjectId;
+  sharedWith: ISharedAuditor[];
+  coSignatures: ICoSignature[];
   frameworkVersion: string;
   assessmentType: "Light" | "Full";
   status: SessionStatus;
@@ -149,10 +167,34 @@ const ScoreSnapshotSchema = new Schema<IScoreSnapshot>(
   { _id: false }
 );
 
+const SharedAuditorSchema = new Schema<ISharedAuditor>(
+  {
+    auditorId: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    sharedByUserId: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    sharedAt: { type: Date, default: Date.now },
+  },
+  { _id: false }
+);
+
+const CoSignatureSchema = new Schema<ICoSignature>(
+  {
+    auditorId: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    auditorName: { type: String, required: true, trim: true },
+    auditorEmail: { type: String, required: true, trim: true, lowercase: true },
+    signedAt: { type: Date, default: Date.now },
+    attestationNotes: { type: String, trim: true },
+  },
+  { _id: false }
+);
+
 const AssessmentSessionSchema = new Schema<IAssessmentSession>(
   {
+    tenantId: { type: Schema.Types.ObjectId, ref: "Tenant", index: true },
     companyId: { type: Schema.Types.ObjectId, ref: "Company", required: true, index: true },
+    createdByUserId: { type: Schema.Types.ObjectId, ref: "User", index: true },
     conductedByUserId: { type: Schema.Types.ObjectId, ref: "User", required: true, index: true },
+    sharedWith: { type: [SharedAuditorSchema], default: [] },
+    coSignatures: { type: [CoSignatureSchema], default: [] },
     frameworkVersion: { type: String, required: true },
     assessmentType: { type: String, enum: ["Light", "Full"], required: true, index: true },
     status: {
@@ -187,6 +229,8 @@ const AssessmentSessionSchema = new Schema<IAssessmentSession>(
 );
 
 AssessmentSessionSchema.index({ companyId: 1, status: 1 });
+AssessmentSessionSchema.index({ tenantId: 1, status: 1 });
+AssessmentSessionSchema.index({ "sharedWith.auditorId": 1 });
 
 export const AssessmentSession = model<IAssessmentSession>(
   "AssessmentSession",

@@ -1,6 +1,7 @@
 import { Schema, model, Document, Types } from "mongoose";
 
 export interface IWebhookSubscription extends Document {
+  tenantId?: Types.ObjectId;
   companyId: Types.ObjectId;
   url: string;
   secret: string;
@@ -13,6 +14,7 @@ export interface IWebhookSubscription extends Document {
 
 const WebhookSubscriptionSchema = new Schema<IWebhookSubscription>(
   {
+    tenantId: { type: Schema.Types.ObjectId, ref: "Tenant", index: true },
     companyId: { type: Schema.Types.ObjectId, ref: "Company", required: true, index: true },
     url: { type: String, required: true, trim: true },
     secret: { type: String, required: true },

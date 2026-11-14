@@ -1,6 +1,7 @@
 import { Schema, model, Document, Types } from "mongoose";
 
 export interface IAuditLog extends Document {
+  tenantId?: Types.ObjectId;
   actorId?: Types.ObjectId;
   actorEmail?: string;
   action: string;
@@ -15,6 +16,7 @@ export interface IAuditLog extends Document {
 
 const AuditLogSchema = new Schema<IAuditLog>(
   {
+    tenantId: { type: Schema.Types.ObjectId, ref: "Tenant", index: true },
     actorId: { type: Schema.Types.ObjectId, ref: "User", index: true },
     actorEmail: { type: String, trim: true },
     action: { type: String, required: true, index: true },

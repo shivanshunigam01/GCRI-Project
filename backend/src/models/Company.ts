@@ -1,4 +1,4 @@
-import { Schema, model, Document } from "mongoose";
+import { Schema, model, Document, Types } from "mongoose";
 
 export type CompanyStatus = "Active" | "Suspended";
 export type VerificationStatus = "Verified" | "Pending" | "Rejected";
@@ -23,6 +23,7 @@ export interface ICompany extends Document {
   industry?: string;
   size?: string;
   primaryContact?: ICompanyPrimaryContact;
+  tenantId?: Types.ObjectId;
   activePlan?: SubscriptionTier;
   verificationStatus: VerificationStatus;
   status: CompanyStatus;
@@ -52,6 +53,7 @@ const CompanySchema = new Schema<ICompany>(
       email: { type: String, trim: true, lowercase: true },
       phone: { type: String, trim: true },
     },
+    tenantId: { type: Schema.Types.ObjectId, ref: "Tenant", index: true },
     activePlan: {
       type: String,
       enum: ["Bronze", "Silver", "Gold"],

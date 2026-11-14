@@ -4,8 +4,9 @@ export interface IApiKey extends Document {
   name: string;
   prefix: string;
   keyHash: string;
+  tenantId?: Types.ObjectId;
   companyId: Types.ObjectId;
-  role: "Admin" | "Assessor" | "ReadOnly";
+  role: "TenantAdmin" | "Auditor" | "ReadOnly";
   permissions: string[];
   expiresAt?: Date;
   isActive: boolean;
@@ -20,10 +21,11 @@ const ApiKeySchema = new Schema<IApiKey>(
     name: { type: String, required: true, trim: true },
     prefix: { type: String, required: true, index: true },
     keyHash: { type: String, required: true, unique: true, index: true },
+    tenantId: { type: Schema.Types.ObjectId, ref: "Tenant", index: true },
     companyId: { type: Schema.Types.ObjectId, ref: "Company", required: true, index: true },
     role: {
       type: String,
-      enum: ["Admin", "Assessor", "ReadOnly"],
+      enum: ["TenantAdmin", "Auditor", "ReadOnly"],
       default: "ReadOnly",
     },
     permissions: [{ type: String }],
