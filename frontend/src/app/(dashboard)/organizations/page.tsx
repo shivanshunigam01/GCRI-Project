@@ -32,6 +32,7 @@ import {
   fetchAssessorAccessibleCompanies,
 } from "@/lib/auditorOrganizations";
 import { useAuth } from "@/context/AuthContext";
+import { useTenant } from "@/context/TenantContext";
 import { Company, CompanyStatus, VerificationStatus, SubscriptionTier } from "@/types/company.types";
 import { formatOrgSubtitle } from "@/lib/companyDisplay";
 import OrganizationDetailDrawer from "@/components/features/companies/OrganizationDetailDrawer";
@@ -101,6 +102,9 @@ export default function OrganizationsPage() {
   const [onboardLogoFile, setOnboardLogoFile] = useState<File | null>(null);
 
   const { user: currentUser, isSuperAdmin, isAdmin } = useAuth();
+  const { activeTenantId, activeTenant, platformMode } = useTenant();
+  const onboardTenantId =
+    activeTenantId || currentUser?.tenantId || undefined;
 
   // Action Menu Dropdown ID
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
@@ -334,6 +338,13 @@ export default function OrganizationsPage() {
       return;
     }
 
+    if (isSuperAdmin && platformMode && !onboardTenantId) {
+      setOnboardError(
+        "Select a tenant workspace in the header (not Platform / all tenants), then onboard the organization under that workspace."
+      );
+      return;
+    }
+
     setOnboardLoading(true);
 
     try {
@@ -357,6 +368,7 @@ export default function OrganizationsPage() {
         industry: onboardForm.industry.trim() || undefined,
         activePlan: onboardForm.subscriptionTier,
         primaryContact,
+        ...(onboardTenantId ? { tenantId: onboardTenantId } : {}),
       });
 
       const companyId = created?.data?.company?._id;
@@ -1036,6 +1048,17 @@ export default function OrganizationsPage() {
             </div>
 
             <form onSubmit={handleSubmitOnboard} className="p-5 space-y-3.5">
+              {onboardTenantId && activeTenant && (
+                <p className="text-[11px] text-teal-900 bg-teal-50 border border-teal-200 rounded-lg px-2.5 py-2">
+                  This organization will be linked to workspace{" "}
+                  <span className="font-semibold">{activeTenant.name}</span>.
+                </p>
+              )}
+              {isSuperAdmin && platformMode && !onboardTenantId && (
+                <p className="text-[11px] text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-2">
+                  Pick a tenant in the header switcher before onboarding (Platform mode does not attach a tenant).
+                </p>
+              )}
               {onboardError && (
                 <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-lg text-rose-800 text-xs flex items-center gap-2">
                   <AlertCircle className="h-3.5 w-3.5 text-rose-600 shrink-0" />

@@ -1,4 +1,10 @@
-export type UserRole = "SuperAdmin" | "Admin" | "Assessor" | "MembershipApprover";
+export type UserRole =
+  | "SuperAdmin"
+  | "Admin"
+  | "TenantAdmin"
+  | "Assessor"
+  | "Auditor"
+  | "MembershipApprover";
 export type UserStatus = "Active" | "Deactivated";
 export type AuthProvider = "credentials" | "google" | "microsoft";
 
@@ -35,6 +41,8 @@ export interface User {
   };
   mfaEnabled?: boolean;
   companyId?: string | UserCompany | null;
+  tenantId?: string | null;
+  tenantIds?: string[];
   invitationExpires?: string;
   lockUntil?: string;
   lastLogin?: string;
@@ -78,6 +86,7 @@ export interface AdminUpdateUserPayload {
   name?: string;
   phone?: string;
   companyId?: string | null;
+  tenantId?: string | null;
   role?: UserRole;
   status?: UserStatus;
 }

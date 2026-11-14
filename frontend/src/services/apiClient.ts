@@ -44,6 +44,13 @@ export async function apiRequest<T = any>(
     defaultHeaders["Authorization"] = `Bearer ${token}`;
   }
 
+  if (typeof window !== "undefined") {
+    const activeTenant = localStorage.getItem("graice_active_tenant_id");
+    if (activeTenant) {
+      defaultHeaders["x-tenant-id"] = activeTenant;
+    }
+  }
+
   try {
     const response = await fetch(url, {
       ...customConfig,

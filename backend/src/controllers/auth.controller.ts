@@ -9,48 +9,19 @@ import { Company } from "../models/Company.js";
 import { sendSuccess, sendError } from "../utils/response.js";
 import { AuditLog } from "../models/AuditLog.js";
 import { emailService } from "../services/email.service.js";
+import { normalizeUserRole, resolveUserTenantClaims } from "../middlewares/auth.js";
+import { TenantMembership } from "../models/TenantMembership.js";
 
 /**
  * Register a new Assessor or User
  */
 export async function register(req: Request, res: Response, next: NextFunction) {
   try {
-    const { email, password, name } = req.body;
-
-    const existing = await User.findOne({ email: email.toLowerCase() });
-    if (existing) {
-      return sendError(res, "An account with this email already exists", 409, "USER_EXISTS");
-    }
-
-    const saltRounds = parseInt(process.env.BCRYPT_SALT_ROUNDS || "12", 10);
-    const passwordHash = await bcrypt.hash(password, saltRounds);
-
-    const user = await User.create({
-      email: email.toLowerCase(),
-      passwordHash,
-      name,
-      role: "Assessor",
-    });
-
-    await AuditLog.create({
-      actorId: user._id,
-      actorEmail: user.email,
-      action: "USER_REGISTERED",
-      entity: "User",
-      entityId: user._id.toString(),
-      ipAddress: req.ip,
-      userAgent: req.headers["user-agent"],
-    });
-
-    return sendSuccess(
+    return sendError(
       res,
-      {
-        userId: user._id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-      },
-      201
+      "Self-registration is disabled. Please use your invitation link.",
+      403,
+      "SELF_REGISTRATION_DISABLED"
     );
   } catch (err) {
     next(err);
@@ -163,7 +134,11 @@ export async function login(req: Request, res: Response, next: NextFunction) {
         await user.save();
         return sendError(res, "Invalid MFA verification or recovery code", 401, "INVALID_MFA_TOKEN");
       }
-    } else if (user.role === "SuperAdmin" || user.role === "Admin") {
+    } else if (
+      user.role === "SuperAdmin" ||
+      user.role === "Admin" ||
+      user.role === "TenantAdmin"
+    ) {
       // MFA Enforcement for SuperAdmin and Admin Accounts
       // Administrative accounts without MFA enabled must complete enrollment
       const secret = process.env.JWT_SECRET || "default_jwt_secret_dev";
@@ -194,6 +169,12 @@ export async function login(req: Request, res: Response, next: NextFunction) {
     user.lastLogin = new Date();
     await user.save();
 
+    const { tenantId, tenantIds } = await resolveUserTenantClaims(
+      user._id.toString(),
+      user.tenantId
+    );
+    const canonicalRole = normalizeUserRole(user.role);
+
     const secret = process.env.JWT_SECRET || "default_jwt_secret_dev";
     const expiresIn = process.env.JWT_EXPIRES_IN || "7d";
 
@@ -201,7 +182,9 @@ export async function login(req: Request, res: Response, next: NextFunction) {
       {
         userId: user._id.toString(),
         email: user.email,
-        role: user.role,
+        role: canonicalRole,
+        tenantId,
+        tenantIds,
         companyId: user.companyId?.toString(),
         scope: "authenticated",
       },
@@ -225,7 +208,9 @@ export async function login(req: Request, res: Response, next: NextFunction) {
         userId: user._id,
         email: user.email,
         name: user.name,
-        role: user.role,
+        role: canonicalRole,
+        tenantId: tenantId || null,
+        tenantIds,
         mfaEnabled: user.mfa?.enabled || false,
         companyId: user.companyId || null,
       },

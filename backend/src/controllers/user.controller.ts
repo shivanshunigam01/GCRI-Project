@@ -2,11 +2,18 @@ import { Request, Response, NextFunction } from "express";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import { Types } from "mongoose";
 import { User, IUser } from "../models/User.js";
+import { Tenant } from "../models/Tenant.js";
+import { TenantMembership } from "../models/TenantMembership.js";
 import { AuditLog } from "../models/AuditLog.js";
 import { sendSuccess, sendError } from "../utils/response.js";
 import { NotificationService } from "../services/notification.service.js";
 import { emailService } from "../services/email.service.js";
+import {
+  normalizeUserRole,
+  resolveUserTenantClaims,
+} from "../middlewares/auth.js";
 
 /**
  * Get profile of currently authenticated user
@@ -186,10 +193,38 @@ export async function getUserById(req: Request, res: Response, next: NextFunctio
  */
 export async function inviteUser(req: Request, res: Response, next: NextFunction) {
   try {
-    const { email, name, role, companyId } = req.body;
+    const { email, name, role, companyId, tenantId: inviteTenantId } = req.body;
     const actorId = req.user?.userId;
-    const actorRole = req.user?.role;
+    const actorRole = normalizeUserRole(req.user?.role);
     const actorEmail = req.user?.email || "unknown";
+    const targetRole = normalizeUserRole(role);
+
+    if (actorRole === "SuperAdmin" && targetRole === "Auditor") {
+      return sendError(
+        res,
+        "Each level can only create the level directly beneath it. SuperAdmin can only invite a TenantAdmin.",
+        403,
+        "HIERARCHY_VIOLATION"
+      );
+    }
+
+    if (actorRole === "SuperAdmin" && targetRole === "TenantAdmin" && !inviteTenantId) {
+      return sendError(
+        res,
+        "Tenant ID (tenantId) is required when inviting a TenantAdmin.",
+        400,
+        "TENANT_ID_REQUIRED"
+      );
+    }
+
+    if (actorRole === "TenantAdmin" && targetRole !== "Auditor") {
+      return sendError(
+        res,
+        "Tenant Admins can only invite Auditors into their workspace.",
+        403,
+        "HIERARCHY_VIOLATION"
+      );
+    }
 
     let targetCompanyId = companyId;
 
@@ -203,29 +238,19 @@ export async function inviteUser(req: Request, res: Response, next: NextFunction
       );
     }
 
-    // RBAC Guardrails
-    if (actorRole === "Admin") {
-      // Organization Admins cannot invite other Admins
-      if (role === "Admin") {
+    if (actorRole === "TenantAdmin" && targetRole === "Auditor") {
+      if (!req.user?.tenantId && !req.user?.companyId) {
         return sendError(
           res,
-          "Organization Admins cannot invite Admin accounts.",
-          403,
-          "PRIVILEGE_ESCALATION_DENIED"
-        );
-      }
-      // Force companyId to actor's organization to prevent cross-tenant user creation
-      targetCompanyId = req.user?.companyId;
-      if (!targetCompanyId) {
-        return sendError(
-          res,
-          "Your administrative account is not linked to an organization.",
+          "Your account is not linked to a tenant workspace.",
           400,
-          "COMPANY_NOT_LINKED"
+          "TENANT_NOT_LINKED"
         );
       }
-    } else if (actorRole === "SuperAdmin") {
-      // When SuperAdmin creates an Admin, an organization MUST be specified
+      if (req.user?.companyId) {
+        targetCompanyId = req.user.companyId;
+      }
+    } else if (actorRole === "SuperAdmin" && targetRole !== "TenantAdmin") {
       if (role === "Admin" && !companyId) {
         return sendError(
           res,
@@ -253,16 +278,43 @@ export async function inviteUser(req: Request, res: Response, next: NextFunction
     const hashedToken = crypto.createHash("sha256").update(rawToken).digest("hex");
     const expires = new Date(Date.now() + 48 * 60 * 60 * 1000); // 48 hours validity
 
+    const storedRole = targetRole === "Auditor" ? "Auditor" : role;
+
     const user = await User.create({
       email: cleanEmail,
       name,
-      role,
+      role: storedRole,
       companyId: targetCompanyId || undefined,
+      tenantId:
+        inviteTenantId && Types.ObjectId.isValid(inviteTenantId)
+          ? new Types.ObjectId(inviteTenantId)
+          : actorRole === "TenantAdmin" && req.user?.tenantId
+            ? new Types.ObjectId(req.user.tenantId)
+            : undefined,
       status: "Active",
       invitationToken: hashedToken,
       invitationExpires: expires,
       invitedBy: actorId,
     });
+
+    if (
+      (targetRole === "TenantAdmin" || targetRole === "Auditor") &&
+      (user.tenantId || inviteTenantId)
+    ) {
+      const tid = user.tenantId || new Types.ObjectId(inviteTenantId);
+      await TenantMembership.findOneAndUpdate(
+        { tenantId: tid, userId: user._id },
+        {
+          $set: {
+            role: targetRole === "TenantAdmin" ? "TenantAdmin" : "Auditor",
+            status: "Invited",
+            invitationToken: hashedToken,
+            invitationExpires: expires,
+          },
+        },
+        { upsert: true }
+      );
+    }
 
     await AuditLog.create({
       actorId,
@@ -311,10 +363,17 @@ export async function acceptInvite(req: Request, res: Response, next: NextFuncti
 
     const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
 
-    const user = await User.findOne({
+    const membership = await TenantMembership.findOne({
       invitationToken: hashedToken,
       invitationExpires: { $gt: new Date() },
     });
+
+    let user = membership
+      ? await User.findById(membership.userId)
+      : await User.findOne({
+          invitationToken: hashedToken,
+          invitationExpires: { $gt: new Date() },
+        });
 
     if (!user) {
       return sendError(
@@ -327,12 +386,47 @@ export async function acceptInvite(req: Request, res: Response, next: NextFuncti
 
     const saltRounds = parseInt(process.env.BCRYPT_SALT_ROUNDS || "12", 10);
     user.passwordHash = await bcrypt.hash(password, saltRounds);
+    user.role = normalizeUserRole(user.role);
     user.invitationToken = undefined;
     user.invitationExpires = undefined;
     user.status = "Active";
+    if (membership && !user.tenantId) {
+      user.tenantId = membership.tenantId;
+    }
     await user.save();
 
+    const activeTenantId = membership?.tenantId || user.tenantId;
+
+    if (membership) {
+      membership.status = "Active";
+      membership.acceptedAt = new Date();
+      membership.invitationToken = undefined;
+      membership.invitationExpires = undefined;
+      await membership.save();
+    } else if (activeTenantId && user.role !== "SuperAdmin") {
+      await TenantMembership.findOneAndUpdate(
+        { tenantId: activeTenantId, userId: user._id },
+        {
+          $set: {
+            role: user.role,
+            status: "Active",
+            acceptedAt: new Date(),
+          },
+        },
+        { upsert: true }
+      );
+    }
+
+    if (user.role === "TenantAdmin" && activeTenantId) {
+      const tenant = await Tenant.findById(activeTenantId);
+      if (tenant && tenant.status === "Pending") {
+        tenant.status = "Active";
+        await tenant.save();
+      }
+    }
+
     await AuditLog.create({
+      tenantId: activeTenantId,
       actorId: user._id,
       actorEmail: user.email,
       action: "USER_INVITATION_ACCEPTED",
@@ -342,6 +436,12 @@ export async function acceptInvite(req: Request, res: Response, next: NextFuncti
       userAgent: req.headers["user-agent"],
     });
 
+    const { tenantId, tenantIds } = await resolveUserTenantClaims(
+      user._id.toString(),
+      user.tenantId
+    );
+    const canonicalRole = normalizeUserRole(user.role);
+
     const secret = process.env.JWT_SECRET || "default_jwt_secret_dev";
     const expiresIn = process.env.JWT_EXPIRES_IN || "7d";
 
@@ -349,8 +449,11 @@ export async function acceptInvite(req: Request, res: Response, next: NextFuncti
       {
         userId: user._id.toString(),
         email: user.email,
-        role: user.role,
+        role: canonicalRole,
+        tenantId,
+        tenantIds,
         companyId: user.companyId?.toString(),
+        scope: "authenticated",
       },
       secret,
       { expiresIn: expiresIn as jwt.SignOptions["expiresIn"] }
@@ -363,7 +466,9 @@ export async function acceptInvite(req: Request, res: Response, next: NextFuncti
         userId: user._id,
         email: user.email,
         name: user.name,
-        role: user.role,
+        role: canonicalRole,
+        tenantId: tenantId || null,
+        tenantIds,
         companyId: user.companyId || null,
       },
     });
